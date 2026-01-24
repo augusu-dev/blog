@@ -1,10 +1,10 @@
 [
   {
     "slug": "hello",
-    "title": "あけおめ2026",
-    "date": "2026-01-01",
+    "title": "初投稿",
+    "date": "2026-01-25",
     "excerpt": "テスト投稿。",
-    "file": "2026-01-01-hello.md",
+    "file": "2026-01-25.md",
     "section": "main"
   }
 ]
