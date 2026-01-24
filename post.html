@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>アウグス</title>
+  <link rel="stylesheet" href="/assets/style.css" />
+
+  <!-- Markdown renderer -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="avatar">ア</div>
+        <small>
+          シンプルな個人サイト。<br />
+          メモ・記事置き場。
+        </small>
+      </div>
+
+      <div class="sns">
+        <a href="https://bsky.app/profile/augusu.bsky.social" target="_blank" rel="noopener">Bluesky</a>
+      </div>
+
+      <nav class="nav">
+        <a href="/about.html">About Me</a>
+        <a href="/search.html">Search</a>
+        <a href="/archives.html">Archives</a>
+        <a href="/other.html">その他</a>
+      </nav>
+    </aside>
+
+    <main class="main">
+      <div class="main-header">
+        <h1 id="postTitle">Post</h1>
+        <p id="postMeta"></p>
+      </div>
+
+      <article class="article" id="article"></article>
+
+      <section class="reactions" id="reactions"></section>
+      <div class="notice">
+        ※ログインなし投票はCookie削除等で回避できるため、厳密な一意性は保証できません。
+      </div>
+
+      <section class="section" style="border-top:1px solid var(--border); padding:16px 20px 20px;">
+        <div style="margin:0 0 10px; font-size:14px; font-weight:650;">Comments</div>
+
+        <!-- Isso thread mount point -->
+        <section id="isso-thread"></section>
+
+        <!-- Isso embed: ここはあなたのIsso URLに差し替え -->
+        <!-- 例: data-isso="https://comments.example.com/" -->
+        <script
+          data-isso="https://YOUR-ISSO-HOST/"
+          data-isso-id=""
+          src="https://YOUR-ISSO-HOST/js/embed.min.js">
+        </script>
+
+        <div class="notice">
+          コメント上限（例：1人3件まで）を厳密にやる場合は、Isso側でIPレート制限/プロキシ制限が必要です。
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <footer class="footer">
+    <div>© 2026 Augusuのホームページ</div>
+    <div class="tiny">small footer text</div>
+  </footer>
+
+  <script type="module">
+    import { loadIndex, getQuery, loadAndRenderMarkdown, initReactions } from '/assets/app.js';
+
+    const slug = getQuery('slug');
+    if(!slug){
+      location.href = '/';
+    }
+
+    const posts = await loadIndex();
+    const post = posts.find(p => p.slug === slug);
+    if(!post){
+      document.getElementById('postTitle').textContent = 'Not Found';
+      throw new Error('post not found');
+    }
+
+    document.title = `アウグス - ${post.title}`;
+    document.getElementById('postTitle').textContent = post.title;
+    document.getElementById('postMeta').textContent = post.date;
+
+    await loadAndRenderMarkdown(document.getElementById('article'), `/posts/${post.file}`);
+
+    // Reactions: 共有保存したい場合は apiBase を入れる
+    // 例: await initReactions(el, slug, { apiBase:'https://YOUR-REACTION-API' });
+    await initReactions(document.getElementById('reactions'), slug, { apiBase: '' });
+
+    // IssoにページIDを渡す（スレッドをslugで分ける）
+    // data-isso-idをあとから設定（embed前にやるのが理想。確実にするならscriptタグを動的生成に変えます）
+    const issoScript = document.currentScript; // ここだと取れない場合があるので下の方法にします
+  </script>
+
+  <script>
+    // Issoの data-isso-id を slug で設定したい場合：
+    // embed script を動的に生成するのが確実
+    (function(){
+      const params = new URLSearchParams(location.search);
+      const slug = params.get('slug');
+      const host = 'https://YOUR-ISSO-HOST/'; // ←差し替え
+
+      // 既存script（プレースホルダ）を消して差し替え
+      const old = document.querySelector('script[src*="embed.min.js"]');
+      if(old) old.remove();
+
+      const s = document.createElement('script');
+      s.src = host.replace(/\/?$/,'/') + 'js/embed.min.js';
+      s.setAttribute('data-isso', host);
+      s.setAttribute('data-isso-id', slug ? `post:${slug}` : location.pathname);
+      document.body.appendChild(s);
+    })();
+  </script>
+</body>
+</html>
