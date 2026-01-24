@@ -1,9 +1,10 @@
-// assets/app.js
+// /blog/assets/app.js
 const $ = (s, el=document) => el.querySelector(s);
 const $$ = (s, el=document) => [...el.querySelectorAll(s)];
 
 export async function loadIndex(){
-  const res = await fetch('/posts/index.json', { cache: 'no-store' });
+  // /blog 配下運用なので相対パス
+  const res = await fetch('./posts/index.json', { cache: 'no-store' });
   if(!res.ok) throw new Error('posts/index.json not found');
   return await res.json();
 }
@@ -12,7 +13,7 @@ export function renderPostList(listEl, posts){
   listEl.innerHTML = posts.map(p => `
     <li>
       <div class="post-title">
-        <a href="/post.html?slug=${encodeURIComponent(p.slug)}">${escapeHtml(p.title)}</a>
+        <a href="./post.html?slug=${encodeURIComponent(p.slug)}">${escapeHtml(p.title)}</a>
         <span class="post-date">${escapeHtml(p.date)}</span>
       </div>
       ${p.excerpt ? `<div class="post-excerpt">${escapeHtml(p.excerpt)}</div>` : ``}
@@ -82,23 +83,18 @@ export async function initReactions(rootEl, slug, options={}){
     if(!btn) return;
     const key = btn.dataset.key;
 
-    if(reacted[key]){
-      // すでに押してる
-      return;
-    }
+    if(reacted[key]) return;
 
     reacted[key] = true;
     setReactedMap(slug, reacted);
 
-    // 先にUIを+1（体感を良くする）
+    // 先にUIを+1
     const cEl = rootEl.querySelector(`[data-count="${key}"]`);
     if(cEl) cEl.textContent = String((Number(cEl.textContent)||0) + 1);
 
-    // APIがあれば共有保存、無ければローカルのみ
     try{
       await postReaction(slug, key, options.apiBase);
     }catch(err){
-      // 共有保存に失敗してもローカル分は維持
       console.warn('reaction post failed', err);
     }
   });
@@ -113,10 +109,7 @@ function setReactedMap(slug, obj){
 }
 
 async function fetchCounts(slug, apiBase){
-  if(!apiBase){
-    // 共有なし：全て0
-    return {};
-  }
+  if(!apiBase) return {};
   const res = await fetch(`${apiBase}/reactions?slug=${encodeURIComponent(slug)}`, { cache:'no-store' });
   if(!res.ok) throw new Error('fetchCounts failed');
   return await res.json();
