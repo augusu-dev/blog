@@ -1,0 +1,178 @@
+/* /blog/assets/style.css */
+
+:root{
+  --bg:#f7f1f1;           /* 超薄いあずき */
+  --panel:#ffffff;
+  --text:#111827;
+  --muted:#6b7280;
+  --border:rgba(17,24,39,.10);
+  --shadow:0 1px 0 rgba(17,24,39,.05);
+  --radius:14px;
+}
+
+*{ box-sizing:border-box; }
+html,body{ height:100%; }
+
+body{
+  margin:0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Hiragino Sans",
+               "Noto Sans JP", "Yu Gothic", "Meiryo", sans-serif;
+  background:var(--bg);
+  color:var(--text);
+
+  /* フッターを常に最下部へ */
+  min-height:100vh;
+  display:flex;
+  flex-direction:column;
+}
+
+a{ color:inherit; text-decoration:none; }
+a:hover{ text-decoration:underline; }
+
+/* レイアウト */
+.layout{
+  flex:1;
+  display:grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap:28px;
+  max-width: 1100px;
+  width:100%;
+  margin: 22px auto 0;
+  padding: 0 18px 22px;
+}
+
+/* サイドバー */
+.sidebar{
+  position:sticky;
+  top:18px;
+  align-self:start;
+  padding: 8px 10px;
+}
+
+.brand{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  padding: 10px 8px 10px;
+}
+
+/* アイコン（画像を入れても崩れない） */
+.avatar{
+  width:64px;
+  height:64px;
+  border-radius:50%;
+  background:#7b2f3a;
+  display:grid;
+  place-items:center;
+  color:white;
+  font-weight:700;
+  letter-spacing:.02em;
+  box-shadow: var(--shadow);
+  user-select:none;
+}
+.avatar img{
+  width:100%;
+  height:100%;
+  display:block;
+  object-fit:cover;
+  border-radius:50%;
+}
+
+.brand small{
+  color:var(--muted);
+  line-height:1.6;
+  font-size: 13px;
+}
+
+/* SNS：Bluesky の下に空白 */
+.sns{
+  margin-top: 8px;
+  margin-bottom: 14px; /* ←ここが「空白」 */
+  padding: 0 10px;
+}
+.sns a{
+  color: var(--muted);
+  font-size: 14px;
+}
+
+/* nav：縦並び＋改行（横並び事故を潰す） */
+.nav{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+}
+.nav a{
+  display:block;
+  padding: 9px 10px;
+  border-radius: 10px;
+  color: var(--text);
+}
+.nav a:hover{
+  background: rgba(17,24,39,.04);
+  text-decoration:none;
+}
+
+/* メイン */
+.main{
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow:hidden;
+}
+
+/* 記事リスト（コンパクト） */
+.section{ padding: 8px 0; }
+
+.post-list{ list-style:none; margin:0; padding:0; }
+.post-list li{
+  padding: 10px 20px;
+  border-top: 1px solid var(--border);
+}
+.post-list li:first-child{ border-top:none; }
+
+.post-title{
+  display:flex;
+  align-items:baseline;
+  justify-content:space-between;
+  gap: 14px;
+}
+.post-title a{
+  font-weight:650;
+}
+.post-date{
+  color:var(--muted);
+  font-size:12px;
+  white-space:nowrap;
+}
+.post-excerpt{
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height:1.6;
+}
+
+/* 記事本文（post.html用） */
+.article{
+  padding: 18px 20px 8px;
+}
+.article h1,.article h2,.article h3{ line-height:1.3; }
+.article p{ line-height:1.85; }
+.article a{ text-decoration: underline; }
+
+/* フッター：画面の一番下中央 */
+.footer{
+  text-align:center;
+  color: var(--muted);
+  font-size: 12px;
+  padding: 16px 18px 22px;
+}
+
+/* モバイル */
+@media (max-width: 860px){
+  .layout{
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+  .sidebar{ position:relative; top:auto; }
+}
