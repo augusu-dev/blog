@@ -4,16 +4,18 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>アウグス</title>
-  <link rel="stylesheet" href="/assets/style.css" />
+  <link rel="stylesheet" href="./assets/style.css" />
 </head>
 <body>
   <div class="layout">
     <aside class="sidebar">
       <div class="brand">
-        <div class="avatar">ア</div>
+        <a class="avatar" href="./" aria-label="ホームに戻る">
+          <img src="./assets/icon.jpg" alt="アウグス">
+        </a>
         <small>
-          シンプルな個人サイト。<br />
-          メモ・記事置き場。
+          AIと共に成長し、希少価値を生み出せるクリエイターを目指す無職<br />
+          ふと思ったこと、考えを自分の言葉で表します
         </small>
       </div>
 
@@ -22,21 +24,17 @@
       </div>
 
       <nav class="nav">
-        <a href="/about.html">About Me</a>
-        <a href="/search.html">Search</a>
-        <a href="/archives.html">Archives</a>
-        <a href="/other.html">その他</a>
+        <a href="./about.html">About Me</a>
+        <a href="./search.html">Search</a>
+        <a href="./archives.html">Archives</a>
+        <a href="./other.html">その他</a>
       </nav>
     </aside>
 
     <main class="main">
-      <div class="main-header">
-        <h1>About Me</h1>
-        <p>自己紹介</p>
-      </div>
-
       <article class="article">
-        <p>ここに自己紹介を書きます（2枚目の雰囲気）。</p>
+        <h1>About Me</h1>
+        <p>ここに自己紹介を書きます。</p>
         <ul>
           <li>プログラミング</li>
           <li>ゲーム</li>
@@ -48,12 +46,11 @@
 
   <footer class="footer">
     <div>© 2026 Augusuのホームページ</div>
-    <div class="tiny">small footer text</div>
   </footer>
 
   <script type="module">
-    import { setActiveNav } from '/assets/app.js';
-    setActiveNav('/about.html');
+    import { setActiveNav } from './assets/app.js';
+    setActiveNav('./about.html');
   </script>
 </body>
 </html>
