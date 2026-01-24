@@ -1,128 +1,18 @@
-// /blog/assets/app.js
-const $ = (s, el=document) => el.querySelector(s);
-const $$ = (s, el=document) => [...el.querySelectorAll(s)];
+const main = document.getElementById('main');
+const nav = document.getElementById('nav');
 
-export async function loadIndex(){
-  // /blog 配下運用なので相対パス
-  const res = await fetch('./posts/index.json', { cache: 'no-store' });
+function setActive(view){
+  [...nav.querySelectorAll('a[data-link]')].forEach(a=>{
+    const u = new URL(a.href, location.href);
+    const v = u.searchParams.get('view') || '';
+    a.classList.toggle('active', v === view);
+  });
+}
+
+async function loadPosts(){
+  const res = await fetch('./posts/index.json', { cache:'no-store' });
   if(!res.ok) throw new Error('posts/index.json not found');
   return await res.json();
-}
-
-export function renderPostList(listEl, posts){
-  listEl.innerHTML = posts.map(p => `
-    <li>
-      <div class="post-title">
-        <a href="./post.html?slug=${encodeURIComponent(p.slug)}">${escapeHtml(p.title)}</a>
-        <span class="post-date">${escapeHtml(p.date)}</span>
-      </div>
-      ${p.excerpt ? `<div class="post-excerpt">${escapeHtml(p.excerpt)}</div>` : ``}
-    </li>
-  `).join('');
-}
-
-export async function loadAndRenderMarkdown(articleEl, mdPath){
-  // marked は post.html で読み込む
-  const res = await fetch(mdPath, { cache: 'no-store' });
-  if(!res.ok) throw new Error('Markdown not found: ' + mdPath);
-  const md = await res.text();
-  articleEl.innerHTML = window.marked.parse(md, { mangle:false, headerIds:true });
-}
-
-export function getQuery(name){
-  const u = new URL(location.href);
-  return u.searchParams.get(name);
-}
-
-export function setActiveNav(path){
-
-  $$('.nav a').forEach(a=>{
-    if(a.getAttribute('href') === path) a.style.fontWeight = '700';
-  });
-}
-
-// ========== Reactions ==========
-const REACTIONS = [
-  { key:'upvote', emoji:'👍', label:'Upvote' },
-  { key:'funny',  emoji:'😆', label:'Funny'  },
-  { key:'love',   emoji:'😍', label:'Love'   },
-  { key:'wow',    emoji:'😮', label:'Surprised' },
-  { key:'angry',  emoji:'😠', label:'Angry'  },
-  { key:'sad',    emoji:'😢', label:'Sad'    },
-];
-
-function storageKey(slug){ return `augusu_reacted_${slug}`; }
-
-// options: { apiBase?: string } 例: https://api.example.com
-export async function initReactions(rootEl, slug, options={}){
-  rootEl.innerHTML = `
-    <h3>What do you think?</h3>
-    <div class="reaction-row">
-      ${REACTIONS.map(r=>`
-        <button class="react" data-key="${r.key}" type="button" aria-label="${r.label}">
-          <div class="emoji">${r.emoji}</div>
-          <div class="label">${r.label}</div>
-          <div class="count" data-count="${r.key}">0</div>
-        </button>
-      `).join('')}
-    </div>
-  `;
-
-  // 初期表示
-  const counts = await fetchCounts(slug, options.apiBase);
-  for(const r of REACTIONS){
-    const el = rootEl.querySelector(`[data-count="${r.key}"]`);
-    if(el) el.textContent = String(counts[r.key] ?? 0);
-  }
-
-  // 1絵文字につき1回（ローカルで管理）
-  const reacted = getReactedMap(slug);
-
-  rootEl.addEventListener('click', async (e)=>{
-    const btn = e.target.closest('.react');
-    if(!btn) return;
-    const key = btn.dataset.key;
-
-    if(reacted[key]) return;
-
-    reacted[key] = true;
-    setReactedMap(slug, reacted);
-
-    // 先にUIを+1
-    const cEl = rootEl.querySelector(`[data-count="${key}"]`);
-    if(cEl) cEl.textContent = String((Number(cEl.textContent)||0) + 1);
-
-    try{
-      await postReaction(slug, key, options.apiBase);
-    }catch(err){
-      console.warn('reaction post failed', err);
-    }
-  });
-}
-
-function getReactedMap(slug){
-  try{ return JSON.parse(localStorage.getItem(storageKey(slug)) || '{}'); }
-  catch{ return {}; }
-}
-function setReactedMap(slug, obj){
-  localStorage.setItem(storageKey(slug), JSON.stringify(obj));
-}
-
-async function fetchCounts(slug, apiBase){
-  if(!apiBase) return {};
-  const res = await fetch(`${apiBase}/reactions?slug=${encodeURIComponent(slug)}`, { cache:'no-store' });
-  if(!res.ok) throw new Error('fetchCounts failed');
-  return await res.json();
-}
-
-async function postReaction(slug, key, apiBase){
-  if(!apiBase) return;
-  const res = await fetch(`${apiBase}/reactions`, {
-    method:'POST',
-    headers:{ 'content-type':'application/json' },
-    body: JSON.stringify({ slug, key })
-  });
-  if(!res.ok) throw new Error('postReaction failed');
 }
 
 function escapeHtml(s){
@@ -133,3 +23,168 @@ function escapeHtml(s){
     .replaceAll('"','&quot;')
     .replaceAll("'","&#39;");
 }
+
+function renderPostList(posts){
+  return `
+    <ul class="post-list">
+      ${posts.map(p=>`
+        <li>
+          <div class="post-title">
+            <a href="./?view=post&slug=${encodeURIComponent(p.slug)}" data-link>${escapeHtml(p.title)}</a>
+            <span class="post-date">${escapeHtml(p.date)}</span>
+          </div>
+          ${p.excerpt ? `<div class="post-excerpt">${escapeHtml(p.excerpt)}</div>` : ``}
+        </li>
+      `).join('')}
+    </ul>
+  `;
+}
+
+async function renderHome(){
+  setActive(''); // Homeはviewなし
+  const posts = await loadPosts();
+  const mainPosts = posts.filter(p => (p.section || 'main') === 'main');
+  main.innerHTML = renderPostList(mainPosts);
+}
+
+async function renderArchives(){
+  setActive('archives');
+  const posts = await loadPosts();
+  const mainPosts = posts.filter(p => (p.section || 'main') === 'main');
+
+  // 年ごと
+  const byYear = new Map();
+  for(const p of mainPosts){
+    const y = (p.date || '').slice(0,4) || '----';
+    if(!byYear.has(y)) byYear.set(y, []);
+    byYear.get(y).push(p);
+  }
+  const years = [...byYear.keys()].sort((a,b)=> b.localeCompare(a));
+  years.forEach(y => byYear.get(y).sort((a,b)=> (b.date||'').localeCompare(a.date||'')));
+
+  main.innerHTML = `
+    <h1>Archives</h1>
+    ${years.map(y=>`
+      <div style="margin:14px 0 6px; font-weight:700;">${escapeHtml(y)}</div>
+      ${renderPostList(byYear.get(y)).replace('<ul class="post-list">','<ul class="post-list">')}
+    `).join('')}
+  `;
+}
+
+async function renderOther(){
+  setActive('other');
+  const posts = await loadPosts();
+  const otherPosts = posts.filter(p => (p.section || 'main') === 'other');
+  main.innerHTML = `
+    <h1>その他</h1>
+    <p style="margin:0 0 14px; color:var(--muted);">Archivesに残したくない記事置き場</p>
+    ${renderPostList(otherPosts)}
+  `;
+}
+
+async function renderSearch(){
+  setActive('search');
+  const posts = await loadPosts();
+  const q0 = new URL(location.href).searchParams.get('q') || '';
+
+  main.innerHTML = `
+    <h1>Search</h1>
+    <input id="q" type="search" placeholder="タイトル/概要で検索" value="${escapeHtml(q0)}">
+    <div style="margin-top:12px; color:var(--muted); font-size:13px;">検索結果</div>
+    <div id="results" style="margin-top:8px;"></div>
+  `;
+
+  const q = document.getElementById('q');
+  const results = document.getElementById('results');
+
+  const run = () => {
+    const term = q.value.trim().toLowerCase();
+    const filtered = term
+      ? posts.filter(p =>
+          (p.title||'').toLowerCase().includes(term) ||
+          (p.excerpt||'').toLowerCase().includes(term)
+        )
+      : posts;
+
+    results.innerHTML = renderPostList(filtered);
+  };
+
+  q.addEventListener('input', ()=>{
+    // 検索語をURLに反映（リロードしても維持）
+    const u = new URL(location.href);
+    u.searchParams.set('view','search');
+    if(q.value.trim()) u.searchParams.set('q', q.value.trim());
+    else u.searchParams.delete('q');
+    history.replaceState({}, '', u);
+    run();
+  });
+
+  run();
+}
+
+async function renderAbout(){
+  setActive('about');
+  const res = await fetch('./pages/about.md', { cache:'no-store' });
+  const md = res.ok ? await res.text() : '# About Me\n\n`pages/about.md` がありません。';
+  main.innerHTML = window.marked.parse(md, { mangle:false, headerIds:true });
+}
+
+async function renderPost(slug){
+  setActive(''); // navはHome扱いでOKなら空に
+
+  const posts = await loadPosts();
+  const post = posts.find(p => p.slug === slug);
+
+  if(!post){
+    main.innerHTML = `<h1>Not Found</h1><p>記事が見つかりません。</p>`;
+    return;
+  }
+
+  document.title = `アウグス - ${post.title}`;
+
+  const res = await fetch(`./posts/${post.file}`, { cache:'no-store' });
+  const md = res.ok ? await res.text() : '# Markdown not found';
+  const html = window.marked.parse(md, { mangle:false, headerIds:true });
+
+  main.innerHTML = `
+    <div style="color:var(--muted); font-size:12px; margin-bottom:6px;">${escapeHtml(post.date)}</div>
+    ${html}
+    <hr style="border:none; border-top:1px solid var(--border); margin:16px 0;">
+    <div style="color:var(--muted); font-size:13px;">
+      （ここに後で：絵文字投票 / コメント（Utterances or Isso）を埋め込み可能）
+    </div>
+  `;
+}
+
+async function route(){
+  const u = new URL(location.href);
+  const view = u.searchParams.get('view') || '';
+  const slug = u.searchParams.get('slug') || '';
+
+  // Homeは viewなし
+  if(view === '') return await renderHome();
+  if(view === 'about') return await renderAbout();
+  if(view === 'search') return await renderSearch();
+  if(view === 'archives') return await renderArchives();
+  if(view === 'other') return await renderOther();
+  if(view === 'post') return await renderPost(slug);
+
+  // 不明ならHome
+  return await renderHome();
+}
+
+// SPAリンク処理：外枠は残してメインだけ更新
+document.addEventListener('click', (e)=>{
+  const a = e.target.closest('a[data-link]');
+  if(!a) return;
+  e.preventDefault();
+  history.pushState({}, '', a.getAttribute('href'));
+  route();
+});
+
+window.addEventListener('popstate', route);
+
+// 起動
+route().catch(err=>{
+  main.innerHTML = `<h1>Error</h1><pre>${escapeHtml(err?.message || String(err))}</pre>`;
+});
