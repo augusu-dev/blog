@@ -111,11 +111,58 @@
             image-rendering: pixelated;
         }
 
+        /* 操作方法パネル */
+        #controls-panel {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.75);
+            color: white;
+            padding: 12px 15px;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-size: 13px;
+            border-radius: 6px;
+            z-index: 10;
+            line-height: 1.8;
+            pointer-events: none;
+            backdrop-filter: blur(5px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            max-width: 280px;
+        }
+
+        #controls-panel h3 {
+            margin: 0 0 8px 0;
+            font-size: 14px;
+            color: #4CAF50;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+            padding-bottom: 5px;
+        }
+
+        #controls-panel .control-section {
+            margin: 6px 0;
+        }
+
+        #controls-panel .control-item {
+            display: flex;
+            justify-content: space-between;
+            margin: 3px 0;
+            font-size: 12px;
+        }
+
+        #controls-panel .key {
+            background: rgba(255, 255, 255, 0.15);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            color: #FFD700;
+        }
+
         /* デバッグ情報 */
         #debug-info {
             position: absolute;
             top: 10px;
-            left: 10px;
+            right: 10px;
             background: rgba(0, 0, 0, 0.7);
             color: white;
             padding: 10px;
@@ -255,6 +302,20 @@
                 height: 32px;
             }
 
+            #controls-panel {
+                font-size: 11px;
+                padding: 8px 10px;
+                max-width: 220px;
+            }
+
+            #controls-panel h3 {
+                font-size: 12px;
+            }
+
+            #controls-panel .control-item {
+                font-size: 10px;
+            }
+
             #debug-info {
                 font-size: 10px;
                 padding: 5px;
@@ -288,6 +349,53 @@
 
         <!-- クロスヘア -->
         <div id="crosshair"></div>
+
+        <!-- 操作方法パネル -->
+        <div id="controls-panel">
+            <h3>🎮 操作方法</h3>
+            <div class="control-section">
+                <div class="control-item">
+                    <span>移動</span>
+                    <span><span class="key">W A S D</span></span>
+                </span>
+                <div class="control-item">
+                    <span>ジャンプ</span>
+                    <span><span class="key">Space</span></span>
+                </div>
+                <div class="control-item">
+                    <span>走る</span>
+                    <span><span class="key">Shift</span></span>
+                </div>
+                <div class="control-item">
+                    <span>視点変更</span>
+                    <span><span class="key">マウス</span></span>
+                </div>
+            </div>
+            <div class="control-section">
+                <div class="control-item">
+                    <span>ブロック破壊</span>
+                    <span><span class="key">左クリック</span></span>
+                </div>
+                <div class="control-item">
+                    <span>ブロック設置</span>
+                    <span><span class="key">右クリック</span></span>
+                </div>
+                <div class="control-item">
+                    <span>ブロック選択</span>
+                    <span><span class="key">1-9</span></span>
+                </div>
+            </div>
+            <div class="control-section">
+                <div class="control-item">
+                    <span>デバッグ表示</span>
+                    <span><span class="key">F3</span></span>
+                </div>
+                <div class="control-item">
+                    <span>ポーズ</span>
+                    <span><span class="key">ESC</span></span>
+                </div>
+            </div>
+        </div>
 
         <!-- ホットバー -->
         <div id="hotbar"></div>

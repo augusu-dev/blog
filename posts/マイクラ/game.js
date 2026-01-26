@@ -376,8 +376,20 @@ function generateChunk(chunkX, chunkZ) {
         }
     }
 
-    // 木の生成
-    for (let i = 0; i < 3; i++) {
+    // 構造物の生成
+    generateStructures(chunk, heightMap, chunkX, chunkZ);
+
+    chunks.set(chunkKey, chunk);
+    return chunk;
+}
+
+// ============================================
+// 構造物生成システム
+// ============================================
+function generateStructures(chunk, heightMap, chunkX, chunkZ) {
+    // 木の生成（より多く）
+    const treeCount = 5 + Math.floor(Math.random() * 5); // 5-9本
+    for (let i = 0; i < treeCount; i++) {
         const x = Math.floor(Math.random() * CHUNK_SIZE);
         const z = Math.floor(Math.random() * CHUNK_SIZE);
         const height = heightMap[x][z];
@@ -386,9 +398,59 @@ function generateChunk(chunkX, chunkZ) {
             generateTree(chunk, x, height, z);
         }
     }
-
-    chunks.set(chunkKey, chunk);
-    return chunk;
+    
+    // 岩の塊を生成
+    const boulderCount = 2 + Math.floor(Math.random() * 3); // 2-4個
+    for (let i = 0; i < boulderCount; i++) {
+        const x = Math.floor(Math.random() * CHUNK_SIZE);
+        const z = Math.floor(Math.random() * CHUNK_SIZE);
+        const height = heightMap[x][z];
+        
+        if (height > 40 && height < 55) {
+            generateBoulder(chunk, x, height, z, heightMap);
+        }
+    }
+    
+    // 小さな丘を追加
+    const hillCount = 1 + Math.floor(Math.random() * 2); // 1-2個
+    for (let i = 0; i < hillCount; i++) {
+        const x = Math.floor(Math.random() * CHUNK_SIZE);
+        const z = Math.floor(Math.random() * CHUNK_SIZE);
+        const height = heightMap[x][z];
+        
+        if (height > 45 && height < 52) {
+            generateSmallHill(chunk, x, height, z, heightMap);
+        }
+    }
+    
+    // 花や草（装飾ブロック）
+    const decorationCount = 10 + Math.floor(Math.random() * 15); // 10-24個
+    for (let i = 0; i < decorationCount; i++) {
+        const x = Math.floor(Math.random() * CHUNK_SIZE);
+        const z = Math.floor(Math.random() * CHUNK_SIZE);
+        const height = heightMap[x][z];
+        
+        if (height > 45 && chunk.blocks[x][height][z] === BlockType.GRASS) {
+            // 上に葉ブロックを置いて草や花に見せる
+            if (height + 1 < CHUNK_HEIGHT && chunk.blocks[x][height + 1][z] === BlockType.AIR) {
+                if (Math.random() > 0.7) {
+                    chunk.blocks[x][height + 1][z] = BlockType.LEAVES;
+                }
+            }
+        }
+    }
+    
+    // 砂浜に砂の山
+    const sandPileCount = 2 + Math.floor(Math.random() * 2); // 2-3個
+    for (let i = 0; i < sandPileCount; i++) {
+        const x = Math.floor(Math.random() * CHUNK_SIZE);
+        const z = Math.floor(Math.random() * CHUNK_SIZE);
+        const height = heightMap[x][z];
+        
+        if (height > 38 && height <= 45) {
+            generateSandPile(chunk, x, height, z);
+        }
+    }
 }
 
 function generateTree(chunk, x, baseY, z) {
@@ -414,6 +476,94 @@ function generateTree(chunk, x, baseY, z) {
                     if (dist <= 3 && Math.random() > 0.2) {
                         if (chunk.blocks[x + dx][leafY + dy][z + dz] === BlockType.AIR) {
                             chunk.blocks[x + dx][leafY + dy][z + dz] = BlockType.LEAVES;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// 岩の塊を生成
+function generateBoulder(chunk, x, baseY, z, heightMap) {
+    const size = 2 + Math.floor(Math.random() * 2); // 2-3ブロック
+    
+    for (let dx = -size; dx <= size; dx++) {
+        for (let dy = 0; dy <= size; dy++) {
+            for (let dz = -size; dz <= size; dz++) {
+                const nx = x + dx;
+                const ny = baseY + dy;
+                const nz = z + dz;
+                
+                if (nx >= 0 && nx < CHUNK_SIZE &&
+                    nz >= 0 && nz < CHUNK_SIZE &&
+                    ny >= 0 && ny < CHUNK_HEIGHT) {
+                    
+                    const dist = Math.sqrt(dx * dx + dy * dy * 1.5 + dz * dz);
+                    if (dist <= size && Math.random() > 0.3) {
+                        if (chunk.blocks[nx][ny][nz] === BlockType.AIR || 
+                            chunk.blocks[nx][ny][nz] === BlockType.GRASS) {
+                            chunk.blocks[nx][ny][nz] = BlockType.STONE;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// 小さな丘を生成
+function generateSmallHill(chunk, x, baseY, z, heightMap) {
+    const radius = 3 + Math.floor(Math.random() * 2); // 3-4ブロック
+    const height = 2 + Math.floor(Math.random() * 3); // 2-4ブロック
+    
+    for (let dx = -radius; dx <= radius; dx++) {
+        for (let dz = -radius; dz <= radius; dz++) {
+            const nx = x + dx;
+            const nz = z + dz;
+            
+            if (nx >= 0 && nx < CHUNK_SIZE && nz >= 0 && nz < CHUNK_SIZE) {
+                const dist = Math.sqrt(dx * dx + dz * dz);
+                
+                if (dist <= radius) {
+                    const hillHeight = Math.floor(height * (1 - dist / radius));
+                    
+                    for (let dy = 1; dy <= hillHeight; dy++) {
+                        const ny = baseY + dy;
+                        if (ny < CHUNK_HEIGHT && chunk.blocks[nx][ny][nz] === BlockType.AIR) {
+                            if (dy === hillHeight) {
+                                chunk.blocks[nx][ny][nz] = BlockType.GRASS;
+                            } else {
+                                chunk.blocks[nx][ny][nz] = BlockType.DIRT;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// 砂の山を生成
+function generateSandPile(chunk, x, baseY, z) {
+    const radius = 2;
+    const height = 2 + Math.floor(Math.random() * 2); // 2-3ブロック
+    
+    for (let dx = -radius; dx <= radius; dx++) {
+        for (let dz = -radius; dz <= radius; dz++) {
+            const nx = x + dx;
+            const nz = z + dz;
+            
+            if (nx >= 0 && nx < CHUNK_SIZE && nz >= 0 && nz < CHUNK_SIZE) {
+                const dist = Math.sqrt(dx * dx + dz * dz);
+                
+                if (dist <= radius) {
+                    const pileHeight = Math.floor(height * (1 - dist / radius));
+                    
+                    for (let dy = 1; dy <= pileHeight; dy++) {
+                        const ny = baseY + dy;
+                        if (ny < CHUNK_HEIGHT && chunk.blocks[nx][ny][nz] === BlockType.AIR) {
+                            chunk.blocks[nx][ny][nz] = BlockType.SAND;
                         }
                     }
                 }
