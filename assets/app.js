@@ -41,7 +41,7 @@ function renderPostList(posts){
 }
 
 async function renderHome(){
-  setActive(''); // Homeはviewなし
+  setActive('');
   const posts = await loadPosts();
   const mainPosts = posts.filter(p => (p.section || 'main') === 'main');
   main.innerHTML = renderPostList(mainPosts);
@@ -52,7 +52,6 @@ async function renderArchives(){
   const posts = await loadPosts();
   const mainPosts = posts.filter(p => (p.section || 'main') === 'main');
 
-  // 年ごと
   const byYear = new Map();
   for(const p of mainPosts){
     const y = (p.date || '').slice(0,4) || '----';
@@ -110,7 +109,6 @@ async function renderSearch(){
   };
 
   q.addEventListener('input', ()=>{
-    // 検索語をURLに反映（リロードしても維持）
     const u = new URL(location.href);
     u.searchParams.set('view','search');
     if(q.value.trim()) u.searchParams.set('q', q.value.trim());
@@ -130,7 +128,7 @@ async function renderAbout(){
 }
 
 async function renderPost(slug){
-  setActive(''); // navはHome扱いでOKなら空に
+  setActive('');
 
   const posts = await loadPosts();
   const post = posts.find(p => p.slug === slug);
@@ -142,6 +140,22 @@ async function renderPost(slug){
 
   document.title = `アウグス - ${post.title}`;
 
+  // ★ HTMLファイル（ゲームなど）の場合
+  if(post.file.endsWith('.html')){
+    main.innerHTML = `
+      <div style="color:var(--muted); font-size:12px; margin-bottom:6px;">${escapeHtml(post.date)}</div>
+      <h1>${escapeHtml(post.title)}</h1>
+      <p style="margin:16px 0;">
+        <a href="./posts/${post.file}" target="_blank" style="font-size:15px;">🎮 別タブで開く</a>
+        　
+        <a href="./posts/${post.file}" style="font-size:15px;">▶ このタブで開く</a>
+      </p>
+      <hr style="border:none; border-top:1px solid var(--border); margin:16px 0;">
+    `;
+    return;
+  }
+
+  // ★ MDファイルの場合
   const res = await fetch(`./posts/${post.file}`, { cache:'no-store' });
   const md = res.ok ? await res.text() : '# Markdown not found';
   const html = window.marked.parse(md, { mangle:false, headerIds:true });
@@ -161,7 +175,6 @@ async function route(){
   const view = u.searchParams.get('view') || '';
   const slug = u.searchParams.get('slug') || '';
 
-  // Homeは viewなし
   if(view === '') return await renderHome();
   if(view === 'about') return await renderAbout();
   if(view === 'search') return await renderSearch();
@@ -169,11 +182,9 @@ async function route(){
   if(view === 'other') return await renderOther();
   if(view === 'post') return await renderPost(slug);
 
-  // 不明ならHome
   return await renderHome();
 }
 
-// SPAリンク処理：外枠は残してメインだけ更新
 document.addEventListener('click', (e)=>{
   const a = e.target.closest('a[data-link]');
   if(!a) return;
@@ -184,7 +195,6 @@ document.addEventListener('click', (e)=>{
 
 window.addEventListener('popstate', route);
 
-// 起動
 route().catch(err=>{
   main.innerHTML = `<h1>Error</h1><pre>${escapeHtml(err?.message || String(err))}</pre>`;
 });
