@@ -612,12 +612,45 @@ function findSpawn() {
 findSpawn();
 controls.getObject().position.copy(player.pos);
 
-function aabbCollides(minX, minY, minZ, maxX, maxY, maxZ) {
-undefined
+const EPS = 1e-4;
+
+function collisionBounds(minX, minY, minZ, maxX, maxY, maxZ) {
+  // max側は「ぴったり境界」を含めない（床に触れただけで衝突扱いになるのを防ぐ）
+  const x0 = Math.floor(minX);
+  const x1 = Math.floor(maxX - EPS);
+  const y0 = Math.floor(minY);
+  const y1 = Math.floor(maxY - EPS);
+  const z0 = Math.floor(minZ);
+  const z1 = Math.floor(maxZ - EPS);
+
+  let hit = false;
+  let minBX = Infinity, maxBX = -Infinity;
+  let minBY = Infinity, maxBY = -Infinity;
+  let minBZ = Infinity, maxBZ = -Infinity;
+
+  for (let x = x0; x <= x1; x++) {
+    for (let y = y0; y <= y1; y++) {
+      for (let z = z0; z <= z1; z++) {
+        if (!inBounds(x,y,z)) continue;
+        if (!isSolidAt(x,y,z)) continue;
+
+        hit = true;
+        if (x < minBX) minBX = x;
+        if (x > maxBX) maxBX = x;
+        if (y < minBY) minBY = y;
+        if (y > maxBY) maxBY = y;
+        if (z < minBZ) minBZ = z;
+        if (z > maxBZ) maxBZ = z;
+      }
+    }
+  }
+
+  return hit ? { hit, minBX, maxBX, minBY, maxBY, minBZ, maxBZ } : { hit:false };
 }
 
+
 function moveWithCollisions(dt, wishDir, wishSpeed) {
-  // 横移動の目標速度（地上/空中）
+  // 横移動（地上/空中）
   const accel = player.onGround ? 45 : 45 * CONFIG.AIR_CONTROL;
 
   const targetVx = wishDir.x * wishSpeed;
@@ -629,6 +662,7 @@ function moveWithCollisions(dt, wishDir, wishSpeed) {
   // 重力
   player.vel.y -= CONFIG.GRAVITY * dt;
 
+  // ジャンプ
   if (player.wantJump && player.onGround) {
     player.vel.y = CONFIG.JUMP_VELOCITY;
     player.onGround = false;
@@ -636,22 +670,70 @@ function moveWithCollisions(dt, wishDir, wishSpeed) {
   player.wantJump = false;
 
   const r = CONFIG.PLAYER_RADIUS;
-  const h = CONFIG.PLAYER_HEIGHT;
+  const hh = CONFIG.PLAYER_HEIGHT;
 
-  // 1) X
-  let nx = player.pos.x + player.vel.x * dt;
-  {
-    const minX = nx - r, maxX = nx + r;
-    const minY = player.pos.y, maxY = player.pos.y + h;
-    const minZ = player.pos.z - r, maxZ = player.pos.z + r;
+  // サブステップ（高速落下でのすり抜け対策）
+  const maxStep = 1 / 120;
+  const steps = Math.max(1, Math.ceil(dt / maxStep));
+  const stepDt = dt / steps;
 
-    if (!aabbCollides(minX, minY, minZ, maxX, maxY, maxZ)) {
-      player.pos.x = nx;
-    } else {
-      // step resolve
-      player.vel.x = 0;
+  for (let i = 0; i < steps; i++) {
+    // ---- X ----
+    let dx = player.vel.x * stepDt;
+    if (dx !== 0) {
+      player.pos.x += dx;
+      const b = collisionBounds(
+        player.pos.x - r, player.pos.y,      player.pos.z - r,
+        player.pos.x + r, player.pos.y + hh, player.pos.z + r
+      );
+      if (b.hit) {
+        if (dx > 0) player.pos.x = b.minBX - r - EPS;
+        else        player.pos.x = b.maxBX + 1 + r + EPS;
+        player.vel.x = 0;
+      }
+    }
+
+    // ---- Z ----
+    let dz = player.vel.z * stepDt;
+    if (dz !== 0) {
+      player.pos.z += dz;
+      const b = collisionBounds(
+        player.pos.x - r, player.pos.y,      player.pos.z - r,
+        player.pos.x + r, player.pos.y + hh, player.pos.z + r
+      );
+      if (b.hit) {
+        if (dz > 0) player.pos.z = b.minBZ - r - EPS;
+        else        player.pos.z = b.maxBZ + 1 + r + EPS;
+        player.vel.z = 0;
+      }
+    }
+
+    // ---- Y ----
+    player.onGround = false;
+    let dy = player.vel.y * stepDt;
+    if (dy !== 0) {
+      player.pos.y += dy;
+      const b = collisionBounds(
+        player.pos.x - r, player.pos.y,      player.pos.z - r,
+        player.pos.x + r, player.pos.y + hh, player.pos.z + r
+      );
+      if (b.hit) {
+        if (dy < 0) {
+          // 着地：衝突したブロックの上面にスナップ
+          player.pos.y = b.maxBY + 1 + EPS;
+          player.onGround = true;
+        } else {
+          // 頭ぶつけ：衝突したブロックの下面にスナップ
+          player.pos.y = b.minBY - hh - EPS;
+        }
+        player.vel.y = 0;
+      }
     }
   }
+
+  // 落下救済
+  if (player.pos.y < -20) findSpawn();
+}
 
   // 2) Z
   let nz = player.pos.z + player.vel.z * dt;
@@ -793,21 +875,35 @@ if (isTouchDevice) {
   });
   window.addEventListener("pointerup", () => { lookActive = false; });
 
-  // Tap to interact (break/place depending on mode)
+    // Tap to interact: 「短いタップ」だけ doAction
+  let tap = null;
+
   window.addEventListener("pointerdown", (e) => {
     const t = e.target;
     if (t.closest?.("#joystick") || t.closest?.("#mobileButtons") || t.closest?.("#hotbar") || t.closest?.("#help")) return;
-    // pointerdown時点では “視点操作” と競合するので、短押し扱いだけにしない
-    // 代わりに pointerup でクリック判定
+    tap = { x: e.clientX, y: e.clientY, time: performance.now() };
   });
 
   window.addEventListener("pointerup", (e) => {
+    if (!tap) return;
+
     const t = e.target;
-    if (t.closest?.("#joystick") || t.closest?.("#mobileButtons") || t.closest?.("#hotbar") || t.closest?.("#help")) return;
-    // 簡易：指を離した瞬間に1回アクション
-    doAction();
+    if (t.closest?.("#joystick") || t.closest?.("#mobileButtons") || t.closest?.("#hotbar") || t.closest?.("#help")) {
+      tap = null;
+      return;
+    }
+
+    const dt = performance.now() - tap.time;
+    const dx = e.clientX - tap.x;
+    const dy = e.clientY - tap.y;
+    tap = null;
+
+    // ほぼ動いてなくて短時間なら「タップ」
+    if (dt < 280 && (dx*dx + dy*dy) < (10*10)) {
+      doAction();
+    }
   });
-}
+
 
 /* =========================================================
   Hotbar UI (Phase4)
