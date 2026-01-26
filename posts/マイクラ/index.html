@@ -5,35 +5,40 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Voxel Sandbox</title>
   <link rel="stylesheet" href="style.css">
+  
+  <!-- importmap でモジュール解決 -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
 </head>
 <body>
-  <!-- HUD -->
   <div id="hud">
-    <!-- 操作説明 -->
     <div id="info-panel">
-      <div class="info-row"><b>PC:</b> クリックで開始 / WASD移動 / Space:ジャンプ / 左クリック:破壊 / 右クリック:設置 / 1-6:ブロック選択 / Esc:解除</div>
-      <div class="info-row"><b>Mobile:</b> 左スティック移動 / 右エリアでドラッグ視点 / TAP:アクション / MODE:破壊⇔設置切替 / JUMP</div>
+      <div class="info-row"><b>PC:</b> クリックで開始 / WASD移動 / Space:ジャンプ / 左クリック:破壊 / 右クリック:設置 / 1-6:ブロック選択</div>
+      <div class="info-row"><b>Mobile:</b> 左スティック移動 / 右ドラッグ視点 / TAP:アクション / MODE:切替 / JUMP</div>
       <div class="info-row small">
         Seed: <span id="seedDisplay">-</span> | 
         Size: <span id="sizeDisplay">-</span> |
         Mode: <span id="modeDisplay">BREAK</span>
         <button id="resetBtn">RESET</button>
       </div>
+      <div id="errorBox"></div>
     </div>
 
-    <!-- クロスヘア -->
     <div id="crosshair"></div>
 
-    <!-- ロック画面オーバーレイ -->
     <div id="lockOverlay">
       <button id="startBtn">クリックして開始</button>
       <p class="hint">モバイルはそのまま操作できます</p>
     </div>
 
-    <!-- ホットバー -->
     <div id="hotbar"></div>
 
-    <!-- モバイルコントロール -->
     <div id="mobileControls">
       <div id="joystickArea">
         <div id="joystickBase">
@@ -46,9 +51,6 @@
       </div>
     </div>
   </div>
-
-  <!-- エラー表示 -->
-  <div id="errorDisplay"></div>
 
   <script type="module" src="main.js"></script>
 </body>
