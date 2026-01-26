@@ -1,24 +1,24 @@
 // ============================================================
-// Voxel Sandbox - Complete Edition
-// Three.js r136 (CDN direct import compatible)
+// Voxel Sandbox - Fixed Version
 // ============================================================
 
-import * as THREE from 'https://unpkg.com/three@0.136.0/build/three.module.js';
-import { PointerLockControls } from 'https://unpkg.com/three@0.136.0/examples/jsm/controls/PointerLockControls.js';
+import * as THREE from 'three';
+import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 
 // ============================================================
 // Error Handler
 // ============================================================
-const errorDisplay = document.getElementById('errorDisplay');
+const errorBox = document.getElementById('errorBox');
 function showError(msg) {
   console.error(msg);
-  if (errorDisplay) {
-    errorDisplay.textContent = msg;
-    errorDisplay.classList.add('show');
+  if (errorBox) {
+    errorBox.textContent = 'ERROR: ' + msg;
+    errorBox.style.color = '#ff6b6b';
+    errorBox.style.marginTop = '8px';
   }
 }
-window.onerror = (msg) => showError('Error: ' + msg);
-window.onunhandledrejection = (e) => showError('Promise Error: ' + (e.reason?.message || e.reason));
+window.onerror = (msg) => showError(msg);
+window.onunhandledrejection = (e) => showError(e.reason?.message || e.reason);
 
 // ============================================================
 // Utilities
@@ -43,80 +43,43 @@ function clamp(val, min, max) {
 }
 
 // ============================================================
-// Simplex Noise (Self-contained implementation)
+// Simple Noise (自前実装)
 // ============================================================
-class SimplexNoise {
-  constructor(random = Math.random) {
-    this.p = new Uint8Array(256);
-    for (let i = 0; i < 256; i++) this.p[i] = i;
+class SimpleNoise {
+  constructor(random) {
+    this.rng = random;
+    this.perm = [];
+    for (let i = 0; i < 256; i++) this.perm[i] = i;
     for (let i = 255; i > 0; i--) {
-      const j = Math.floor(random() * (i + 1));
-      [this.p[i], this.p[j]] = [this.p[j], this.p[i]];
+      const j = Math.floor(this.rng() * (i + 1));
+      [this.perm[i], this.perm[j]] = [this.perm[j], this.perm[i]];
     }
-    this.perm = new Uint8Array(512);
-    this.permMod12 = new Uint8Array(512);
-    for (let i = 0; i < 512; i++) {
-      this.perm[i] = this.p[i & 255];
-      this.permMod12[i] = this.perm[i] % 12;
-    }
+    this.perm = this.perm.concat(this.perm);
+  }
+
+  fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
+  lerp(a, b, t) { return a + t * (b - a); }
+  grad(hash, x, y) {
+    const h = hash & 3;
+    const u = h < 2 ? x : y;
+    const v = h < 2 ? y : x;
+    return ((h & 1) ? -u : u) + ((h & 2) ? -v : v);
   }
 
   noise2D(x, y) {
-    const F2 = 0.5 * (Math.sqrt(3) - 1);
-    const G2 = (3 - Math.sqrt(3)) / 6;
-    const grad3 = [
-      [1,1],[−1,1],[1,−1],[−1,−1],
-      [1,0],[−1,0],[1,0],[−1,0],
-      [0,1],[0,−1],[0,1],[0,−1]
-    ];
-
-    const s = (x + y) * F2;
-    const i = Math.floor(x + s);
-    const j = Math.floor(y + s);
-    const t = (i + j) * G2;
-    const X0 = i - t;
-    const Y0 = j - t;
-    const x0 = x - X0;
-    const y0 = y - Y0;
-
-    const i1 = x0 > y0 ? 1 : 0;
-    const j1 = x0 > y0 ? 0 : 1;
-
-    const x1 = x0 - i1 + G2;
-    const y1 = y0 - j1 + G2;
-    const x2 = x0 - 1 + 2 * G2;
-    const y2 = y0 - 1 + 2 * G2;
-
-    const ii = i & 255;
-    const jj = j & 255;
-
-    const gi0 = this.permMod12[ii + this.perm[jj]];
-    const gi1 = this.permMod12[ii + i1 + this.perm[jj + j1]];
-    const gi2 = this.permMod12[ii + 1 + this.perm[jj + 1]];
-
-    const dot = (g, x, y) => g[0] * x + g[1] * y;
-
-    let n0 = 0, n1 = 0, n2 = 0;
-
-    let t0 = 0.5 - x0 * x0 - y0 * y0;
-    if (t0 >= 0) {
-      t0 *= t0;
-      n0 = t0 * t0 * dot(grad3[gi0], x0, y0);
-    }
-
-    let t1 = 0.5 - x1 * x1 - y1 * y1;
-    if (t1 >= 0) {
-      t1 *= t1;
-      n1 = t1 * t1 * dot(grad3[gi1], x1, y1);
-    }
-
-    let t2 = 0.5 - x2 * x2 - y2 * y2;
-    if (t2 >= 0) {
-      t2 *= t2;
-      n2 = t2 * t2 * dot(grad3[gi2], x2, y2);
-    }
-
-    return 70 * (n0 + n1 + n2);
+    const X = Math.floor(x) & 255;
+    const Y = Math.floor(y) & 255;
+    x -= Math.floor(x);
+    y -= Math.floor(y);
+    const u = this.fade(x);
+    const v = this.fade(y);
+    const A = this.perm[X] + Y;
+    const B = this.perm[X + 1] + Y;
+    return this.lerp(
+      this.lerp(this.grad(this.perm[A], x, y), this.grad(this.perm[B], x - 1, y), u),
+      this.lerp(this.grad(this.perm[A + 1], x, y - 1), this.grad(this.perm[B + 1], x - 1, y - 1), u),
+      v
+    );
   }
 }
 
@@ -124,114 +87,75 @@ class SimplexNoise {
 // Configuration
 // ============================================================
 const urlParams = new URLSearchParams(window.location.search);
-const isMobile = /Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) 
-  || ('ontouchstart' in window) 
-  || (navigator.maxTouchPoints > 0);
+const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || ('ontouchstart' in window);
 
 const CONFIG = {
-  WORLD_SIZE: parseInt(urlParams.get('size')) || (isMobile ? 24 : 32),
-  WORLD_HEIGHT: parseInt(urlParams.get('h')) || 24,
-  NOISE_SCALE: 0.08,
+  WORLD_SIZE: clamp(parseInt(urlParams.get('size')) || (isMobile ? 24 : 32), 16, 64),
+  WORLD_HEIGHT: clamp(parseInt(urlParams.get('h')) || 24, 16, 48),
+  NOISE_SCALE: 0.06,
   BASE_HEIGHT: 8,
   HEIGHT_AMP: 10,
-  TREE_CHANCE: 0.02,
+  TREE_CHANCE: 0.015,
   PLAYER_HEIGHT: 1.7,
   PLAYER_RADIUS: 0.3,
   MOVE_SPEED: 5,
   JUMP_VELOCITY: 8,
   GRAVITY: 20,
-  REACH_DISTANCE: 5,
-  SAVE_KEY: 'voxel_sandbox_v3'
+  REACH: 5,
+  SAVE_KEY: 'voxel_v4'
 };
-
-// Validate config
-CONFIG.WORLD_SIZE = clamp(CONFIG.WORLD_SIZE, 16, 64);
-CONFIG.WORLD_HEIGHT = clamp(CONFIG.WORLD_HEIGHT, 16, 48);
 
 // ============================================================
 // Block Types
 // ============================================================
-const BLOCKS = {
-  AIR: -1,
-  GRASS: 0,
-  DIRT: 1,
-  STONE: 2,
-  SAND: 3,
-  WOOD: 4,
-  LEAVES: 5
-};
-
+const BLOCK = { AIR: -1, GRASS: 0, DIRT: 1, STONE: 2, SAND: 3, WOOD: 4, LEAVES: 5 };
 const BLOCK_COLORS = {
-  [BLOCKS.GRASS]: '#4a9c2d',
-  [BLOCKS.DIRT]: '#8b5a2b',
-  [BLOCKS.STONE]: '#808080',
-  [BLOCKS.SAND]: '#c2b280',
-  [BLOCKS.WOOD]: '#8b4513',
-  [BLOCKS.LEAVES]: '#228b22'
+  [BLOCK.GRASS]: [74, 156, 45],
+  [BLOCK.DIRT]: [139, 90, 43],
+  [BLOCK.STONE]: [128, 128, 128],
+  [BLOCK.SAND]: [194, 178, 128],
+  [BLOCK.WOOD]: [139, 69, 19],
+  [BLOCK.LEAVES]: [34, 139, 34]
 };
 
 // ============================================================
-// Save/Load System
+// Save/Load
 // ============================================================
 function loadSave() {
-  try {
-    const data = localStorage.getItem(CONFIG.SAVE_KEY);
-    return data ? JSON.parse(data) : null;
-  } catch {
-    return null;
-  }
+  try { return JSON.parse(localStorage.getItem(CONFIG.SAVE_KEY)); } catch { return null; }
 }
-
 function writeSave(data) {
-  try {
-    localStorage.setItem(CONFIG.SAVE_KEY, JSON.stringify(data));
-  } catch (e) {
-    console.warn('Save failed:', e);
-  }
+  try { localStorage.setItem(CONFIG.SAVE_KEY, JSON.stringify(data)); } catch {}
 }
 
 let saveData = loadSave();
-
-// Seed determination
 const urlSeed = urlParams.get('seed');
-let worldSeed;
-if (urlSeed) {
-  worldSeed = hashString(urlSeed);
-} else if (saveData?.seed) {
-  worldSeed = saveData.seed;
-} else {
-  worldSeed = Date.now() >>> 0;
-}
+let worldSeed = urlSeed ? hashString(urlSeed) : (saveData?.seed ?? (Date.now() >>> 0));
 
 const rng = seededRandom(worldSeed);
-const noise = new SimplexNoise(rng);
+const noise = new SimpleNoise(rng);
 
-// Display info
 document.getElementById('seedDisplay').textContent = urlSeed || worldSeed;
-document.getElementById('sizeDisplay').textContent = `${CONFIG.WORLD_SIZE}×${CONFIG.WORLD_SIZE}×${CONFIG.WORLD_HEIGHT}`;
+document.getElementById('sizeDisplay').textContent = `${CONFIG.WORLD_SIZE}×${CONFIG.WORLD_SIZE}`;
 
 // ============================================================
 // Three.js Setup
 // ============================================================
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87ceeb);
-scene.fog = new THREE.Fog(0x87ceeb, 20, 80);
+scene.fog = new THREE.Fog(0x87ceeb, 20, 70);
 
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 500);
-camera.position.set(CONFIG.WORLD_SIZE / 2, CONFIG.WORLD_HEIGHT + 5, CONFIG.WORLD_SIZE / 2);
+const camera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.1, 500);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 document.body.appendChild(renderer.domElement);
 
-// Lighting
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-scene.add(ambientLight);
-
-const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-directionalLight.position.set(50, 100, 50);
-scene.add(directionalLight);
+scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+const sun = new THREE.DirectionalLight(0xffffff, 0.8);
+sun.position.set(50, 100, 50);
+scene.add(sun);
 
 // ============================================================
 // Controls
@@ -240,22 +164,12 @@ const controls = new PointerLockControls(camera, document.body);
 scene.add(controls.getObject());
 
 const lockOverlay = document.getElementById('lockOverlay');
-const startBtn = document.getElementById('startBtn');
 
 if (!isMobile) {
-  startBtn.addEventListener('click', () => {
-    controls.lock();
-  });
-
-  controls.addEventListener('lock', () => {
-    lockOverlay.classList.add('hidden');
-  });
-
-  controls.addEventListener('unlock', () => {
-    lockOverlay.classList.remove('hidden');
-  });
-
-  document.addEventListener('contextmenu', (e) => e.preventDefault());
+  document.getElementById('startBtn').onclick = () => controls.lock();
+  controls.addEventListener('lock', () => lockOverlay.classList.add('hidden'));
+  controls.addEventListener('unlock', () => lockOverlay.classList.remove('hidden'));
+  document.addEventListener('contextmenu', e => e.preventDefault());
 } else {
   lockOverlay.classList.add('hidden');
 }
@@ -263,119 +177,73 @@ if (!isMobile) {
 // ============================================================
 // Texture Generation
 // ============================================================
-function createBlockTexture(baseColor, noiseAmount = 0.1) {
+function createTexture(rgb) {
   const canvas = document.createElement('canvas');
-  canvas.width = 16;
-  canvas.height = 16;
+  canvas.width = canvas.height = 16;
   const ctx = canvas.getContext('2d');
-
-  // Parse base color
-  const tempDiv = document.createElement('div');
-  tempDiv.style.color = baseColor;
-  document.body.appendChild(tempDiv);
-  const computedColor = getComputedStyle(tempDiv).color;
-  document.body.removeChild(tempDiv);
-
-  const rgb = computedColor.match(/\d+/g).map(Number);
-
   for (let y = 0; y < 16; y++) {
     for (let x = 0; x < 16; x++) {
-      const variation = (rng() - 0.5) * noiseAmount * 255;
-      const r = clamp(rgb[0] + variation, 0, 255);
-      const g = clamp(rgb[1] + variation, 0, 255);
-      const b = clamp(rgb[2] + variation, 0, 255);
-      ctx.fillStyle = `rgb(${r},${g},${b})`;
+      const v = (rng() - 0.5) * 30;
+      ctx.fillStyle = `rgb(${clamp(rgb[0]+v,0,255)},${clamp(rgb[1]+v,0,255)},${clamp(rgb[2]+v,0,255)})`;
       ctx.fillRect(x, y, 1, 1);
     }
   }
-
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.magFilter = THREE.NearestFilter;
-  texture.minFilter = THREE.NearestFilter;
-  return { texture, canvas };
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.magFilter = tex.minFilter = THREE.NearestFilter;
+  return { tex, canvas };
 }
 
-const blockTextures = {};
-const blockCanvases = {};
-
-for (const [name, type] of Object.entries(BLOCKS)) {
-  if (type === BLOCKS.AIR) continue;
-  const { texture, canvas } = createBlockTexture(BLOCK_COLORS[type], type === BLOCKS.LEAVES ? 0.15 : 0.1);
-  blockTextures[type] = texture;
-  blockCanvases[type] = canvas;
+const textures = {}, canvases = {};
+for (const [name, type] of Object.entries(BLOCK)) {
+  if (type === BLOCK.AIR) continue;
+  const { tex, canvas } = createTexture(BLOCK_COLORS[type]);
+  textures[type] = tex;
+  canvases[type] = canvas;
 }
 
 // ============================================================
 // World Data
 // ============================================================
-function coordKey(x, y, z) {
-  return `${x},${y},${z}`;
+const baseWorld = new Map();
+const mods = new Map();
+
+const key = (x,y,z) => `${x},${y},${z}`;
+const parseKey = k => { const [x,y,z] = k.split(',').map(Number); return {x,y,z}; };
+const inBounds = (x,y,z) => x>=0 && x<CONFIG.WORLD_SIZE && y>=0 && y<CONFIG.WORLD_HEIGHT && z>=0 && z<CONFIG.WORLD_SIZE;
+
+function getBlock(x,y,z) {
+  if (!inBounds(x,y,z)) return BLOCK.AIR;
+  const k = key(x,y,z);
+  return mods.has(k) ? mods.get(k) : (baseWorld.get(k) ?? BLOCK.AIR);
 }
-
-function parseKey(key) {
-  const [x, y, z] = key.split(',').map(Number);
-  return { x, y, z };
-}
-
-function inBounds(x, y, z) {
-  return x >= 0 && x < CONFIG.WORLD_SIZE &&
-         y >= 0 && y < CONFIG.WORLD_HEIGHT &&
-         z >= 0 && z < CONFIG.WORLD_SIZE;
-}
-
-const baseWorld = new Map();  // Generated terrain
-const modifications = new Map();  // Player changes
-
-function getBlock(x, y, z) {
-  if (!inBounds(x, y, z)) return BLOCKS.AIR;
-  const key = coordKey(x, y, z);
-  if (modifications.has(key)) {
-    return modifications.get(key);
-  }
-  return baseWorld.get(key) ?? BLOCKS.AIR;
-}
-
-function setBlock(x, y, z, type) {
-  if (!inBounds(x, y, z)) return;
-  const key = coordKey(x, y, z);
-  modifications.set(key, type);
-  updateBlockMesh(x, y, z);
-  updateNeighborMeshes(x, y, z);
+function setBlock(x,y,z,type) {
+  if (!inBounds(x,y,z)) return;
+  mods.set(key(x,y,z), type);
+  updateMesh(x,y,z);
+  [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]].forEach(([dx,dy,dz]) => updateMesh(x+dx,y+dy,z+dz));
   scheduleSave();
 }
-
-function isSolid(x, y, z) {
-  const block = getBlock(x, y, z);
-  return block !== BLOCKS.AIR;
-}
+const isSolid = (x,y,z) => getBlock(x,y,z) !== BLOCK.AIR;
 
 // ============================================================
 // Terrain Generation
 // ============================================================
-function getTerrainHeight(x, z) {
-  const n1 = noise.noise2D(x * CONFIG.NOISE_SCALE, z * CONFIG.NOISE_SCALE);
-  const n2 = noise.noise2D(x * CONFIG.NOISE_SCALE * 2, z * CONFIG.NOISE_SCALE * 2) * 0.5;
-  const combined = (n1 + n2) / 1.5;
-  return Math.floor(CONFIG.BASE_HEIGHT + combined * CONFIG.HEIGHT_AMP);
+function getHeight(x,z) {
+  const n = noise.noise2D(x * CONFIG.NOISE_SCALE, z * CONFIG.NOISE_SCALE);
+  return clamp(Math.floor(CONFIG.BASE_HEIGHT + n * CONFIG.HEIGHT_AMP), 1, CONFIG.WORLD_HEIGHT - 3);
 }
 
-function generateTerrain() {
+function generateWorld() {
   baseWorld.clear();
-
   for (let x = 0; x < CONFIG.WORLD_SIZE; x++) {
     for (let z = 0; z < CONFIG.WORLD_SIZE; z++) {
-      const height = clamp(getTerrainHeight(x, z), 1, CONFIG.WORLD_HEIGHT - 2);
-
-      for (let y = 0; y <= height; y++) {
-        let blockType;
-        if (y === height) {
-          blockType = height < 6 ? BLOCKS.SAND : BLOCKS.GRASS;
-        } else if (y > height - 4) {
-          blockType = BLOCKS.DIRT;
-        } else {
-          blockType = BLOCKS.STONE;
-        }
-        baseWorld.set(coordKey(x, y, z), blockType);
+      const h = getHeight(x, z);
+      for (let y = 0; y <= h; y++) {
+        let type;
+        if (y === h) type = h < 6 ? BLOCK.SAND : BLOCK.GRASS;
+        else if (y > h - 4) type = BLOCK.DIRT;
+        else type = BLOCK.STONE;
+        baseWorld.set(key(x,y,z), type);
       }
     }
   }
@@ -384,34 +252,22 @@ function generateTerrain() {
 function generateTrees() {
   for (let x = 2; x < CONFIG.WORLD_SIZE - 2; x++) {
     for (let z = 2; z < CONFIG.WORLD_SIZE - 2; z++) {
-      const height = clamp(getTerrainHeight(x, z), 1, CONFIG.WORLD_HEIGHT - 2);
+      const h = getHeight(x, z);
+      if (h < 7 || getBlock(x,h,z) !== BLOCK.GRASS || rng() > CONFIG.TREE_CHANCE) continue;
       
-      if (height < 7) continue;
-      if (getBlock(x, height, z) !== BLOCKS.GRASS) continue;
-      if (rng() > CONFIG.TREE_CHANCE) continue;
-
-      const trunkHeight = 4 + Math.floor(rng() * 2);
-
-      // Trunk
-      for (let y = 1; y <= trunkHeight; y++) {
-        if (inBounds(x, height + y, z)) {
-          modifications.set(coordKey(x, height + y, z), BLOCKS.WOOD);
-        }
-      }
-
-      // Leaves
-      const leafBase = height + trunkHeight - 1;
+      const th = 4 + Math.floor(rng() * 2);
+      for (let i = 1; i <= th; i++) mods.set(key(x, h+i, z), BLOCK.WOOD);
+      
+      const lb = h + th - 1;
       for (let dy = 0; dy <= 2; dy++) {
-        const radius = dy === 2 ? 1 : 2;
-        for (let dx = -radius; dx <= radius; dx++) {
-          for (let dz = -radius; dz <= radius; dz++) {
-            if (dx === 0 && dz === 0 && dy < 2) continue;
-            if (Math.abs(dx) === 2 && Math.abs(dz) === 2) continue;
-            const lx = x + dx;
-            const ly = leafBase + dy;
-            const lz = z + dz;
-            if (inBounds(lx, ly, lz) && getBlock(lx, ly, lz) === BLOCKS.AIR) {
-              modifications.set(coordKey(lx, ly, lz), BLOCKS.LEAVES);
+        const r = dy === 2 ? 1 : 2;
+        for (let dx = -r; dx <= r; dx++) {
+          for (let dz = -r; dz <= r; dz++) {
+            if (dx===0 && dz===0 && dy<2) continue;
+            if (Math.abs(dx)===2 && Math.abs(dz)===2) continue;
+            const lk = key(x+dx, lb+dy, z+dz);
+            if (inBounds(x+dx, lb+dy, z+dz) && !baseWorld.has(lk) && !mods.has(lk)) {
+              mods.set(lk, BLOCK.LEAVES);
             }
           }
         }
@@ -423,123 +279,82 @@ function generateTrees() {
 // ============================================================
 // Instanced Mesh Rendering
 // ============================================================
-const boxGeometry = new THREE.BoxGeometry(1, 1, 1);
-const instancedMeshes = new Map();
-const blockToInstance = new Map();  // coordKey -> { type, index }
-const instanceToBlock = new Map();  // type -> [coordKey, ...]
+const boxGeo = new THREE.BoxGeometry(1,1,1);
+const meshes = new Map();
+const blockIndex = new Map();
+const indexBlock = new Map();
+const tmpMat = new THREE.Matrix4();
 
-function createMaterial(type) {
-  return new THREE.MeshLambertMaterial({
-    map: blockTextures[type],
-    transparent: type === BLOCKS.LEAVES,
-    opacity: type === BLOCKS.LEAVES ? 0.9 : 1,
-    alphaTest: type === BLOCKS.LEAVES ? 0.1 : 0
-  });
-}
-
-function ensureInstancedMesh(type) {
-  if (!instancedMeshes.has(type)) {
-    const mesh = new THREE.InstancedMesh(boxGeometry, createMaterial(type), 50000);
+function getMesh(type) {
+  if (!meshes.has(type)) {
+    const mat = new THREE.MeshLambertMaterial({
+      map: textures[type],
+      transparent: type === BLOCK.LEAVES,
+      opacity: type === BLOCK.LEAVES ? 0.9 : 1
+    });
+    const mesh = new THREE.InstancedMesh(boxGeo, mat, 60000);
     mesh.count = 0;
-    mesh.userData.blockType = type;
+    mesh.userData.type = type;
     scene.add(mesh);
-    instancedMeshes.set(type, mesh);
-    instanceToBlock.set(type, []);
+    meshes.set(type, mesh);
+    indexBlock.set(type, []);
   }
-  return instancedMeshes.get(type);
+  return meshes.get(type);
 }
 
-function isExposed(x, y, z) {
-  if (!isSolid(x, y, z)) return false;
-  return !isSolid(x + 1, y, z) || !isSolid(x - 1, y, z) ||
-         !isSolid(x, y + 1, z) || !isSolid(x, y - 1, z) ||
-         !isSolid(x, y, z + 1) || !isSolid(x, y, z - 1);
+function isExposed(x,y,z) {
+  return isSolid(x,y,z) && (!isSolid(x+1,y,z) || !isSolid(x-1,y,z) || !isSolid(x,y+1,z) || !isSolid(x,y-1,z) || !isSolid(x,y,z+1) || !isSolid(x,y,z-1));
 }
 
-const tempMatrix = new THREE.Matrix4();
-
-function addBlockInstance(x, y, z, type) {
-  const mesh = ensureInstancedMesh(type);
-  const blocks = instanceToBlock.get(type);
-  const key = coordKey(x, y, z);
-
-  const index = mesh.count;
-  tempMatrix.setPosition(x + 0.5, y + 0.5, z + 0.5);
-  mesh.setMatrixAt(index, tempMatrix);
+function addInstance(x,y,z,type) {
+  const mesh = getMesh(type);
+  const arr = indexBlock.get(type);
+  const k = key(x,y,z);
+  const idx = mesh.count;
+  tmpMat.setPosition(x+0.5, y+0.5, z+0.5);
+  mesh.setMatrixAt(idx, tmpMat);
   mesh.count++;
   mesh.instanceMatrix.needsUpdate = true;
-
-  blocks[index] = key;
-  blockToInstance.set(key, { type, index });
+  arr[idx] = k;
+  blockIndex.set(k, { type, idx });
 }
 
-function removeBlockInstance(key) {
-  const info = blockToInstance.get(key);
+function removeInstance(k) {
+  const info = blockIndex.get(k);
   if (!info) return;
-
-  const { type, index } = info;
-  const mesh = instancedMeshes.get(type);
-  const blocks = instanceToBlock.get(type);
-
-  if (mesh.count > 1 && index < mesh.count - 1) {
-    // Swap with last
-    const lastKey = blocks[mesh.count - 1];
-    mesh.getMatrixAt(mesh.count - 1, tempMatrix);
-    mesh.setMatrixAt(index, tempMatrix);
-    blocks[index] = lastKey;
-    blockToInstance.set(lastKey, { type, index });
+  const { type, idx } = info;
+  const mesh = meshes.get(type);
+  const arr = indexBlock.get(type);
+  
+  if (mesh.count > 1 && idx < mesh.count - 1) {
+    const lastK = arr[mesh.count - 1];
+    mesh.getMatrixAt(mesh.count - 1, tmpMat);
+    mesh.setMatrixAt(idx, tmpMat);
+    arr[idx] = lastK;
+    blockIndex.set(lastK, { type, idx });
   }
-
   mesh.count--;
   mesh.instanceMatrix.needsUpdate = true;
-  blocks.pop();
-  blockToInstance.delete(key);
+  arr.pop();
+  blockIndex.delete(k);
 }
 
-function updateBlockMesh(x, y, z) {
-  const key = coordKey(x, y, z);
-  const type = getBlock(x, y, z);
-
-  // Remove existing instance
-  if (blockToInstance.has(key)) {
-    removeBlockInstance(key);
-  }
-
-  // Add new instance if visible
-  if (type !== BLOCKS.AIR && isExposed(x, y, z)) {
-    addBlockInstance(x, y, z, type);
-  }
-}
-
-function updateNeighborMeshes(x, y, z) {
-  const neighbors = [
-    [x + 1, y, z], [x - 1, y, z],
-    [x, y + 1, z], [x, y - 1, z],
-    [x, y, z + 1], [x, y, z - 1]
-  ];
-  for (const [nx, ny, nz] of neighbors) {
-    if (inBounds(nx, ny, nz)) {
-      updateBlockMesh(nx, ny, nz);
-    }
-  }
+function updateMesh(x,y,z) {
+  if (!inBounds(x,y,z)) return;
+  const k = key(x,y,z);
+  if (blockIndex.has(k)) removeInstance(k);
+  const type = getBlock(x,y,z);
+  if (type !== BLOCK.AIR && isExposed(x,y,z)) addInstance(x,y,z,type);
 }
 
 function buildAllMeshes() {
-  // Clear existing
-  for (const [type, mesh] of instancedMeshes) {
-    mesh.count = 0;
-    instanceToBlock.set(type, []);
-  }
-  blockToInstance.clear();
-
-  // Build visible blocks
+  for (const [type, mesh] of meshes) { mesh.count = 0; indexBlock.set(type, []); }
+  blockIndex.clear();
   for (let x = 0; x < CONFIG.WORLD_SIZE; x++) {
     for (let z = 0; z < CONFIG.WORLD_SIZE; z++) {
       for (let y = 0; y < CONFIG.WORLD_HEIGHT; y++) {
-        const type = getBlock(x, y, z);
-        if (type !== BLOCKS.AIR && isExposed(x, y, z)) {
-          addBlockInstance(x, y, z, type);
-        }
+        const type = getBlock(x,y,z);
+        if (type !== BLOCK.AIR && isExposed(x,y,z)) addInstance(x,y,z,type);
       }
     }
   }
@@ -548,262 +363,155 @@ function buildAllMeshes() {
 // ============================================================
 // Hotbar
 // ============================================================
-const hotbarTypes = [BLOCKS.GRASS, BLOCKS.DIRT, BLOCKS.STONE, BLOCKS.SAND, BLOCKS.WOOD, BLOCKS.LEAVES];
+const hotbarTypes = [BLOCK.GRASS, BLOCK.DIRT, BLOCK.STONE, BLOCK.SAND, BLOCK.WOOD, BLOCK.LEAVES];
 let selectedSlot = 0;
 
 function buildHotbar() {
   const hotbar = document.getElementById('hotbar');
   hotbar.innerHTML = '';
-
-  hotbarTypes.forEach((type, index) => {
+  hotbarTypes.forEach((type, i) => {
     const slot = document.createElement('div');
-    slot.className = 'hotbar-slot' + (index === selectedSlot ? ' selected' : '');
-
-    const number = document.createElement('span');
-    number.className = 'slot-number';
-    number.textContent = index + 1;
-    slot.appendChild(number);
-
-    const canvas = document.createElement('canvas');
-    canvas.width = 16;
-    canvas.height = 16;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(blockCanvases[type], 0, 0);
-    slot.appendChild(canvas);
-
-    slot.addEventListener('click', () => selectSlot(index));
+    slot.className = 'hotbar-slot' + (i === selectedSlot ? ' selected' : '');
+    slot.innerHTML = `<span class="slot-number">${i+1}</span>`;
+    const c = document.createElement('canvas');
+    c.width = c.height = 16;
+    c.getContext('2d').drawImage(canvases[type], 0, 0);
+    slot.appendChild(c);
+    slot.onclick = () => selectSlot(i);
     hotbar.appendChild(slot);
   });
 }
-
-function selectSlot(index) {
-  selectedSlot = (index + 6) % 6;
-  document.querySelectorAll('.hotbar-slot').forEach((slot, i) => {
-    slot.classList.toggle('selected', i === selectedSlot);
-  });
+function selectSlot(i) {
+  selectedSlot = (i + 6) % 6;
+  document.querySelectorAll('.hotbar-slot').forEach((s, idx) => s.classList.toggle('selected', idx === selectedSlot));
 }
-
 buildHotbar();
 
-// Keyboard slot selection
-document.addEventListener('keydown', (e) => {
-  if (e.key >= '1' && e.key <= '6') {
-    selectSlot(parseInt(e.key) - 1);
-  }
-});
-
-// Mouse wheel slot selection
-document.addEventListener('wheel', (e) => {
-  if (!controls.isLocked && !isMobile) return;
-  selectSlot(selectedSlot + (e.deltaY > 0 ? 1 : -1));
-});
+document.addEventListener('keydown', e => { if (e.key >= '1' && e.key <= '6') selectSlot(+e.key - 1); });
+document.addEventListener('wheel', e => { if (controls.isLocked || isMobile) selectSlot(selectedSlot + (e.deltaY > 0 ? 1 : -1)); });
 
 // ============================================================
-// Raycasting & Block Interaction
+// Raycasting & Actions
 // ============================================================
 const raycaster = new THREE.Raycaster();
-raycaster.far = CONFIG.REACH_DISTANCE;
+raycaster.far = CONFIG.REACH;
 
-const highlightBox = new THREE.LineSegments(
-  new THREE.EdgesGeometry(new THREE.BoxGeometry(1.01, 1.01, 1.01)),
-  new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8 })
+const highlight = new THREE.LineSegments(
+  new THREE.EdgesGeometry(new THREE.BoxGeometry(1.01,1.01,1.01)),
+  new THREE.LineBasicMaterial({ color: 0xffffff, opacity: 0.8, transparent: true })
 );
-highlightBox.visible = false;
-scene.add(highlightBox);
+highlight.visible = false;
+scene.add(highlight);
 
-let targetBlock = null;
-let targetFace = null;
+let target = null, targetFace = null;
 
-function updateTargetBlock() {
-  raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-
-  const meshArray = Array.from(instancedMeshes.values());
-  const intersects = raycaster.intersectObjects(meshArray, false);
-
-  if (intersects.length === 0) {
-    targetBlock = null;
-    targetFace = null;
-    highlightBox.visible = false;
-    return;
-  }
-
-  const hit = intersects[0];
-  const type = hit.object.userData.blockType;
-  const blocks = instanceToBlock.get(type);
-  const key = blocks[hit.instanceId];
-
-  if (!key) {
-    targetBlock = null;
-    targetFace = null;
-    highlightBox.visible = false;
-    return;
-  }
-
-  targetBlock = parseKey(key);
-  targetFace = hit.face?.normal?.clone() || new THREE.Vector3(0, 1, 0);
-
-  highlightBox.position.set(
-    targetBlock.x + 0.5,
-    targetBlock.y + 0.5,
-    targetBlock.z + 0.5
-  );
-  highlightBox.visible = true;
+function updateTarget() {
+  raycaster.setFromCamera(new THREE.Vector2(0,0), camera);
+  const hits = raycaster.intersectObjects([...meshes.values()], false);
+  if (!hits.length) { target = null; highlight.visible = false; return; }
+  
+  const hit = hits[0];
+  const arr = indexBlock.get(hit.object.userData.type);
+  const k = arr[hit.instanceId];
+  if (!k) { target = null; highlight.visible = false; return; }
+  
+  target = parseKey(k);
+  targetFace = hit.face?.normal?.clone() || new THREE.Vector3(0,1,0);
+  highlight.position.set(target.x+0.5, target.y+0.5, target.z+0.5);
+  highlight.visible = true;
 }
 
-// ============================================================
-// Mode & Actions
-// ============================================================
-let currentMode = 'BREAK';
+let mode = 'BREAK';
 const modeDisplay = document.getElementById('modeDisplay');
 const modeBtn = document.getElementById('modeBtn');
 
-function setMode(mode) {
-  currentMode = mode;
-  modeDisplay.textContent = mode;
-  if (modeBtn) modeBtn.textContent = 'MODE: ' + mode;
+function setMode(m) {
+  mode = m;
+  modeDisplay.textContent = m;
+  if (modeBtn) modeBtn.textContent = 'MODE: ' + m;
 }
 
-function doAction(overrideMode = null) {
-  if (!targetBlock) return;
-
-  const mode = overrideMode || currentMode;
-
-  if (mode === 'BREAK') {
-    setBlock(targetBlock.x, targetBlock.y, targetBlock.z, BLOCKS.AIR);
+function doAction(m = mode) {
+  if (!target) return;
+  if (m === 'BREAK') {
+    setBlock(target.x, target.y, target.z, BLOCK.AIR);
   } else {
-    const nx = targetBlock.x + Math.round(targetFace.x);
-    const ny = targetBlock.y + Math.round(targetFace.y);
-    const nz = targetBlock.z + Math.round(targetFace.z);
-
-    if (!inBounds(nx, ny, nz)) return;
-    if (getBlock(nx, ny, nz) !== BLOCKS.AIR) return;
-
-    // Don't place inside player
-    const playerBox = {
-      minX: player.position.x - CONFIG.PLAYER_RADIUS,
-      maxX: player.position.x + CONFIG.PLAYER_RADIUS,
-      minY: player.position.y,
-      maxY: player.position.y + CONFIG.PLAYER_HEIGHT,
-      minZ: player.position.z - CONFIG.PLAYER_RADIUS,
-      maxZ: player.position.z + CONFIG.PLAYER_RADIUS
-    };
-
-    if (nx + 1 > playerBox.minX && nx < playerBox.maxX &&
-        ny + 1 > playerBox.minY && ny < playerBox.maxY &&
-        nz + 1 > playerBox.minZ && nz < playerBox.maxZ) {
-      return;
-    }
-
+    const nx = target.x + Math.round(targetFace.x);
+    const ny = target.y + Math.round(targetFace.y);
+    const nz = target.z + Math.round(targetFace.z);
+    if (!inBounds(nx,ny,nz) || getBlock(nx,ny,nz) !== BLOCK.AIR) return;
+    
+    // プレイヤーと重ならないかチェック
+    const px = player.pos.x, py = player.pos.y, pz = player.pos.z;
+    const r = CONFIG.PLAYER_RADIUS, h = CONFIG.PLAYER_HEIGHT;
+    if (nx+1 > px-r && nx < px+r && ny+1 > py && ny < py+h && nz+1 > pz-r && nz < pz+r) return;
+    
     setBlock(nx, ny, nz, hotbarTypes[selectedSlot]);
   }
 }
 
-// Desktop mouse controls
 if (!isMobile) {
-  document.addEventListener('mousedown', (e) => {
+  document.addEventListener('mousedown', e => {
     if (!controls.isLocked) return;
-    if (e.button === 0) {
-      setMode('BREAK');
-      doAction('BREAK');
-    } else if (e.button === 2) {
-      setMode('PLACE');
-      doAction('PLACE');
-    }
+    if (e.button === 0) { setMode('BREAK'); doAction('BREAK'); }
+    if (e.button === 2) { setMode('PLACE'); doAction('PLACE'); }
   });
 }
 
 // ============================================================
-// Save System
+// Save
 // ============================================================
-let saveTimeout = null;
-
+let saveTimer = null;
 function scheduleSave() {
-  if (saveTimeout) return;
-  saveTimeout = setTimeout(() => {
-    saveTimeout = null;
-    writeSave({
-      seed: worldSeed,
-      size: CONFIG.WORLD_SIZE,
-      height: CONFIG.WORLD_HEIGHT,
-      modifications: Object.fromEntries(modifications),
-      timestamp: Date.now()
-    });
+  if (saveTimer) return;
+  saveTimer = setTimeout(() => {
+    saveTimer = null;
+    writeSave({ seed: worldSeed, size: CONFIG.WORLD_SIZE, mods: Object.fromEntries(mods), ts: Date.now() });
   }, 500);
 }
 
-// Load saved modifications
-function loadModifications() {
-  if (!saveData) return;
-  if (saveData.seed !== worldSeed) return;
-  if (saveData.size !== CONFIG.WORLD_SIZE) return;
-
-  if (saveData.modifications) {
-    for (const [key, type] of Object.entries(saveData.modifications)) {
-      modifications.set(key, type);
-    }
+function loadMods() {
+  if (saveData?.seed === worldSeed && saveData?.mods) {
+    for (const [k, v] of Object.entries(saveData.mods)) mods.set(k, v);
   }
 }
 
-// Reset button
-document.getElementById('resetBtn').addEventListener('click', () => {
-  localStorage.removeItem(CONFIG.SAVE_KEY);
-  location.reload();
-});
+document.getElementById('resetBtn').onclick = () => { localStorage.removeItem(CONFIG.SAVE_KEY); location.reload(); };
 
 // ============================================================
 // Player Physics
 // ============================================================
-const player = {
-  position: new THREE.Vector3(),
-  velocity: new THREE.Vector3(),
-  onGround: false,
-  wantJump: false
-};
+const player = { pos: new THREE.Vector3(), vel: new THREE.Vector3(), onGround: false, wantJump: false };
 
-function findSpawnPoint() {
+function findSpawn() {
   const cx = Math.floor(CONFIG.WORLD_SIZE / 2);
-  const cz = Math.floor(CONFIG.WORLD_SIZE / 2);
-
   for (let r = 0; r <= 10; r++) {
     for (let dx = -r; dx <= r; dx++) {
       for (let dz = -r; dz <= r; dz++) {
-        const x = cx + dx;
-        const z = cz + dz;
+        const x = cx + dx, z = cx + dz;
         if (!inBounds(x, 0, z)) continue;
-
         for (let y = CONFIG.WORLD_HEIGHT - 2; y >= 0; y--) {
-          if (isSolid(x, y, z) && !isSolid(x, y + 1, z) && !isSolid(x, y + 2, z)) {
+          if (isSolid(x,y,z) && !isSolid(x,y+1,z) && !isSolid(x,y+2,z)) {
             return new THREE.Vector3(x + 0.5, y + 1.01, z + 0.5);
           }
         }
       }
     }
   }
-
-  return new THREE.Vector3(cx + 0.5, CONFIG.WORLD_HEIGHT, cz + 0.5);
+  return new THREE.Vector3(cx + 0.5, CONFIG.WORLD_HEIGHT, cx + 0.5);
 }
 
 function respawn() {
-  const spawn = findSpawnPoint();
-  player.position.copy(spawn);
-  player.velocity.set(0, 0, 0);
-  controls.getObject().position.copy(player.position);
+  player.pos.copy(findSpawn());
+  player.vel.set(0,0,0);
+  controls.getObject().position.copy(player.pos);
 }
 
-function checkCollision(x, y, z, width, height) {
-  const minX = Math.floor(x - width);
-  const maxX = Math.floor(x + width);
-  const minY = Math.floor(y);
-  const maxY = Math.floor(y + height);
-  const minZ = Math.floor(z - width);
-  const maxZ = Math.floor(z + width);
-
-  for (let bx = minX; bx <= maxX; bx++) {
-    for (let by = minY; by <= maxY; by++) {
-      for (let bz = minZ; bz <= maxZ; bz++) {
-        if (isSolid(bx, by, bz)) {
-          return { hit: true, x: bx, y: by, z: bz };
-        }
+function checkCol(x,y,z,r,h) {
+  for (let bx = Math.floor(x-r); bx <= Math.floor(x+r); bx++) {
+    for (let by = Math.floor(y); by <= Math.floor(y+h); by++) {
+      for (let bz = Math.floor(z-r); bz <= Math.floor(z+r); bz++) {
+        if (isSolid(bx,by,bz)) return { hit: true, y: by };
       }
     }
   }
@@ -811,218 +519,142 @@ function checkCollision(x, y, z, width, height) {
 }
 
 function updatePhysics(dt) {
-  const r = CONFIG.PLAYER_RADIUS;
-  const h = CONFIG.PLAYER_HEIGHT;
-
-  // Apply gravity
-  player.velocity.y -= CONFIG.GRAVITY * dt;
-
-  // Jump
-  if (player.wantJump && player.onGround) {
-    player.velocity.y = CONFIG.JUMP_VELOCITY;
-    player.onGround = false;
-  }
+  const r = CONFIG.PLAYER_RADIUS, h = CONFIG.PLAYER_HEIGHT;
+  
+  player.vel.y -= CONFIG.GRAVITY * dt;
+  if (player.wantJump && player.onGround) { player.vel.y = CONFIG.JUMP_VELOCITY; player.onGround = false; }
   player.wantJump = false;
 
-  // Move X
-  player.position.x += player.velocity.x * dt;
-  if (checkCollision(player.position.x, player.position.y, player.position.z, r, h).hit) {
-    player.position.x -= player.velocity.x * dt;
-    player.velocity.x = 0;
+  player.pos.x += player.vel.x * dt;
+  if (checkCol(player.pos.x, player.pos.y, player.pos.z, r, h).hit) {
+    player.pos.x -= player.vel.x * dt;
+    player.vel.x = 0;
   }
 
-  // Move Z
-  player.position.z += player.velocity.z * dt;
-  if (checkCollision(player.position.x, player.position.y, player.position.z, r, h).hit) {
-    player.position.z -= player.velocity.z * dt;
-    player.velocity.z = 0;
+  player.pos.z += player.vel.z * dt;
+  if (checkCol(player.pos.x, player.pos.y, player.pos.z, r, h).hit) {
+    player.pos.z -= player.vel.z * dt;
+    player.vel.z = 0;
   }
 
-  // Move Y
   player.onGround = false;
-  player.position.y += player.velocity.y * dt;
-  const collision = checkCollision(player.position.x, player.position.y, player.position.z, r, h);
-  if (collision.hit) {
-    if (player.velocity.y < 0) {
-      player.position.y = collision.y + 1 + 0.001;
-      player.onGround = true;
-    } else {
-      player.position.y = collision.y - h - 0.001;
-    }
-    player.velocity.y = 0;
+  player.pos.y += player.vel.y * dt;
+  const col = checkCol(player.pos.x, player.pos.y, player.pos.z, r, h);
+  if (col.hit) {
+    if (player.vel.y < 0) { player.pos.y = col.y + 1 + 0.001; player.onGround = true; }
+    else { player.pos.y = col.y - h - 0.001; }
+    player.vel.y = 0;
   }
 
-  // Fall respawn
-  if (player.position.y < -20) {
-    respawn();
-  }
-
-  // Update camera
-  controls.getObject().position.copy(player.position);
+  if (player.pos.y < -20) respawn();
+  controls.getObject().position.copy(player.pos);
 }
 
 // ============================================================
-// Input Handling
+// Input
 // ============================================================
-const keys = { w: false, a: false, s: false, d: false, space: false, shift: false };
-
-document.addEventListener('keydown', (e) => {
-  switch (e.code) {
-    case 'KeyW': keys.w = true; break;
-    case 'KeyA': keys.a = true; break;
-    case 'KeyS': keys.s = true; break;
-    case 'KeyD': keys.d = true; break;
-    case 'Space': keys.space = true; e.preventDefault(); break;
-    case 'ShiftLeft': case 'ShiftRight': keys.shift = true; break;
-    case 'KeyR': respawn(); break;
-  }
+const keys = { w:false, a:false, s:false, d:false, space:false, shift:false };
+document.addEventListener('keydown', e => {
+  if (e.code === 'KeyW') keys.w = true;
+  if (e.code === 'KeyA') keys.a = true;
+  if (e.code === 'KeyS') keys.s = true;
+  if (e.code === 'KeyD') keys.d = true;
+  if (e.code === 'Space') { keys.space = true; e.preventDefault(); }
+  if (e.code === 'ShiftLeft') keys.shift = true;
+  if (e.code === 'KeyR') respawn();
+});
+document.addEventListener('keyup', e => {
+  if (e.code === 'KeyW') keys.w = false;
+  if (e.code === 'KeyA') keys.a = false;
+  if (e.code === 'KeyS') keys.s = false;
+  if (e.code === 'KeyD') keys.d = false;
+  if (e.code === 'Space') keys.space = false;
+  if (e.code === 'ShiftLeft') keys.shift = false;
 });
 
-document.addEventListener('keyup', (e) => {
-  switch (e.code) {
-    case 'KeyW': keys.w = false; break;
-    case 'KeyA': keys.a = false; break;
-    case 'KeyS': keys.s = false; break;
-    case 'KeyD': keys.d = false; break;
-    case 'Space': keys.space = false; break;
-    case 'ShiftLeft': case 'ShiftRight': keys.shift = false; break;
-  }
-});
-
-// Mobile controls
 let mobileInput = { x: 0, z: 0 };
-let mobileLookDelta = { x: 0, y: 0 };
+let mobileLook = { x: 0, y: 0 };
 
 if (isMobile) {
-  const joystickBase = document.getElementById('joystickBase');
-  const joystickStick = document.getElementById('joystickStick');
-  let joystickActive = false;
-  let joystickCenter = { x: 0, y: 0 };
+  const joyBase = document.getElementById('joystickBase');
+  const joyStick = document.getElementById('joystickStick');
+  let joyActive = false, joyCenter = { x: 0, y: 0 };
 
-  joystickBase.addEventListener('pointerdown', (e) => {
-    joystickActive = true;
-    joystickBase.setPointerCapture(e.pointerId);
-    const rect = joystickBase.getBoundingClientRect();
-    joystickCenter = {
-      x: rect.left + rect.width / 2,
-      y: rect.top + rect.height / 2
-    };
+  joyBase.addEventListener('pointerdown', e => {
+    joyActive = true;
+    joyBase.setPointerCapture(e.pointerId);
+    const rect = joyBase.getBoundingClientRect();
+    joyCenter = { x: rect.left + rect.width/2, y: rect.top + rect.height/2 };
+  });
+  joyBase.addEventListener('pointermove', e => {
+    if (!joyActive) return;
+    const dx = e.clientX - joyCenter.x, dy = e.clientY - joyCenter.y;
+    const max = 40, dist = Math.hypot(dx, dy), scale = dist > max ? max/dist : 1;
+    joyStick.style.transform = `translate(${dx*scale}px, ${dy*scale}px)`;
+    mobileInput.x = dx * scale / max;
+    mobileInput.z = dy * scale / max;
+  });
+  joyBase.addEventListener('pointerup', () => {
+    joyActive = false;
+    joyStick.style.transform = 'translate(0,0)';
+    mobileInput.x = mobileInput.z = 0;
   });
 
-  joystickBase.addEventListener('pointermove', (e) => {
-    if (!joystickActive) return;
-    const dx = e.clientX - joystickCenter.x;
-    const dy = e.clientY - joystickCenter.y;
-    const maxDist = 40;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    const scale = dist > maxDist ? maxDist / dist : 1;
-    const sx = dx * scale;
-    const sy = dy * scale;
-
-    joystickStick.style.transform = `translate(${sx}px, ${sy}px)`;
-    mobileInput.x = sx / maxDist;
-    mobileInput.z = sy / maxDist;
-  });
-
-  joystickBase.addEventListener('pointerup', () => {
-    joystickActive = false;
-    joystickStick.style.transform = 'translate(0, 0)';
-    mobileInput.x = 0;
-    mobileInput.z = 0;
-  });
-
-  // Look controls
-  let lookActive = false;
-  let lastPointer = { x: 0, y: 0 };
-
-  document.addEventListener('pointerdown', (e) => {
-    if (e.target.closest('#joystickArea, #mobileButtons, #hotbar, #info-panel')) return;
+  let lookActive = false, lastP = { x: 0, y: 0 };
+  document.addEventListener('pointerdown', e => {
+    if (e.target.closest('#joystickArea,#mobileButtons,#hotbar,#info-panel')) return;
     lookActive = true;
-    lastPointer = { x: e.clientX, y: e.clientY };
+    lastP = { x: e.clientX, y: e.clientY };
   });
-
-  document.addEventListener('pointermove', (e) => {
+  document.addEventListener('pointermove', e => {
     if (!lookActive) return;
-    mobileLookDelta.x += e.clientX - lastPointer.x;
-    mobileLookDelta.y += e.clientY - lastPointer.y;
-    lastPointer = { x: e.clientX, y: e.clientY };
+    mobileLook.x += e.clientX - lastP.x;
+    mobileLook.y += e.clientY - lastP.y;
+    lastP = { x: e.clientX, y: e.clientY };
+  });
+  document.addEventListener('pointerup', () => { lookActive = false; });
+
+  let tap = null;
+  document.addEventListener('pointerdown', e => {
+    if (e.target.closest('#joystickArea,#mobileButtons,#hotbar,#info-panel')) return;
+    tap = { x: e.clientX, y: e.clientY, t: Date.now() };
+  });
+  document.addEventListener('pointerup', e => {
+    if (!tap || e.target.closest('#joystickArea,#mobileButtons,#hotbar,#info-panel')) { tap = null; return; }
+    if (Date.now() - tap.t < 200 && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) < 15) doAction();
+    tap = null;
   });
 
-  document.addEventListener('pointerup', () => {
-    lookActive = false;
-  });
-
-  // Tap to action
-  let tapStart = null;
-  document.addEventListener('pointerdown', (e) => {
-    if (e.target.closest('#joystickArea, #mobileButtons, #hotbar, #info-panel')) return;
-    tapStart = { x: e.clientX, y: e.clientY, time: Date.now() };
-  });
-
-  document.addEventListener('pointerup', (e) => {
-    if (!tapStart) return;
-    if (e.target.closest('#joystickArea, #mobileButtons, #hotbar, #info-panel')) {
-      tapStart = null;
-      return;
-    }
-    const dx = e.clientX - tapStart.x;
-    const dy = e.clientY - tapStart.y;
-    const dt = Date.now() - tapStart.time;
-    tapStart = null;
-
-    if (dt < 200 && dx * dx + dy * dy < 100) {
-      doAction();
-    }
-  });
-
-  // Mode button
-  modeBtn.addEventListener('click', () => {
-    setMode(currentMode === 'BREAK' ? 'PLACE' : 'BREAK');
-  });
-
-  // Jump button
-  document.getElementById('jumpBtn').addEventListener('pointerdown', () => {
-    player.wantJump = true;
-  });
+  modeBtn.onclick = () => setMode(mode === 'BREAK' ? 'PLACE' : 'BREAK');
+  document.getElementById('jumpBtn').addEventListener('pointerdown', () => { player.wantJump = true; });
 }
 
-function getMovementDirection() {
-  const forward = new THREE.Vector3();
-  camera.getWorldDirection(forward);
-  forward.y = 0;
-  forward.normalize();
-
-  const right = new THREE.Vector3();
-  right.crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
-
-  const direction = new THREE.Vector3();
-
+function getMoveDir() {
+  const fwd = new THREE.Vector3();
+  camera.getWorldDirection(fwd);
+  fwd.y = 0; fwd.normalize();
+  const right = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(0,1,0)).normalize();
+  const dir = new THREE.Vector3();
+  
   if (isMobile) {
-    direction.addScaledVector(forward, -mobileInput.z);
-    direction.addScaledVector(right, mobileInput.x);
+    dir.addScaledVector(fwd, -mobileInput.z);
+    dir.addScaledVector(right, mobileInput.x);
   } else {
-    if (keys.w) direction.add(forward);
-    if (keys.s) direction.sub(forward);
-    if (keys.d) direction.add(right);
-    if (keys.a) direction.sub(right);
+    if (keys.w) dir.add(fwd);
+    if (keys.s) dir.sub(fwd);
+    if (keys.d) dir.add(right);
+    if (keys.a) dir.sub(right);
   }
-
-  if (direction.lengthSq() > 0) direction.normalize();
-  return direction;
+  if (dir.lengthSq() > 0) dir.normalize();
+  return dir;
 }
 
 function applyMobileLook() {
   if (!isMobile) return;
-
-  const sensitivity = 0.003;
-  const obj = controls.getObject();
-
-  obj.rotation.y -= mobileLookDelta.x * sensitivity;
-  camera.rotation.x -= mobileLookDelta.y * sensitivity;
-  camera.rotation.x = clamp(camera.rotation.x, -Math.PI / 2 + 0.1, Math.PI / 2 - 0.1);
-
-  mobileLookDelta.x = 0;
-  mobileLookDelta.y = 0;
+  const sens = 0.003;
+  controls.getObject().rotation.y -= mobileLook.x * sens;
+  camera.rotation.x = clamp(camera.rotation.x - mobileLook.y * sens, -Math.PI/2 + 0.1, Math.PI/2 - 0.1);
+  mobileLook.x = mobileLook.y = 0;
 }
 
 // ============================================================
@@ -1030,59 +662,38 @@ function applyMobileLook() {
 // ============================================================
 const clock = new THREE.Clock();
 
-function gameLoop() {
-  requestAnimationFrame(gameLoop);
-
+function loop() {
+  requestAnimationFrame(loop);
   const dt = Math.min(clock.getDelta(), 0.05);
 
-  // Mobile look
   applyMobileLook();
-
-  // Movement
   if (!isMobile && keys.space) player.wantJump = true;
 
-  const moveDir = getMovementDirection();
+  const moveDir = getMoveDir();
   const speed = CONFIG.MOVE_SPEED * (keys.shift ? 1.5 : 1);
   const accel = player.onGround ? 30 : 15;
+  player.vel.x += (moveDir.x * speed - player.vel.x) * Math.min(1, accel * dt);
+  player.vel.z += (moveDir.z * speed - player.vel.z) * Math.min(1, accel * dt);
 
-  player.velocity.x += (moveDir.x * speed - player.velocity.x) * Math.min(1, accel * dt);
-  player.velocity.z += (moveDir.z * speed - player.velocity.z) * Math.min(1, accel * dt);
-
-  // Physics
   updatePhysics(dt);
-
-  // Raycasting
-  updateTargetBlock();
-
-  // Render
+  updateTarget();
   renderer.render(scene, camera);
 }
 
-// ============================================================
-// Window Resize
-// ============================================================
 window.addEventListener('resize', () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setSize(innerWidth, innerHeight);
 });
 
 // ============================================================
-// Initialization
+// Init
 // ============================================================
-console.log('Generating terrain...');
-generateTerrain();
-console.log('Generating trees...');
+console.log('Generating world...');
+generateWorld();
 generateTrees();
-console.log('Loading modifications...');
-loadModifications();
-console.log('Building meshes...');
+loadMods();
 buildAllMeshes();
-console.log('Finding spawn...');
 respawn();
-console.log('Starting game loop...');
-gameLoop();
-
-console.log('Voxel Sandbox initialized!');
-console.log(`World: ${CONFIG.WORLD_SIZE}x${CONFIG.WORLD_SIZE}x${CONFIG.WORLD_HEIGHT}`);
-console.log(`Seed: ${worldSeed}`);
+loop();
+console.log('Voxel Sandbox started!');
