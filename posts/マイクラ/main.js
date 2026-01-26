@@ -1,892 +1,1088 @@
-import * as THREE from "https://unpkg.com/three@0.160.1/build/three.module.js";
-import { PointerLockControls } from "https://unpkg.com/three@0.160.1/examples/jsm/controls/PointerLockControls.js";
-import { createNoise2D } from "https://cdn.jsdelivr.net/npm/simplex-noise@4.0.1/dist/esm/simplex-noise.js";
+// ============================================================
+// Voxel Sandbox - Complete Edition
+// Three.js r136 (CDN direct import compatible)
+// ============================================================
 
-/* =========================================================
-  Safety / Debug overlay (mobileでも黒画面で止まらないため)
-========================================================= */
-const errEl = document.getElementById("err");
-function showErr(msg) { if (errEl) errEl.textContent = String(msg ?? ""); }
-window.addEventListener("error", (e) => showErr("JS ERROR: " + (e?.message ?? e)));
-window.addEventListener("unhandledrejection", (e) => showErr("PROMISE ERROR: " + (e?.reason?.message ?? e?.reason ?? e)));
+import * as THREE from 'https://unpkg.com/three@0.136.0/build/three.module.js';
+import { PointerLockControls } from 'https://unpkg.com/three@0.136.0/examples/jsm/controls/PointerLockControls.js';
 
-/* =========================================================
-  Utils
-========================================================= */
-function clampInt(v, lo, hi) {
-  if (!Number.isFinite(v)) return null;
-  v = Math.trunc(v);
-  if (v < lo || v > hi) return null;
-  return v;
-}
-function hashStringToInt(str) {
-  let h = 2166136261;
-  for (let i = 0; i < str.length; i++) {
-    h ^= str.charCodeAt(i);
-    h = Math.imul(h, 16777619);
+// ============================================================
+// Error Handler
+// ============================================================
+const errorDisplay = document.getElementById('errorDisplay');
+function showError(msg) {
+  console.error(msg);
+  if (errorDisplay) {
+    errorDisplay.textContent = msg;
+    errorDisplay.classList.add('show');
   }
-  return h >>> 0;
 }
-function mulberry32(seed) {
+window.onerror = (msg) => showError('Error: ' + msg);
+window.onunhandledrejection = (e) => showError('Promise Error: ' + (e.reason?.message || e.reason));
+
+// ============================================================
+// Utilities
+// ============================================================
+function hashString(str) {
+  let hash = 5381;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) + hash) ^ str.charCodeAt(i);
+  }
+  return hash >>> 0;
+}
+
+function seededRandom(seed) {
   return function() {
-    let t = (seed += 0x6D2B79F5);
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+    return seed / 0x7fffffff;
   };
 }
 
-const URLP = new URL(location.href).searchParams;
-const isTouchDevice = matchMedia("(pointer: coarse)").matches || "ontouchstart" in window;
+function clamp(val, min, max) {
+  return Math.max(min, Math.min(max, val));
+}
+
+// ============================================================
+// Simplex Noise (Self-contained implementation)
+// ============================================================
+class SimplexNoise {
+  constructor(random = Math.random) {
+    this.p = new Uint8Array(256);
+    for (let i = 0; i < 256; i++) this.p[i] = i;
+    for (let i = 255; i > 0; i--) {
+      const j = Math.floor(random() * (i + 1));
+      [this.p[i], this.p[j]] = [this.p[j], this.p[i]];
+    }
+    this.perm = new Uint8Array(512);
+    this.permMod12 = new Uint8Array(512);
+    for (let i = 0; i < 512; i++) {
+      this.perm[i] = this.p[i & 255];
+      this.permMod12[i] = this.perm[i] % 12;
+    }
+  }
+
+  noise2D(x, y) {
+    const F2 = 0.5 * (Math.sqrt(3) - 1);
+    const G2 = (3 - Math.sqrt(3)) / 6;
+    const grad3 = [
+      [1,1],[−1,1],[1,−1],[−1,−1],
+      [1,0],[−1,0],[1,0],[−1,0],
+      [0,1],[0,−1],[0,1],[0,−1]
+    ];
+
+    const s = (x + y) * F2;
+    const i = Math.floor(x + s);
+    const j = Math.floor(y + s);
+    const t = (i + j) * G2;
+    const X0 = i - t;
+    const Y0 = j - t;
+    const x0 = x - X0;
+    const y0 = y - Y0;
+
+    const i1 = x0 > y0 ? 1 : 0;
+    const j1 = x0 > y0 ? 0 : 1;
+
+    const x1 = x0 - i1 + G2;
+    const y1 = y0 - j1 + G2;
+    const x2 = x0 - 1 + 2 * G2;
+    const y2 = y0 - 1 + 2 * G2;
+
+    const ii = i & 255;
+    const jj = j & 255;
+
+    const gi0 = this.permMod12[ii + this.perm[jj]];
+    const gi1 = this.permMod12[ii + i1 + this.perm[jj + j1]];
+    const gi2 = this.permMod12[ii + 1 + this.perm[jj + 1]];
+
+    const dot = (g, x, y) => g[0] * x + g[1] * y;
+
+    let n0 = 0, n1 = 0, n2 = 0;
+
+    let t0 = 0.5 - x0 * x0 - y0 * y0;
+    if (t0 >= 0) {
+      t0 *= t0;
+      n0 = t0 * t0 * dot(grad3[gi0], x0, y0);
+    }
+
+    let t1 = 0.5 - x1 * x1 - y1 * y1;
+    if (t1 >= 0) {
+      t1 *= t1;
+      n1 = t1 * t1 * dot(grad3[gi1], x1, y1);
+    }
+
+    let t2 = 0.5 - x2 * x2 - y2 * y2;
+    if (t2 >= 0) {
+      t2 *= t2;
+      n2 = t2 * t2 * dot(grad3[gi2], x2, y2);
+    }
+
+    return 70 * (n0 + n1 + n2);
+  }
+}
+
+// ============================================================
+// Configuration
+// ============================================================
+const urlParams = new URLSearchParams(window.location.search);
+const isMobile = /Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) 
+  || ('ontouchstart' in window) 
+  || (navigator.maxTouchPoints > 0);
 
 const CONFIG = {
-  // URL override: ?size=24&h=20&seed=abc
-  WORLD_SIZE: clampInt(parseInt(URLP.get("size") ?? "", 10), 12, 64),
-  WORLD_HEIGHT: clampInt(parseInt(URLP.get("h") ?? "", 10), 12, 48),
-
-  NOISE_SCALE: 0.085,
-  OCTAVES: 4,
-  PERSISTENCE: 0.5,
-  LACUNARITY: 2.0,
-  BASE_HEIGHT: 5,
-  HEIGHT_AMPLITUDE: 7,
-
-  // water無し → 低地を砂っぽく
-  SAND_LEVEL: 6,
-  SAND_CHANCE: 0.55,
-
-  TREE_DENSITY: 0.025,
-  TREE_MIN_H: 3,
-  TREE_MAX_H: 5,
-
-  REACH: 6.0,
-  FOG_NEAR: 10,
-  FOG_FAR: 62,
-
-  // physics
-  PLAYER_HEIGHT: 1.78,
-  PLAYER_RADIUS: 0.32,
-  GRAVITY: 20.0,
-  JUMP_VELOCITY: 7.0,
-  MOVE_SPEED: 5.2,
-  AIR_CONTROL: 0.55,
-  SPRINT_MULT: 1.45,
-
-  SAVE_KEY: "voxel_sandbox_save_v2",
+  WORLD_SIZE: parseInt(urlParams.get('size')) || (isMobile ? 24 : 32),
+  WORLD_HEIGHT: parseInt(urlParams.get('h')) || 24,
+  NOISE_SCALE: 0.08,
+  BASE_HEIGHT: 8,
+  HEIGHT_AMP: 10,
+  TREE_CHANCE: 0.02,
+  PLAYER_HEIGHT: 1.7,
+  PLAYER_RADIUS: 0.3,
+  MOVE_SPEED: 5,
+  JUMP_VELOCITY: 8,
+  GRAVITY: 20,
+  REACH_DISTANCE: 5,
+  SAVE_KEY: 'voxel_sandbox_v3'
 };
 
-const BLOCK = { GRASS:0, DIRT:1, STONE:2, SAND:3, LOG:4, LEAF:5 };
-const BLOCK_NAMES = ["GRASS","DIRT","STONE","SAND","LOG","LEAF"];
-const SOLID = new Set([0,1,2,3,4,5]);
+// Validate config
+CONFIG.WORLD_SIZE = clamp(CONFIG.WORLD_SIZE, 16, 64);
+CONFIG.WORLD_HEIGHT = clamp(CONFIG.WORLD_HEIGHT, 16, 48);
 
-/* =========================================================
-  Save (S1)
-========================================================= */
+// ============================================================
+// Block Types
+// ============================================================
+const BLOCKS = {
+  AIR: -1,
+  GRASS: 0,
+  DIRT: 1,
+  STONE: 2,
+  SAND: 3,
+  WOOD: 4,
+  LEAVES: 5
+};
+
+const BLOCK_COLORS = {
+  [BLOCKS.GRASS]: '#4a9c2d',
+  [BLOCKS.DIRT]: '#8b5a2b',
+  [BLOCKS.STONE]: '#808080',
+  [BLOCKS.SAND]: '#c2b280',
+  [BLOCKS.WOOD]: '#8b4513',
+  [BLOCKS.LEAVES]: '#228b22'
+};
+
+// ============================================================
+// Save/Load System
+// ============================================================
 function loadSave() {
   try {
-    const raw = localStorage.getItem(CONFIG.SAVE_KEY);
-    if (!raw) return null;
-    const data = JSON.parse(raw);
-    if (!data || typeof data !== "object") return null;
-    return data;
-  } catch { return null; }
+    const data = localStorage.getItem(CONFIG.SAVE_KEY);
+    return data ? JSON.parse(data) : null;
+  } catch {
+    return null;
+  }
 }
+
 function writeSave(data) {
-  try { localStorage.setItem(CONFIG.SAVE_KEY, JSON.stringify(data)); } catch {}
+  try {
+    localStorage.setItem(CONFIG.SAVE_KEY, JSON.stringify(data));
+  } catch (e) {
+    console.warn('Save failed:', e);
+  }
 }
+
 let saveData = loadSave();
 
-document.getElementById("btnReset").addEventListener("click", () => {
+// Seed determination
+const urlSeed = urlParams.get('seed');
+let worldSeed;
+if (urlSeed) {
+  worldSeed = hashString(urlSeed);
+} else if (saveData?.seed) {
+  worldSeed = saveData.seed;
+} else {
+  worldSeed = Date.now() >>> 0;
+}
+
+const rng = seededRandom(worldSeed);
+const noise = new SimplexNoise(rng);
+
+// Display info
+document.getElementById('seedDisplay').textContent = urlSeed || worldSeed;
+document.getElementById('sizeDisplay').textContent = `${CONFIG.WORLD_SIZE}×${CONFIG.WORLD_SIZE}×${CONFIG.WORLD_HEIGHT}`;
+
+// ============================================================
+// Three.js Setup
+// ============================================================
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x87ceeb);
+scene.fog = new THREE.Fog(0x87ceeb, 20, 80);
+
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 500);
+camera.position.set(CONFIG.WORLD_SIZE / 2, CONFIG.WORLD_HEIGHT + 5, CONFIG.WORLD_SIZE / 2);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+document.body.appendChild(renderer.domElement);
+
+// Lighting
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+scene.add(ambientLight);
+
+const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+directionalLight.position.set(50, 100, 50);
+scene.add(directionalLight);
+
+// ============================================================
+// Controls
+// ============================================================
+const controls = new PointerLockControls(camera, document.body);
+scene.add(controls.getObject());
+
+const lockOverlay = document.getElementById('lockOverlay');
+const startBtn = document.getElementById('startBtn');
+
+if (!isMobile) {
+  startBtn.addEventListener('click', () => {
+    controls.lock();
+  });
+
+  controls.addEventListener('lock', () => {
+    lockOverlay.classList.add('hidden');
+  });
+
+  controls.addEventListener('unlock', () => {
+    lockOverlay.classList.remove('hidden');
+  });
+
+  document.addEventListener('contextmenu', (e) => e.preventDefault());
+} else {
+  lockOverlay.classList.add('hidden');
+}
+
+// ============================================================
+// Texture Generation
+// ============================================================
+function createBlockTexture(baseColor, noiseAmount = 0.1) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 16;
+  canvas.height = 16;
+  const ctx = canvas.getContext('2d');
+
+  // Parse base color
+  const tempDiv = document.createElement('div');
+  tempDiv.style.color = baseColor;
+  document.body.appendChild(tempDiv);
+  const computedColor = getComputedStyle(tempDiv).color;
+  document.body.removeChild(tempDiv);
+
+  const rgb = computedColor.match(/\d+/g).map(Number);
+
+  for (let y = 0; y < 16; y++) {
+    for (let x = 0; x < 16; x++) {
+      const variation = (rng() - 0.5) * noiseAmount * 255;
+      const r = clamp(rgb[0] + variation, 0, 255);
+      const g = clamp(rgb[1] + variation, 0, 255);
+      const b = clamp(rgb[2] + variation, 0, 255);
+      ctx.fillStyle = `rgb(${r},${g},${b})`;
+      ctx.fillRect(x, y, 1, 1);
+    }
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.magFilter = THREE.NearestFilter;
+  texture.minFilter = THREE.NearestFilter;
+  return { texture, canvas };
+}
+
+const blockTextures = {};
+const blockCanvases = {};
+
+for (const [name, type] of Object.entries(BLOCKS)) {
+  if (type === BLOCKS.AIR) continue;
+  const { texture, canvas } = createBlockTexture(BLOCK_COLORS[type], type === BLOCKS.LEAVES ? 0.15 : 0.1);
+  blockTextures[type] = texture;
+  blockCanvases[type] = canvas;
+}
+
+// ============================================================
+// World Data
+// ============================================================
+function coordKey(x, y, z) {
+  return `${x},${y},${z}`;
+}
+
+function parseKey(key) {
+  const [x, y, z] = key.split(',').map(Number);
+  return { x, y, z };
+}
+
+function inBounds(x, y, z) {
+  return x >= 0 && x < CONFIG.WORLD_SIZE &&
+         y >= 0 && y < CONFIG.WORLD_HEIGHT &&
+         z >= 0 && z < CONFIG.WORLD_SIZE;
+}
+
+const baseWorld = new Map();  // Generated terrain
+const modifications = new Map();  // Player changes
+
+function getBlock(x, y, z) {
+  if (!inBounds(x, y, z)) return BLOCKS.AIR;
+  const key = coordKey(x, y, z);
+  if (modifications.has(key)) {
+    return modifications.get(key);
+  }
+  return baseWorld.get(key) ?? BLOCKS.AIR;
+}
+
+function setBlock(x, y, z, type) {
+  if (!inBounds(x, y, z)) return;
+  const key = coordKey(x, y, z);
+  modifications.set(key, type);
+  updateBlockMesh(x, y, z);
+  updateNeighborMeshes(x, y, z);
+  scheduleSave();
+}
+
+function isSolid(x, y, z) {
+  const block = getBlock(x, y, z);
+  return block !== BLOCKS.AIR;
+}
+
+// ============================================================
+// Terrain Generation
+// ============================================================
+function getTerrainHeight(x, z) {
+  const n1 = noise.noise2D(x * CONFIG.NOISE_SCALE, z * CONFIG.NOISE_SCALE);
+  const n2 = noise.noise2D(x * CONFIG.NOISE_SCALE * 2, z * CONFIG.NOISE_SCALE * 2) * 0.5;
+  const combined = (n1 + n2) / 1.5;
+  return Math.floor(CONFIG.BASE_HEIGHT + combined * CONFIG.HEIGHT_AMP);
+}
+
+function generateTerrain() {
+  baseWorld.clear();
+
+  for (let x = 0; x < CONFIG.WORLD_SIZE; x++) {
+    for (let z = 0; z < CONFIG.WORLD_SIZE; z++) {
+      const height = clamp(getTerrainHeight(x, z), 1, CONFIG.WORLD_HEIGHT - 2);
+
+      for (let y = 0; y <= height; y++) {
+        let blockType;
+        if (y === height) {
+          blockType = height < 6 ? BLOCKS.SAND : BLOCKS.GRASS;
+        } else if (y > height - 4) {
+          blockType = BLOCKS.DIRT;
+        } else {
+          blockType = BLOCKS.STONE;
+        }
+        baseWorld.set(coordKey(x, y, z), blockType);
+      }
+    }
+  }
+}
+
+function generateTrees() {
+  for (let x = 2; x < CONFIG.WORLD_SIZE - 2; x++) {
+    for (let z = 2; z < CONFIG.WORLD_SIZE - 2; z++) {
+      const height = clamp(getTerrainHeight(x, z), 1, CONFIG.WORLD_HEIGHT - 2);
+      
+      if (height < 7) continue;
+      if (getBlock(x, height, z) !== BLOCKS.GRASS) continue;
+      if (rng() > CONFIG.TREE_CHANCE) continue;
+
+      const trunkHeight = 4 + Math.floor(rng() * 2);
+
+      // Trunk
+      for (let y = 1; y <= trunkHeight; y++) {
+        if (inBounds(x, height + y, z)) {
+          modifications.set(coordKey(x, height + y, z), BLOCKS.WOOD);
+        }
+      }
+
+      // Leaves
+      const leafBase = height + trunkHeight - 1;
+      for (let dy = 0; dy <= 2; dy++) {
+        const radius = dy === 2 ? 1 : 2;
+        for (let dx = -radius; dx <= radius; dx++) {
+          for (let dz = -radius; dz <= radius; dz++) {
+            if (dx === 0 && dz === 0 && dy < 2) continue;
+            if (Math.abs(dx) === 2 && Math.abs(dz) === 2) continue;
+            const lx = x + dx;
+            const ly = leafBase + dy;
+            const lz = z + dz;
+            if (inBounds(lx, ly, lz) && getBlock(lx, ly, lz) === BLOCKS.AIR) {
+              modifications.set(coordKey(lx, ly, lz), BLOCKS.LEAVES);
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// ============================================================
+// Instanced Mesh Rendering
+// ============================================================
+const boxGeometry = new THREE.BoxGeometry(1, 1, 1);
+const instancedMeshes = new Map();
+const blockToInstance = new Map();  // coordKey -> { type, index }
+const instanceToBlock = new Map();  // type -> [coordKey, ...]
+
+function createMaterial(type) {
+  return new THREE.MeshLambertMaterial({
+    map: blockTextures[type],
+    transparent: type === BLOCKS.LEAVES,
+    opacity: type === BLOCKS.LEAVES ? 0.9 : 1,
+    alphaTest: type === BLOCKS.LEAVES ? 0.1 : 0
+  });
+}
+
+function ensureInstancedMesh(type) {
+  if (!instancedMeshes.has(type)) {
+    const mesh = new THREE.InstancedMesh(boxGeometry, createMaterial(type), 50000);
+    mesh.count = 0;
+    mesh.userData.blockType = type;
+    scene.add(mesh);
+    instancedMeshes.set(type, mesh);
+    instanceToBlock.set(type, []);
+  }
+  return instancedMeshes.get(type);
+}
+
+function isExposed(x, y, z) {
+  if (!isSolid(x, y, z)) return false;
+  return !isSolid(x + 1, y, z) || !isSolid(x - 1, y, z) ||
+         !isSolid(x, y + 1, z) || !isSolid(x, y - 1, z) ||
+         !isSolid(x, y, z + 1) || !isSolid(x, y, z - 1);
+}
+
+const tempMatrix = new THREE.Matrix4();
+
+function addBlockInstance(x, y, z, type) {
+  const mesh = ensureInstancedMesh(type);
+  const blocks = instanceToBlock.get(type);
+  const key = coordKey(x, y, z);
+
+  const index = mesh.count;
+  tempMatrix.setPosition(x + 0.5, y + 0.5, z + 0.5);
+  mesh.setMatrixAt(index, tempMatrix);
+  mesh.count++;
+  mesh.instanceMatrix.needsUpdate = true;
+
+  blocks[index] = key;
+  blockToInstance.set(key, { type, index });
+}
+
+function removeBlockInstance(key) {
+  const info = blockToInstance.get(key);
+  if (!info) return;
+
+  const { type, index } = info;
+  const mesh = instancedMeshes.get(type);
+  const blocks = instanceToBlock.get(type);
+
+  if (mesh.count > 1 && index < mesh.count - 1) {
+    // Swap with last
+    const lastKey = blocks[mesh.count - 1];
+    mesh.getMatrixAt(mesh.count - 1, tempMatrix);
+    mesh.setMatrixAt(index, tempMatrix);
+    blocks[index] = lastKey;
+    blockToInstance.set(lastKey, { type, index });
+  }
+
+  mesh.count--;
+  mesh.instanceMatrix.needsUpdate = true;
+  blocks.pop();
+  blockToInstance.delete(key);
+}
+
+function updateBlockMesh(x, y, z) {
+  const key = coordKey(x, y, z);
+  const type = getBlock(x, y, z);
+
+  // Remove existing instance
+  if (blockToInstance.has(key)) {
+    removeBlockInstance(key);
+  }
+
+  // Add new instance if visible
+  if (type !== BLOCKS.AIR && isExposed(x, y, z)) {
+    addBlockInstance(x, y, z, type);
+  }
+}
+
+function updateNeighborMeshes(x, y, z) {
+  const neighbors = [
+    [x + 1, y, z], [x - 1, y, z],
+    [x, y + 1, z], [x, y - 1, z],
+    [x, y, z + 1], [x, y, z - 1]
+  ];
+  for (const [nx, ny, nz] of neighbors) {
+    if (inBounds(nx, ny, nz)) {
+      updateBlockMesh(nx, ny, nz);
+    }
+  }
+}
+
+function buildAllMeshes() {
+  // Clear existing
+  for (const [type, mesh] of instancedMeshes) {
+    mesh.count = 0;
+    instanceToBlock.set(type, []);
+  }
+  blockToInstance.clear();
+
+  // Build visible blocks
+  for (let x = 0; x < CONFIG.WORLD_SIZE; x++) {
+    for (let z = 0; z < CONFIG.WORLD_SIZE; z++) {
+      for (let y = 0; y < CONFIG.WORLD_HEIGHT; y++) {
+        const type = getBlock(x, y, z);
+        if (type !== BLOCKS.AIR && isExposed(x, y, z)) {
+          addBlockInstance(x, y, z, type);
+        }
+      }
+    }
+  }
+}
+
+// ============================================================
+// Hotbar
+// ============================================================
+const hotbarTypes = [BLOCKS.GRASS, BLOCKS.DIRT, BLOCKS.STONE, BLOCKS.SAND, BLOCKS.WOOD, BLOCKS.LEAVES];
+let selectedSlot = 0;
+
+function buildHotbar() {
+  const hotbar = document.getElementById('hotbar');
+  hotbar.innerHTML = '';
+
+  hotbarTypes.forEach((type, index) => {
+    const slot = document.createElement('div');
+    slot.className = 'hotbar-slot' + (index === selectedSlot ? ' selected' : '');
+
+    const number = document.createElement('span');
+    number.className = 'slot-number';
+    number.textContent = index + 1;
+    slot.appendChild(number);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 16;
+    canvas.height = 16;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(blockCanvases[type], 0, 0);
+    slot.appendChild(canvas);
+
+    slot.addEventListener('click', () => selectSlot(index));
+    hotbar.appendChild(slot);
+  });
+}
+
+function selectSlot(index) {
+  selectedSlot = (index + 6) % 6;
+  document.querySelectorAll('.hotbar-slot').forEach((slot, i) => {
+    slot.classList.toggle('selected', i === selectedSlot);
+  });
+}
+
+buildHotbar();
+
+// Keyboard slot selection
+document.addEventListener('keydown', (e) => {
+  if (e.key >= '1' && e.key <= '6') {
+    selectSlot(parseInt(e.key) - 1);
+  }
+});
+
+// Mouse wheel slot selection
+document.addEventListener('wheel', (e) => {
+  if (!controls.isLocked && !isMobile) return;
+  selectSlot(selectedSlot + (e.deltaY > 0 ? 1 : -1));
+});
+
+// ============================================================
+// Raycasting & Block Interaction
+// ============================================================
+const raycaster = new THREE.Raycaster();
+raycaster.far = CONFIG.REACH_DISTANCE;
+
+const highlightBox = new THREE.LineSegments(
+  new THREE.EdgesGeometry(new THREE.BoxGeometry(1.01, 1.01, 1.01)),
+  new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8 })
+);
+highlightBox.visible = false;
+scene.add(highlightBox);
+
+let targetBlock = null;
+let targetFace = null;
+
+function updateTargetBlock() {
+  raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+
+  const meshArray = Array.from(instancedMeshes.values());
+  const intersects = raycaster.intersectObjects(meshArray, false);
+
+  if (intersects.length === 0) {
+    targetBlock = null;
+    targetFace = null;
+    highlightBox.visible = false;
+    return;
+  }
+
+  const hit = intersects[0];
+  const type = hit.object.userData.blockType;
+  const blocks = instanceToBlock.get(type);
+  const key = blocks[hit.instanceId];
+
+  if (!key) {
+    targetBlock = null;
+    targetFace = null;
+    highlightBox.visible = false;
+    return;
+  }
+
+  targetBlock = parseKey(key);
+  targetFace = hit.face?.normal?.clone() || new THREE.Vector3(0, 1, 0);
+
+  highlightBox.position.set(
+    targetBlock.x + 0.5,
+    targetBlock.y + 0.5,
+    targetBlock.z + 0.5
+  );
+  highlightBox.visible = true;
+}
+
+// ============================================================
+// Mode & Actions
+// ============================================================
+let currentMode = 'BREAK';
+const modeDisplay = document.getElementById('modeDisplay');
+const modeBtn = document.getElementById('modeBtn');
+
+function setMode(mode) {
+  currentMode = mode;
+  modeDisplay.textContent = mode;
+  if (modeBtn) modeBtn.textContent = 'MODE: ' + mode;
+}
+
+function doAction(overrideMode = null) {
+  if (!targetBlock) return;
+
+  const mode = overrideMode || currentMode;
+
+  if (mode === 'BREAK') {
+    setBlock(targetBlock.x, targetBlock.y, targetBlock.z, BLOCKS.AIR);
+  } else {
+    const nx = targetBlock.x + Math.round(targetFace.x);
+    const ny = targetBlock.y + Math.round(targetFace.y);
+    const nz = targetBlock.z + Math.round(targetFace.z);
+
+    if (!inBounds(nx, ny, nz)) return;
+    if (getBlock(nx, ny, nz) !== BLOCKS.AIR) return;
+
+    // Don't place inside player
+    const playerBox = {
+      minX: player.position.x - CONFIG.PLAYER_RADIUS,
+      maxX: player.position.x + CONFIG.PLAYER_RADIUS,
+      minY: player.position.y,
+      maxY: player.position.y + CONFIG.PLAYER_HEIGHT,
+      minZ: player.position.z - CONFIG.PLAYER_RADIUS,
+      maxZ: player.position.z + CONFIG.PLAYER_RADIUS
+    };
+
+    if (nx + 1 > playerBox.minX && nx < playerBox.maxX &&
+        ny + 1 > playerBox.minY && ny < playerBox.maxY &&
+        nz + 1 > playerBox.minZ && nz < playerBox.maxZ) {
+      return;
+    }
+
+    setBlock(nx, ny, nz, hotbarTypes[selectedSlot]);
+  }
+}
+
+// Desktop mouse controls
+if (!isMobile) {
+  document.addEventListener('mousedown', (e) => {
+    if (!controls.isLocked) return;
+    if (e.button === 0) {
+      setMode('BREAK');
+      doAction('BREAK');
+    } else if (e.button === 2) {
+      setMode('PLACE');
+      doAction('PLACE');
+    }
+  });
+}
+
+// ============================================================
+// Save System
+// ============================================================
+let saveTimeout = null;
+
+function scheduleSave() {
+  if (saveTimeout) return;
+  saveTimeout = setTimeout(() => {
+    saveTimeout = null;
+    writeSave({
+      seed: worldSeed,
+      size: CONFIG.WORLD_SIZE,
+      height: CONFIG.WORLD_HEIGHT,
+      modifications: Object.fromEntries(modifications),
+      timestamp: Date.now()
+    });
+  }, 500);
+}
+
+// Load saved modifications
+function loadModifications() {
+  if (!saveData) return;
+  if (saveData.seed !== worldSeed) return;
+  if (saveData.size !== CONFIG.WORLD_SIZE) return;
+
+  if (saveData.modifications) {
+    for (const [key, type] of Object.entries(saveData.modifications)) {
+      modifications.set(key, type);
+    }
+  }
+}
+
+// Reset button
+document.getElementById('resetBtn').addEventListener('click', () => {
   localStorage.removeItem(CONFIG.SAVE_KEY);
   location.reload();
 });
 
-/* seed決定：URL seedが最優先。なければ保存のseed。なければ日時 */
-const urlSeed = URLP.get("seed");
-let seedValue = urlSeed ? hashStringToInt(urlSeed) : (saveData?.seed ?? (Date.now() >>> 0));
-
-/* =========================================================
-  World size (mobile-friendly)
-========================================================= */
-function autoWorldSize() {
-  if (isTouchDevice) return { size: 24, h: 20 };
-  return { size: 32, h: 20 };
-}
-const autoWH = autoWorldSize();
-
-const WORLD = {
-  size: CONFIG.WORLD_SIZE ?? (urlSeed ? autoWH.size : (saveData?.size ?? autoWH.size)),
-  height: CONFIG.WORLD_HEIGHT ?? (urlSeed ? autoWH.h : (saveData?.height ?? autoWH.h)),
-};
-
-document.getElementById("seedText").textContent = urlSeed ?? String(seedValue);
-document.getElementById("sizeText").textContent = `${WORLD.size}x${WORLD.size}x${WORLD.height}`;
-
-/* URLでワールド指定（seed/size/h）されてる場合は保存diffを混ぜない */
-const hasExplicitWorld = URLP.has("seed") || URLP.has("size") || URLP.has("h");
-
-/* =========================================================
-  RNG + Noise
-========================================================= */
-const rng = mulberry32(seedValue >>> 0);
-const noise2D = createNoise2D(rng);
-
-/* =========================================================
-  Three.js setup
-========================================================= */
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x87c7ff);
-scene.fog = new THREE.Fog(0x87c7ff, CONFIG.FOG_NEAR, CONFIG.FOG_FAR);
-
-const camera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.1, 400);
-
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setSize(innerWidth, innerHeight);
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-document.body.appendChild(renderer.domElement);
-
-scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-const sun = new THREE.DirectionalLight(0xffffff, 0.9);
-sun.position.set(8, 12, 6);
-scene.add(sun);
-
-/* =========================================================
-  Controls (PC PointerLock / Mobile touch look)
-========================================================= */
-const controls = new PointerLockControls(camera, document.body);
-scene.add(controls.getObject());
-
-const lockOverlay = document.getElementById("lockOverlay");
-const lockButton = document.getElementById("lockButton");
-if (!isTouchDevice) {
-  lockButton.addEventListener("click", () => controls.lock());
-  controls.addEventListener("lock", () => lockOverlay.classList.add("hidden"));
-  controls.addEventListener("unlock", () => lockOverlay.classList.remove("hidden"));
-  window.addEventListener("contextmenu", (e) => e.preventDefault());
-} else {
-  lockOverlay.classList.add("hidden");
-  document.getElementById("mobileControls").style.display = "block";
-}
-
-/* =========================================================
-  Textures (Canvas) + Materials
-========================================================= */
-function makeCanvasTexture(drawFn, size = 32) {
-  const c = document.createElement("canvas");
-  c.width = c.height = size;
-  const g = c.getContext("2d");
-  g.imageSmoothingEnabled = false;
-  drawFn(g, size);
-  const tex = new THREE.CanvasTexture(c);
-  tex.magFilter = THREE.NearestFilter;
-  tex.minFilter = THREE.NearestMipmapNearestFilter;
-  tex.generateMipmaps = true;
-  tex.needsUpdate = true;
-  return { tex, canvas: c };
-}
-function randInt(n) { return (rng() * n) | 0; }
-function drawSpeckle(g, size, base, speck, count) {
-  g.fillStyle = base; g.fillRect(0, 0, size, size);
-  for (let i = 0; i < count; i++) {
-    g.fillStyle = speck;
-    g.fillRect(randInt(size), randInt(size), 1, 1);
-  }
-}
-function texGrass() { return makeCanvasTexture((g,s)=>{ drawSpeckle(g,s,"#3bbf4a","rgba(0,0,0,0.10)",s*s*0.07); }); }
-function texDirt()  { return makeCanvasTexture((g,s)=> drawSpeckle(g,s,"#7a5132","rgba(0,0,0,0.15)",s*s*0.12)); }
-function texStone() { return makeCanvasTexture((g,s)=> drawSpeckle(g,s,"#9aa0a6","rgba(0,0,0,0.18)",s*s*0.10)); }
-function texSand()  { return makeCanvasTexture((g,s)=> drawSpeckle(g,s,"#d9cf8b","rgba(0,0,0,0.10)",s*s*0.06)); }
-function texLog()   { return makeCanvasTexture((g,s)=>{ g.fillStyle="#8b5a2b";g.fillRect(0,0,s,s); for(let x=0;x<s;x+=4){ g.fillStyle="rgba(0,0,0,0.12)"; g.fillRect(x,0,1,s);} }); }
-function texLeaf()  { return makeCanvasTexture((g,s)=>{ g.fillStyle="rgba(47,168,79,0.95)"; g.fillRect(0,0,s,s); for(let i=0;i<s*s*0.20;i++){ g.fillStyle="rgba(0,0,0,0.10)"; g.fillRect(randInt(s),randInt(s),1,1);} for(let i=0;i<s*s*0.08;i++){ g.clearRect(randInt(s),randInt(s),1,1);} }); }
-
-const TEX = {
-  [BLOCK.GRASS]: texGrass(),
-  [BLOCK.DIRT]: texDirt(),
-  [BLOCK.STONE]: texStone(),
-  [BLOCK.SAND]: texSand(),
-  [BLOCK.LOG]: texLog(),
-  [BLOCK.LEAF]: texLeaf(),
-};
-
-function matFor(type) {
-  return new THREE.MeshStandardMaterial({
-    map: TEX[type].tex,
-    roughness: 1.0,
-    metalness: 0.0,
-    transparent: type === BLOCK.LEAF,
-    opacity: type === BLOCK.LEAF ? 0.92 : 1.0,
-    alphaTest: type === BLOCK.LEAF ? 0.15 : 0.0,
-  });
-}
-
-/* =========================================================
-  World data
-========================================================= */
-function keyOf(x,y,z){ return `${x},${y},${z}`; }
-function parseKey(k){ const [x,y,z]=k.split(",").map(Number); return {x,y,z}; }
-function inBounds(x,y,z){ return x>=0&&x<WORLD.size && z>=0&&z<WORLD.size && y>=0&&y<WORLD.height; }
-
-const baseBlocks = new Map(); // key->type
-const diffs = new Map();      // key->type or -1
-
-function getBlock(x,y,z){
-  const k=keyOf(x,y,z);
-  if (diffs.has(k)) {
-    const v = diffs.get(k);
-    return v === -1 ? null : v;
-  }
-  return baseBlocks.get(k) ?? null;
-}
-function isSolidAt(x,y,z){
-  const t=getBlock(x,y,z);
-  return t != null && SOLID.has(t);
-}
-function isExposed(x,y,z){
-  const dirs = [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]];
-  for (const [dx,dy,dz] of dirs){
-    const nx=x+dx, ny=y+dy, nz=z+dz;
-    if (!inBounds(nx,ny,nz)) return true;
-    if (!isSolidAt(nx,ny,nz)) return true;
-  }
-  return false;
-}
-
-/* =========================================================
-  Instanced rendering (P2)
-========================================================= */
-const cubeGeo = new THREE.BoxGeometry(1,1,1);
-
-class TypeInstances {
-  constructor(type){
-    this.type = type;
-    this.mesh = new THREE.InstancedMesh(cubeGeo, matFor(type), 1);
-    this.mesh.count = 0;
-    this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    this.mesh.userData.type = type;
-    this.indexToKey = [];
-    this.keyToIndex = new Map();
-    this._m = new THREE.Matrix4();
-    scene.add(this.mesh);
-  }
-  ensureCapacity(minCap){
-    if (this.mesh.instanceMatrix.count >= minCap) return;
-    const newCap = Math.max(minCap, this.mesh.instanceMatrix.count + 512);
-    const newMesh = new THREE.InstancedMesh(cubeGeo, this.mesh.material, newCap);
-    newMesh.count = this.mesh.count;
-    newMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    newMesh.userData.type = this.type;
-    const tmp = new THREE.Matrix4();
-    for (let i=0;i<this.mesh.count;i++){ this.mesh.getMatrixAt(i,tmp); newMesh.setMatrixAt(i,tmp); }
-    scene.remove(this.mesh);
-    this.mesh = newMesh;
-    scene.add(this.mesh);
-  }
-  has(key){ return this.keyToIndex.has(key); }
-  add(key,x,y,z){
-    const idx = this.mesh.count;
-    this.ensureCapacity(idx+1);
-    this._m.makeTranslation(x+0.5,y+0.5,z+0.5);
-    this.mesh.setMatrixAt(idx,this._m);
-    this.indexToKey[idx]=key;
-    this.keyToIndex.set(key,idx);
-    this.mesh.count++;
-    this.mesh.instanceMatrix.needsUpdate = true;
-  }
-  remove(key){
-    const idx = this.keyToIndex.get(key);
-    if (idx == null) return;
-    const last = this.mesh.count - 1;
-    if (idx !== last){
-      const tmp = new THREE.Matrix4();
-      this.mesh.getMatrixAt(last,tmp);
-      this.mesh.setMatrixAt(idx,tmp);
-      const lastKey = this.indexToKey[last];
-      this.indexToKey[idx]=lastKey;
-      this.keyToIndex.set(lastKey,idx);
-    }
-    this.indexToKey.pop();
-    this.keyToIndex.delete(key);
-    this.mesh.count--;
-    this.mesh.instanceMatrix.needsUpdate = true;
-  }
-}
-
-const typeRenderers = new Map();
-for (const t of Object.values(BLOCK)) {
-  if (typeof t !== "number") continue;
-  typeRenderers.set(t, new TypeInstances(t));
-}
-
-function updateVisualAt(x,y,z){
-  if (!inBounds(x,y,z)) return;
-  const k = keyOf(x,y,z);
-  const t = getBlock(x,y,z);
-
-  // まず全タイプから消す（あってもなくてもOK）
-  for (const tr of typeRenderers.values()) if (tr.has(k)) tr.remove(k);
-
-  if (t == null) return;
-  if (!isExposed(x,y,z)) return;
-
-  typeRenderers.get(t).add(k,x,y,z);
-}
-function updateVisualNeighbors(x,y,z){
-  updateVisualAt(x,y,z);
-  updateVisualAt(x+1,y,z); updateVisualAt(x-1,y,z);
-  updateVisualAt(x,y+1,z); updateVisualAt(x,y-1,z);
-  updateVisualAt(x,y,z+1); updateVisualAt(x,y,z-1);
-}
-
-function clearAllInstances(){
-  for (const tr of typeRenderers.values()){
-    tr.mesh.count = 0;
-    tr.indexToKey.length = 0;
-    tr.keyToIndex.clear();
-    tr.mesh.instanceMatrix.needsUpdate = true;
-  }
-}
-function rebuildAllVisible(){
-  clearAllInstances();
-  for (let x=0;x<WORLD.size;x++){
-    for (let z=0;z<WORLD.size;z++){
-      for (let y=0;y<WORLD.height;y++){
-        const t = getBlock(x,y,z);
-        if (t == null) continue;
-        if (!isExposed(x,y,z)) continue;
-        typeRenderers.get(t).add(keyOf(x,y,z),x,y,z);
-      }
-    }
-  }
-}
-
-/* =========================================================
-  Terrain generation
-========================================================= */
-function fractalNoise(x,z){
-  let amp=1,freq=1,sum=0,norm=0;
-  for (let o=0;o<CONFIG.OCTAVES;o++){
-    sum += noise2D(x*CONFIG.NOISE_SCALE*freq, z*CONFIG.NOISE_SCALE*freq) * amp;
-    norm += amp;
-    amp *= CONFIG.PERSISTENCE;
-    freq *= CONFIG.LACUNARITY;
-  }
-  return sum/(norm||1);
-}
-function heightAt(x,z){
-  const n = fractalNoise(x,z);
-  const h = Math.floor(CONFIG.BASE_HEIGHT + n*CONFIG.HEIGHT_AMPLITUDE);
-  return Math.max(1, Math.min(WORLD.height-2, h));
-}
-function baseTypeAt(x,y,z){
-  const h = heightAt(x,z);
-  if (y>h) return null;
-  const dirtDepth = 3;
-  if (y===h){
-    if (h <= CONFIG.SAND_LEVEL && rng() < CONFIG.SAND_CHANCE) return BLOCK.SAND;
-    return BLOCK.GRASS;
-  }
-  if (y >= h - dirtDepth) return BLOCK.DIRT;
-  return BLOCK.STONE;
-}
-
-function generateBaseWorld(){
-  baseBlocks.clear();
-  for (let x=0;x<WORLD.size;x++){
-    for (let z=0;z<WORLD.size;z++){
-      const h = heightAt(x,z);
-      for (let y=0;y<=h;y++){
-        const t = baseTypeAt(x,y,z);
-        if (t != null) baseBlocks.set(keyOf(x,y,z), t);
-      }
-    }
-  }
-}
-
-function addTree(x,z){
-  const h = heightAt(x,z);
-  if (h <= CONFIG.SAND_LEVEL + 1) return;
-  if (getBlock(x,h,z) !== BLOCK.GRASS) return;
-  if (x < 2 || z < 2 || x > WORLD.size-3 || z > WORLD.size-3) return;
-  if (rng() >= CONFIG.TREE_DENSITY) return;
-
-  const trunkH = CONFIG.TREE_MIN_H + ((rng()*(CONFIG.TREE_MAX_H-CONFIG.TREE_MIN_H+1))|0);
-  for (let i=1;i<=trunkH;i++){
-    const y = h+i;
-    if (!inBounds(x,y,z)) break;
-    diffs.set(keyOf(x,y,z), BLOCK.LOG);
-  }
-  const leafBase = h+trunkH;
-  for (let dx=-2;dx<=2;dx++){
-    for (let dz=-2;dz<=2;dz++){
-      for (let dy=-1;dy<=1;dy++){
-        const dist = Math.abs(dx)+Math.abs(dz)+Math.abs(dy);
-        if (dist>5) continue;
-        const xx=x+dx, yy=leafBase+dy, zz=z+dz;
-        if (!inBounds(xx,yy,zz)) continue;
-        if (getBlock(xx,yy,zz)==null) diffs.set(keyOf(xx,yy,zz), BLOCK.LEAF);
-      }
-    }
-  }
-  if (inBounds(x,leafBase+2,z) && getBlock(x,leafBase+2,z)==null) diffs.set(keyOf(x,leafBase+2,z), BLOCK.LEAF);
-}
-
-function resetDiffsForNewWorld(){
-  diffs.clear();
-  for (let x=0;x<WORLD.size;x++){
-    for (let z=0;z<WORLD.size;z++) addTree(x,z);
-  }
-}
-
-function applySavedDiffsIfAny(){
-  if (hasExplicitWorld) return;
-  if (saveData?.seed === (seedValue>>>0) && saveData?.diffs && typeof saveData.diffs === "object"){
-    for (const [k,v] of Object.entries(saveData.diffs)){
-      if (typeof v === "number") diffs.set(k,v);
-    }
-  }
-}
-
-generateBaseWorld();
-resetDiffsForNewWorld();
-applySavedDiffsIfAny();
-rebuildAllVisible();
-
-/* =========================================================
-  Hotbar
-========================================================= */
-const hotbar = document.getElementById("hotbar");
-const slotTypes = [BLOCK.GRASS,BLOCK.DIRT,BLOCK.STONE,BLOCK.SAND,BLOCK.LOG,BLOCK.LEAF];
-let selectedSlot = 0;
-
-function buildHotbar(){
-  hotbar.innerHTML = "";
-  for (let i=0;i<6;i++){
-    const type = slotTypes[i];
-    const el = document.createElement("div");
-    el.className = "slot" + (i===selectedSlot ? " selected" : "");
-    const num = document.createElement("div");
-    num.className = "num";
-    num.textContent = String(i+1);
-    el.appendChild(num);
-
-    const icon = document.createElement("canvas");
-    icon.width = icon.height = 32;
-    const g = icon.getContext("2d");
-    g.imageSmoothingEnabled = false;
-    g.drawImage(TEX[type].canvas,0,0);
-    el.appendChild(icon);
-
-    el.addEventListener("click", () => selectSlot(i));
-    hotbar.appendChild(el);
-  }
-}
-function selectSlot(i){
-  selectedSlot = (i+6)%6;
-  [...hotbar.querySelectorAll(".slot")].forEach((s,idx)=>s.classList.toggle("selected", idx===selectedSlot));
-}
-buildHotbar();
-selectSlot(0);
-
-/* =========================================================
-  Aim + Highlight + Place/Break
-========================================================= */
-const raycaster = new THREE.Raycaster();
-raycaster.far = CONFIG.REACH;
-
-const highlight = new THREE.LineSegments(
-  new THREE.EdgesGeometry(new THREE.BoxGeometry(1.01,1.01,1.01)),
-  new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9 })
-);
-highlight.visible = false;
-scene.add(highlight);
-
-let aimed = null; // {x,y,z, faceNormal}
-
-function updateAimed(){
-  raycaster.setFromCamera(new THREE.Vector2(0,0), camera);
-  const meshes = [...typeRenderers.values()].map(tr=>tr.mesh);
-  const hits = raycaster.intersectObjects(meshes,false);
-  if (!hits.length){ aimed=null; highlight.visible=false; return; }
-
-  const hit = hits[0];
-  const type = hit.object.userData.type;
-  const tr = typeRenderers.get(type);
-  const key = tr.indexToKey[hit.instanceId];
-  if (!key){ aimed=null; highlight.visible=false; return; }
-
-  const {x,y,z} = parseKey(key);
-  const fn = hit.face?.normal?.clone() ?? new THREE.Vector3(0,1,0);
-  aimed = {x,y,z, faceNormal: fn};
-
-  highlight.position.set(x+0.5,y+0.5,z+0.5);
-  highlight.visible = true;
-}
-
-let saveTimer = null;
-function scheduleSave(){
-  if (hasExplicitWorld) return; // URL指定ワールドは保存しない（混乱防止）
-  if (saveTimer) return;
-  saveTimer = setTimeout(()=>{
-    saveTimer = null;
-    const out = {
-      seed: seedValue>>>0,
-      size: WORLD.size,
-      height: WORLD.height,
-      diffs: Object.fromEntries(diffs.entries()),
-      ts: Date.now(),
-    };
-    writeSave(out);
-    saveData = out;
-  }, 400);
-}
-
-function setDiffBlock(x,y,z,typeOrNull){
-  if (!inBounds(x,y,z)) return false;
-  const k = keyOf(x,y,z);
-  if (typeOrNull == null) diffs.set(k, -1);
-  else diffs.set(k, typeOrNull);
-
-  updateVisualNeighbors(x,y,z);
-  scheduleSave();
-  return true;
-}
-
-let mode = "BREAK";
-const modeText = document.getElementById("modeText");
-function setMode(m){
-  mode = m;
-  if (modeText) modeText.textContent = `MODE:${mode}`;
-  const btn = document.getElementById("btnMode");
-  if (btn) btn.textContent = `MODE: ${mode}`;
-}
-setMode("BREAK");
-
-function doAction(actionMode){
-  if (!aimed) return;
-  const m = actionMode ?? mode;
-
-  if (m === "BREAK"){
-    setDiffBlock(aimed.x, aimed.y, aimed.z, null);
-    highlight.material.opacity = 0.2;
-    setTimeout(()=>highlight.material.opacity=0.9, 60);
-  } else {
-    const nx = aimed.x + Math.round(aimed.faceNormal.x);
-    const ny = aimed.y + Math.round(aimed.faceNormal.y);
-    const nz = aimed.z + Math.round(aimed.faceNormal.z);
-    if (!inBounds(nx,ny,nz)) return;
-    if (getBlock(nx,ny,nz) != null) return;
-    setDiffBlock(nx,ny,nz, slotTypes[selectedSlot]);
-  }
-}
-
-/* Desktop mouse */
-if (!isTouchDevice){
-  window.addEventListener("mousedown", (e)=>{
-    if (!controls.isLocked) return;
-    if (e.button===0){ setMode("BREAK"); doAction("BREAK"); }
-    if (e.button===2){ setMode("PLACE"); doAction("PLACE"); }
-  });
-  window.addEventListener("wheel", (e)=>{
-    if (!controls.isLocked) return;
-    selectSlot(selectedSlot + (e.deltaY>0 ? 1 : -1));
-  }, { passive:true });
-
-  window.addEventListener("keydown", (e)=>{
-    if (/Digit[1-6]/.test(e.code)) selectSlot(parseInt(e.code.slice(5),10)-1);
-  });
-}
-
-/* =========================================================
-  Player + Physics (F3)
-========================================================= */
+// ============================================================
+// Player Physics
+// ============================================================
 const player = {
-  pos: new THREE.Vector3(0,0,0),
-  vel: new THREE.Vector3(0,0,0),
+  position: new THREE.Vector3(),
+  velocity: new THREE.Vector3(),
   onGround: false,
-  wantJump: false,
+  wantJump: false
 };
 
-const EPS = 1e-4;
+function findSpawnPoint() {
+  const cx = Math.floor(CONFIG.WORLD_SIZE / 2);
+  const cz = Math.floor(CONFIG.WORLD_SIZE / 2);
 
-function findTopSolidY(x,z){
-  for (let y=WORLD.height-1;y>=0;y--) if (isSolidAt(x,y,z)) return y;
-  return null;
-}
-function findSpawn(){
-  const cx = Math.floor(WORLD.size/2);
-  const cz = Math.floor(WORLD.size/2);
-  let best = null;
+  for (let r = 0; r <= 10; r++) {
+    for (let dx = -r; dx <= r; dx++) {
+      for (let dz = -r; dz <= r; dz++) {
+        const x = cx + dx;
+        const z = cz + dz;
+        if (!inBounds(x, 0, z)) continue;
 
-  for (let r=0;r<=10;r++){
-    for (let dx=-r;dx<=r;dx++){
-      for (let dz=-r;dz<=r;dz++){
-        const x=cx+dx, z=cz+dz;
-        if (x<0||x>=WORLD.size||z<0||z>=WORLD.size) continue;
-        const y = findTopSolidY(x,z);
-        if (y==null) continue;
-        if (getBlock(x,y+1,z)==null && getBlock(x,y+2,z)==null) { best={x,y,z}; break; }
+        for (let y = CONFIG.WORLD_HEIGHT - 2; y >= 0; y--) {
+          if (isSolid(x, y, z) && !isSolid(x, y + 1, z) && !isSolid(x, y + 2, z)) {
+            return new THREE.Vector3(x + 0.5, y + 1.01, z + 0.5);
+          }
+        }
       }
-      if (best) break;
     }
-    if (best) break;
   }
 
-  if (!best) player.pos.set(cx+0.5, WORLD.height-2, cz+0.5);
-  else player.pos.set(best.x+0.5, best.y+1+0.02, best.z+0.5);
-  player.vel.set(0,0,0);
+  return new THREE.Vector3(cx + 0.5, CONFIG.WORLD_HEIGHT, cz + 0.5);
 }
-findSpawn();
-controls.getObject().position.copy(player.pos);
 
-function collisionBounds(minX,minY,minZ,maxX,maxY,maxZ){
-  const x0=Math.floor(minX), x1=Math.floor(maxX-EPS);
-  const y0=Math.floor(minY), y1=Math.floor(maxY-EPS);
-  const z0=Math.floor(minZ), z1=Math.floor(maxZ-EPS);
+function respawn() {
+  const spawn = findSpawnPoint();
+  player.position.copy(spawn);
+  player.velocity.set(0, 0, 0);
+  controls.getObject().position.copy(player.position);
+}
 
-  let hit=false;
-  let minBX=Infinity,maxBX=-Infinity,minBY=Infinity,maxBY=-Infinity,minBZ=Infinity,maxBZ=-Infinity;
+function checkCollision(x, y, z, width, height) {
+  const minX = Math.floor(x - width);
+  const maxX = Math.floor(x + width);
+  const minY = Math.floor(y);
+  const maxY = Math.floor(y + height);
+  const minZ = Math.floor(z - width);
+  const maxZ = Math.floor(z + width);
 
-  for (let x=x0;x<=x1;x++) for (let y=y0;y<=y1;y++) for (let z=z0;z<=z1;z++){
-    if (!inBounds(x,y,z)) continue;
-    if (!isSolidAt(x,y,z)) continue;
-    hit=true;
-    if (x<minBX) minBX=x; if (x>maxBX) maxBX=x;
-    if (y<minBY) minBY=y; if (y>maxBY) maxBY=y;
-    if (z<minBZ) minBZ=z; if (z>maxBZ) maxBZ=z;
+  for (let bx = minX; bx <= maxX; bx++) {
+    for (let by = minY; by <= maxY; by++) {
+      for (let bz = minZ; bz <= maxZ; bz++) {
+        if (isSolid(bx, by, bz)) {
+          return { hit: true, x: bx, y: by, z: bz };
+        }
+      }
+    }
   }
-  return hit ? {hit,minBX,maxBX,minBY,maxBY,minBZ,maxBZ} : {hit:false};
+  return { hit: false };
 }
 
-function moveWithCollisions(dt, wishDir, wishSpeed){
-  const accel = player.onGround ? 45 : 45 * CONFIG.AIR_CONTROL;
-  const targetVx = wishDir.x * wishSpeed;
-  const targetVz = wishDir.z * wishSpeed;
+function updatePhysics(dt) {
+  const r = CONFIG.PLAYER_RADIUS;
+  const h = CONFIG.PLAYER_HEIGHT;
 
-  player.vel.x += (targetVx - player.vel.x) * Math.min(1, accel*dt);
-  player.vel.z += (targetVz - player.vel.z) * Math.min(1, accel*dt);
+  // Apply gravity
+  player.velocity.y -= CONFIG.GRAVITY * dt;
 
-  player.vel.y -= CONFIG.GRAVITY * dt;
-
-  if (player.wantJump && player.onGround){
-    player.vel.y = CONFIG.JUMP_VELOCITY;
+  // Jump
+  if (player.wantJump && player.onGround) {
+    player.velocity.y = CONFIG.JUMP_VELOCITY;
     player.onGround = false;
   }
   player.wantJump = false;
 
-  const r = CONFIG.PLAYER_RADIUS;
-  const hh = CONFIG.PLAYER_HEIGHT;
-
-  const maxStep = 1/120;
-  const steps = Math.max(1, Math.ceil(dt/maxStep));
-  const sdt = dt/steps;
-
-  for (let i=0;i<steps;i++){
-    // X
-    let dx = player.vel.x * sdt;
-    if (dx){
-      player.pos.x += dx;
-      const b = collisionBounds(player.pos.x-r, player.pos.y, player.pos.z-r, player.pos.x+r, player.pos.y+hh, player.pos.z+r);
-      if (b.hit){
-        player.pos.x = dx>0 ? (b.minBX - r - EPS) : (b.maxBX + 1 + r + EPS);
-        player.vel.x = 0;
-      }
-    }
-    // Z
-    let dz = player.vel.z * sdt;
-    if (dz){
-      player.pos.z += dz;
-      const b = collisionBounds(player.pos.x-r, player.pos.y, player.pos.z-r, player.pos.x+r, player.pos.y+hh, player.pos.z+r);
-      if (b.hit){
-        player.pos.z = dz>0 ? (b.minBZ - r - EPS) : (b.maxBZ + 1 + r + EPS);
-        player.vel.z = 0;
-      }
-    }
-    // Y
-    player.onGround = false;
-    let dy = player.vel.y * sdt;
-    if (dy){
-      player.pos.y += dy;
-      const b = collisionBounds(player.pos.x-r, player.pos.y, player.pos.z-r, player.pos.x+r, player.pos.y+hh, player.pos.z+r);
-      if (b.hit){
-        if (dy < 0){
-          player.pos.y = b.maxBY + 1 + EPS;
-          player.onGround = true;
-        } else {
-          player.pos.y = b.minBY - hh - EPS;
-        }
-        player.vel.y = 0;
-      }
-    }
+  // Move X
+  player.position.x += player.velocity.x * dt;
+  if (checkCollision(player.position.x, player.position.y, player.position.z, r, h).hit) {
+    player.position.x -= player.velocity.x * dt;
+    player.velocity.x = 0;
   }
 
-  if (player.pos.y < -30) findSpawn();
+  // Move Z
+  player.position.z += player.velocity.z * dt;
+  if (checkCollision(player.position.x, player.position.y, player.position.z, r, h).hit) {
+    player.position.z -= player.velocity.z * dt;
+    player.velocity.z = 0;
+  }
+
+  // Move Y
+  player.onGround = false;
+  player.position.y += player.velocity.y * dt;
+  const collision = checkCollision(player.position.x, player.position.y, player.position.z, r, h);
+  if (collision.hit) {
+    if (player.velocity.y < 0) {
+      player.position.y = collision.y + 1 + 0.001;
+      player.onGround = true;
+    } else {
+      player.position.y = collision.y - h - 0.001;
+    }
+    player.velocity.y = 0;
+  }
+
+  // Fall respawn
+  if (player.position.y < -20) {
+    respawn();
+  }
+
+  // Update camera
+  controls.getObject().position.copy(player.position);
 }
 
-/* =========================================================
-  Input: keyboard + mobile joystick/look + tap action
-========================================================= */
-const keys = { w:false,a:false,s:false,d:false,space:false,shift:false };
-window.addEventListener("keydown",(e)=>{
-  if (e.code==="KeyW") keys.w=true;
-  if (e.code==="KeyA") keys.a=true;
-  if (e.code==="KeyS") keys.s=true;
-  if (e.code==="KeyD") keys.d=true;
-  if (e.code==="Space") keys.space=true;
-  if (e.code==="ShiftLeft"||e.code==="ShiftRight") keys.shift=true;
-  if (e.code==="KeyR") findSpawn();
-});
-window.addEventListener("keyup",(e)=>{
-  if (e.code==="KeyW") keys.w=false;
-  if (e.code==="KeyA") keys.a=false;
-  if (e.code==="KeyS") keys.s=false;
-  if (e.code==="KeyD") keys.d=false;
-  if (e.code==="Space") keys.space=false;
-  if (e.code==="ShiftLeft"||e.code==="ShiftRight") keys.shift=false;
+// ============================================================
+// Input Handling
+// ============================================================
+const keys = { w: false, a: false, s: false, d: false, space: false, shift: false };
+
+document.addEventListener('keydown', (e) => {
+  switch (e.code) {
+    case 'KeyW': keys.w = true; break;
+    case 'KeyA': keys.a = true; break;
+    case 'KeyS': keys.s = true; break;
+    case 'KeyD': keys.d = true; break;
+    case 'Space': keys.space = true; e.preventDefault(); break;
+    case 'ShiftLeft': case 'ShiftRight': keys.shift = true; break;
+    case 'KeyR': respawn(); break;
+  }
 });
 
-let mobileMove = { x:0, y:0 };
-let mobileLook = { dx:0, dy:0 };
+document.addEventListener('keyup', (e) => {
+  switch (e.code) {
+    case 'KeyW': keys.w = false; break;
+    case 'KeyA': keys.a = false; break;
+    case 'KeyS': keys.s = false; break;
+    case 'KeyD': keys.d = false; break;
+    case 'Space': keys.space = false; break;
+    case 'ShiftLeft': case 'ShiftRight': keys.shift = false; break;
+  }
+});
 
-if (isTouchDevice){
-  document.getElementById("btnMode").addEventListener("click", ()=>{
-    setMode(mode==="BREAK" ? "PLACE" : "BREAK");
+// Mobile controls
+let mobileInput = { x: 0, z: 0 };
+let mobileLookDelta = { x: 0, y: 0 };
+
+if (isMobile) {
+  const joystickBase = document.getElementById('joystickBase');
+  const joystickStick = document.getElementById('joystickStick');
+  let joystickActive = false;
+  let joystickCenter = { x: 0, y: 0 };
+
+  joystickBase.addEventListener('pointerdown', (e) => {
+    joystickActive = true;
+    joystickBase.setPointerCapture(e.pointerId);
+    const rect = joystickBase.getBoundingClientRect();
+    joystickCenter = {
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2
+    };
   });
-  document.getElementById("btnJump").addEventListener("pointerdown", ()=>{
+
+  joystickBase.addEventListener('pointermove', (e) => {
+    if (!joystickActive) return;
+    const dx = e.clientX - joystickCenter.x;
+    const dy = e.clientY - joystickCenter.y;
+    const maxDist = 40;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const scale = dist > maxDist ? maxDist / dist : 1;
+    const sx = dx * scale;
+    const sy = dy * scale;
+
+    joystickStick.style.transform = `translate(${sx}px, ${sy}px)`;
+    mobileInput.x = sx / maxDist;
+    mobileInput.z = sy / maxDist;
+  });
+
+  joystickBase.addEventListener('pointerup', () => {
+    joystickActive = false;
+    joystickStick.style.transform = 'translate(0, 0)';
+    mobileInput.x = 0;
+    mobileInput.z = 0;
+  });
+
+  // Look controls
+  let lookActive = false;
+  let lastPointer = { x: 0, y: 0 };
+
+  document.addEventListener('pointerdown', (e) => {
+    if (e.target.closest('#joystickArea, #mobileButtons, #hotbar, #info-panel')) return;
+    lookActive = true;
+    lastPointer = { x: e.clientX, y: e.clientY };
+  });
+
+  document.addEventListener('pointermove', (e) => {
+    if (!lookActive) return;
+    mobileLookDelta.x += e.clientX - lastPointer.x;
+    mobileLookDelta.y += e.clientY - lastPointer.y;
+    lastPointer = { x: e.clientX, y: e.clientY };
+  });
+
+  document.addEventListener('pointerup', () => {
+    lookActive = false;
+  });
+
+  // Tap to action
+  let tapStart = null;
+  document.addEventListener('pointerdown', (e) => {
+    if (e.target.closest('#joystickArea, #mobileButtons, #hotbar, #info-panel')) return;
+    tapStart = { x: e.clientX, y: e.clientY, time: Date.now() };
+  });
+
+  document.addEventListener('pointerup', (e) => {
+    if (!tapStart) return;
+    if (e.target.closest('#joystickArea, #mobileButtons, #hotbar, #info-panel')) {
+      tapStart = null;
+      return;
+    }
+    const dx = e.clientX - tapStart.x;
+    const dy = e.clientY - tapStart.y;
+    const dt = Date.now() - tapStart.time;
+    tapStart = null;
+
+    if (dt < 200 && dx * dx + dy * dy < 100) {
+      doAction();
+    }
+  });
+
+  // Mode button
+  modeBtn.addEventListener('click', () => {
+    setMode(currentMode === 'BREAK' ? 'PLACE' : 'BREAK');
+  });
+
+  // Jump button
+  document.getElementById('jumpBtn').addEventListener('pointerdown', () => {
     player.wantJump = true;
   });
-
-  // joystick
-  const joy = document.getElementById("joystick");
-  const stick = document.getElementById("stick");
-  let joyActive=false;
-  let joyCenter={x:0,y:0};
-
-  function setStick(dx,dy){
-    const max=38;
-    const len=Math.hypot(dx,dy);
-    const k=len>max ? (max/len) : 1;
-    const sx=dx*k, sy=dy*k;
-    stick.style.transform = `translate(calc(-50% + ${sx}px), calc(-50% + ${sy}px))`;
-    mobileMove.x = sx/max;
-    mobileMove.y = sy/max;
-  }
-
-  joy.addEventListener("pointerdown",(e)=>{
-    joyActive=true;
-    joy.setPointerCapture(e.pointerId);
-    const r=joy.getBoundingClientRect();
-    joyCenter={x:r.left+r.width/2, y:r.top+r.height/2};
-    setStick(e.clientX-joyCenter.x, e.clientY-joyCenter.y);
-  });
-  joy.addEventListener("pointermove",(e)=>{
-    if (!joyActive) return;
-    setStick(e.clientX-joyCenter.x, e.clientY-joyCenter.y);
-  });
-  joy.addEventListener("pointerup",()=>{
-    joyActive=false;
-    stick.style.transform="translate(-50%, -50%)";
-    mobileMove.x=0; mobileMove.y=0;
-  });
-
-  // look drag (right side)
-  let lookActive=false;
-  let last={x:0,y:0};
-  window.addEventListener("pointerdown",(e)=>{
-    const t=e.target;
-    if (t.closest?.("#joystick") || t.closest?.("#mobileButtons") || t.closest?.("#hotbar") || t.closest?.("#help")) return;
-    lookActive=true;
-    last={x:e.clientX,y:e.clientY};
-  });
-  window.addEventListener("pointermove",(e)=>{
-    if (!lookActive) return;
-    const dx=e.clientX-last.x, dy=e.clientY-last.y;
-    last={x:e.clientX,y:e.clientY};
-    mobileLook.dx += dx;
-    mobileLook.dy += dy;
-  });
-  window.addEventListener("pointerup",()=>{ lookActive=false; });
-
-  // tap action (short tap only)
-  let tap=null;
-  window.addEventListener("pointerdown",(e)=>{
-    const t=e.target;
-    if (t.closest?.("#joystick") || t.closest?.("#mobileButtons") || t.closest?.("#hotbar") || t.closest?.("#help")) return;
-    tap={x:e.clientX,y:e.clientY,time:performance.now()};
-  });
-  window.addEventListener("pointerup",(e)=>{
-    if (!tap) return;
-    const t=e.target;
-    if (t.closest?.("#joystick") || t.closest?.("#mobileButtons") || t.closest?.("#hotbar") || t.closest?.("#help")) { tap=null; return; }
-    const dt=performance.now()-tap.time;
-    const dx=e.clientX-tap.x, dy=e.clientY-tap.y;
-    tap=null;
-    if (dt<280 && (dx*dx+dy*dy)<(10*10)) doAction();
-  });
 }
 
-/* =========================================================
-  Per-frame helpers
-========================================================= */
-function getWishDir(){
+function getMovementDirection() {
   const forward = new THREE.Vector3();
-  controls.getDirection(forward);
-  forward.y = 0; forward.normalize();
-  const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0,1,0)).normalize();
+  camera.getWorldDirection(forward);
+  forward.y = 0;
+  forward.normalize();
 
-  let mx=0, mz=0;
-  if (isTouchDevice){
-    mz += (-mobileMove.y);
-    mx += ( mobileMove.x);
+  const right = new THREE.Vector3();
+  right.crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
+
+  const direction = new THREE.Vector3();
+
+  if (isMobile) {
+    direction.addScaledVector(forward, -mobileInput.z);
+    direction.addScaledVector(right, mobileInput.x);
   } else {
-    if (keys.w) mz += 1;
-    if (keys.s) mz -= 1;
-    if (keys.d) mx += 1;
-    if (keys.a) mx -= 1;
+    if (keys.w) direction.add(forward);
+    if (keys.s) direction.sub(forward);
+    if (keys.d) direction.add(right);
+    if (keys.a) direction.sub(right);
   }
 
-  const dir = new THREE.Vector3();
-  dir.addScaledVector(forward, mz);
-  dir.addScaledVector(right, mx);
-  if (dir.lengthSq()>0) dir.normalize();
-  return dir;
+  if (direction.lengthSq() > 0) direction.normalize();
+  return direction;
 }
 
-function applyMobileLook(){
-  const sens = 0.0024;
-  const yaw = -mobileLook.dx * sens;
-  const pitch = -mobileLook.dy * sens;
-  mobileLook.dx = 0; mobileLook.dy = 0;
+function applyMobileLook() {
+  if (!isMobile) return;
 
+  const sensitivity = 0.003;
   const obj = controls.getObject();
-  obj.rotation.y += yaw;
-  camera.rotation.x += pitch;
-  camera.rotation.x = THREE.MathUtils.clamp(camera.rotation.x, -Math.PI/2+0.01, Math.PI/2-0.01);
+
+  obj.rotation.y -= mobileLookDelta.x * sensitivity;
+  camera.rotation.x -= mobileLookDelta.y * sensitivity;
+  camera.rotation.x = clamp(camera.rotation.x, -Math.PI / 2 + 0.1, Math.PI / 2 - 0.1);
+
+  mobileLookDelta.x = 0;
+  mobileLookDelta.y = 0;
 }
 
-/* =========================================================
-  Loop
-========================================================= */
+// ============================================================
+// Game Loop
+// ============================================================
 const clock = new THREE.Clock();
-renderer.setAnimationLoop(()=>{
+
+function gameLoop() {
+  requestAnimationFrame(gameLoop);
+
   const dt = Math.min(clock.getDelta(), 0.05);
 
-  if (isTouchDevice) applyMobileLook();
+  // Mobile look
+  applyMobileLook();
 
-  if (!isTouchDevice && keys.space) player.wantJump = true;
+  // Movement
+  if (!isMobile && keys.space) player.wantJump = true;
 
-  const wishDir = getWishDir();
-  const sprint = (!isTouchDevice && keys.shift);
-  const wishSpeed = CONFIG.MOVE_SPEED * (sprint ? CONFIG.SPRINT_MULT : 1.0);
+  const moveDir = getMovementDirection();
+  const speed = CONFIG.MOVE_SPEED * (keys.shift ? 1.5 : 1);
+  const accel = player.onGround ? 30 : 15;
 
-  moveWithCollisions(dt, wishDir, wishSpeed);
-  controls.getObject().position.copy(player.pos);
+  player.velocity.x += (moveDir.x * speed - player.velocity.x) * Math.min(1, accel * dt);
+  player.velocity.z += (moveDir.z * speed - player.velocity.z) * Math.min(1, accel * dt);
 
-  updateAimed();
+  // Physics
+  updatePhysics(dt);
+
+  // Raycasting
+  updateTargetBlock();
+
+  // Render
   renderer.render(scene, camera);
+}
+
+// ============================================================
+// Window Resize
+// ============================================================
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-addEventListener("resize", ()=>{
-  camera.aspect = innerWidth/innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight);
-});
+// ============================================================
+// Initialization
+// ============================================================
+console.log('Generating terrain...');
+generateTerrain();
+console.log('Generating trees...');
+generateTrees();
+console.log('Loading modifications...');
+loadModifications();
+console.log('Building meshes...');
+buildAllMeshes();
+console.log('Finding spawn...');
+respawn();
+console.log('Starting game loop...');
+gameLoop();
+
+console.log('Voxel Sandbox initialized!');
+console.log(`World: ${CONFIG.WORLD_SIZE}x${CONFIG.WORLD_SIZE}x${CONFIG.WORLD_HEIGHT}`);
+console.log(`Seed: ${worldSeed}`);
