@@ -1,0 +1,169 @@
+html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #000; }
+body { touch-action: none; } /* モバイルでスクロール/ズーム暴発を抑える */
+canvas { display: block; }
+
+#hud {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans JP", sans-serif;
+  color: white;
+}
+
+#help {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  max-width: 920px;
+  padding: 10px 12px;
+  background: rgba(0,0,0,0.45);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 10px;
+  line-height: 1.4;
+  font-size: 13px;
+  pointer-events: auto;
+  backdrop-filter: blur(6px);
+}
+#help .small { font-size: 12px; opacity: .9; }
+
+#crosshair {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  transform: translate(-50%, -50%);
+  opacity: 0.95;
+}
+#crosshair:before, #crosshair:after {
+  content: "";
+  position: absolute;
+  background: rgba(255,255,255,0.95);
+  border-radius: 1px;
+}
+#crosshair:before { left: 50%; top: 0; width: 2px; height: 14px; transform: translateX(-50%); }
+#crosshair:after  { left: 0; top: 50%; width: 14px; height: 2px; transform: translateY(-50%); }
+
+#lockOverlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(rgba(0,0,0,0.25), rgba(0,0,0,0.75));
+  pointer-events: auto;
+}
+#lockOverlay.hidden { display: none; }
+
+#lockButton {
+  pointer-events: auto;
+  cursor: pointer;
+  user-select: none;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.18);
+  color: #fff;
+  font-size: 14px;
+}
+#lockButton:hover { background: rgba(255,255,255,0.12); }
+
+/* Hotbar */
+#hotbar {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+  background: rgba(0,0,0,0.35);
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 12px;
+  pointer-events: auto;
+}
+.slot {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.18);
+  background: rgba(255,255,255,0.06);
+  display: grid;
+  place-items: center;
+  position: relative;
+  user-select: none;
+}
+.slot.selected {
+  outline: 2px solid rgba(255,255,255,0.75);
+  background: rgba(255,255,255,0.12);
+}
+.slot .num {
+  position: absolute;
+  left: 6px;
+  top: 4px;
+  font-size: 11px;
+  opacity: 0.9;
+}
+.slot canvas {
+  width: 26px;
+  height: 26px;
+  image-rendering: pixelated;
+}
+
+/* Mobile controls */
+#mobileControls {
+  position: absolute;
+  inset: 0;
+  display: none;         /* JSでモバイル判定時に表示 */
+  pointer-events: none;
+}
+
+#joystick {
+  position: absolute;
+  left: 14px;
+  bottom: 92px;
+  width: 120px;
+  height: 120px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.14);
+  pointer-events: auto;
+  touch-action: none;
+}
+#stick {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 54px;
+  height: 54px;
+  transform: translate(-50%, -50%);
+  border-radius: 999px;
+  background: rgba(255,255,255,0.12);
+  border: 1px solid rgba(255,255,255,0.18);
+}
+
+#mobileButtons {
+  position: absolute;
+  right: 14px;
+  bottom: 92px;
+  display: grid;
+  gap: 10px;
+  pointer-events: auto;
+}
+
+#mobileButtons button {
+  width: 140px;
+  height: 44px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.18);
+  background: rgba(0,0,0,0.35);
+  color: #fff;
+  font-size: 14px;
+  backdrop-filter: blur(6px);
+}
+
+@media (max-width: 700px) {
+  #help { font-size: 12px; }
+  #hotbar { bottom: 14px; }
+  .slot { width: 52px; height: 52px; }
+}
