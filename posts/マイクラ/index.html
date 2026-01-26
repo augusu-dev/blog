@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VoxelCraft - マインクラフト風ゲーム</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            background: #87CEEB;
+        }
+
+        #game-container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+            cursor: pointer;
+        }
+
+        #canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* クロスヘア */
+        #crosshair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 20px;
+            height: 20px;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        #crosshair::before,
+        #crosshair::after {
+            content: '';
+            position: absolute;
+            background: rgba(255, 255, 255, 0.8);
+            box-shadow: 0 0 2px rgba(0, 0, 0, 0.8);
+        }
+
+        #crosshair::before {
+            width: 2px;
+            height: 20px;
+            left: 9px;
+            top: 0;
+        }
+
+        #crosshair::after {
+            width: 20px;
+            height: 2px;
+            left: 0;
+            top: 9px;
+        }
+
+        /* ホットバー */
+        #hotbar {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 4px;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 4px;
+            border-radius: 4px;
+            z-index: 10;
+        }
+
+        .hotbar-slot {
+            width: 50px;
+            height: 50px;
+            background: rgba(139, 139, 139, 0.8);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            color: white;
+            text-shadow: 1px 1px 2px black;
+            position: relative;
+            cursor: pointer;
+            transition: all 0.1s;
+        }
+
+        .hotbar-slot:hover {
+            background: rgba(169, 169, 169, 0.9);
+        }
+
+        .hotbar-slot.active {
+            border-color: rgba(255, 255, 255, 0.9);
+            background: rgba(169, 169, 169, 0.9);
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+        }
+
+        .hotbar-slot canvas {
+            width: 40px;
+            height: 40px;
+            image-rendering: pixelated;
+        }
+
+        /* デバッグ情報 */
+        #debug-info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            border-radius: 4px;
+            z-index: 10;
+            line-height: 1.5;
+            pointer-events: none;
+        }
+
+        /* スタート画面 */
+        #start-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            animation: fadeIn 0.5s;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        #start-screen h1 {
+            font-size: 4em;
+            color: white;
+            text-shadow: 4px 4px 8px rgba(0, 0, 0, 0.5);
+            margin-bottom: 20px;
+            font-weight: bold;
+        }
+
+        #start-screen p {
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 1.2em;
+            margin-bottom: 30px;
+            text-align: center;
+            max-width: 600px;
+            padding: 0 20px;
+        }
+
+        #start-button {
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid white;
+            color: white;
+            padding: 15px 40px;
+            font-size: 1.5em;
+            cursor: pointer;
+            border-radius: 8px;
+            transition: all 0.3s;
+            backdrop-filter: blur(10px);
+            font-weight: bold;
+        }
+
+        #start-button:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.05);
+        }
+
+        #controls {
+            margin-top: 30px;
+            color: rgba(255, 255, 255, 0.8);
+            text-align: center;
+            font-size: 0.9em;
+            line-height: 1.8;
+        }
+
+        #controls div {
+            margin: 5px 0;
+        }
+
+        /* ローディング画面 */
+        #loading-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 99;
+        }
+
+        #loading-screen.show {
+            display: flex;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid rgba(255, 255, 255, 0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        #loading-text {
+            color: white;
+            margin-top: 20px;
+            font-size: 1.2em;
+        }
+
+        /* レスポンシブ */
+        @media (max-width: 768px) {
+            #start-screen h1 {
+                font-size: 2.5em;
+            }
+
+            #hotbar {
+                bottom: 10px;
+                gap: 2px;
+                padding: 2px;
+            }
+
+            .hotbar-slot {
+                width: 40px;
+                height: 40px;
+            }
+
+            .hotbar-slot canvas {
+                width: 32px;
+                height: 32px;
+            }
+
+            #debug-info {
+                font-size: 10px;
+                padding: 5px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="canvas"></canvas>
+        
+        <!-- スタート画面 -->
+        <div id="start-screen">
+            <h1>🎮 VoxelCraft</h1>
+            <p>マインクラフト風ブロック建築ゲーム<br>広大な世界を探索し、自由に建築しよう！</p>
+            <button id="start-button">ゲームを始める</button>
+            <div id="controls">
+                <div><strong>操作方法:</strong></div>
+                <div>🎮 WASD: 移動 | スペース: ジャンプ | Shift: 走る</div>
+                <div>🖱️ マウス: 視点変更 | 左クリック: ブロック破壊</div>
+                <div>🖱️ 右クリック: ブロック設置 | 1-9: ブロック選択</div>
+                <div>📋 F3: デバッグ情報の表示/非表示 | ESC: ポーズ</div>
+            </div>
+        </div>
+
+        <!-- ローディング画面 -->
+        <div id="loading-screen">
+            <div class="spinner"></div>
+            <div id="loading-text">地形を生成中...</div>
+        </div>
+
+        <!-- クロスヘア -->
+        <div id="crosshair"></div>
+
+        <!-- ホットバー -->
+        <div id="hotbar"></div>
+
+        <!-- デバッグ情報 -->
+        <div id="debug-info" style="display: none;">
+            <div>FPS: <span id="fps">0</span></div>
+            <div>Position: <span id="position">0, 0, 0</span></div>
+            <div>Chunks: <span id="chunks">0</span></div>
+            <div>Blocks: <span id="blocks">0</span></div>
+        </div>
+    </div>
+
+    <!-- Three.js -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+    
+    <!-- ゲームスクリプト -->
+    <script src="./game.js"></script>
+</body>
+</html>
