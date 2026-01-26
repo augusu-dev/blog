@@ -602,13 +602,52 @@ const player = {
   sprint: false,
 };
 
-function findSpawn() {
-  const cx = Math.floor(WORLD.size/2);
-  const cz = Math.floor(WORLD.size/2);
-  const h = heightAt(cx, cz);
-  player.pos.set(cx+0.5, h + 6.0, cz+0.5);
-  player.vel.set(0,0,0);
+function findTopSolidY(x, z) {
+  // 上から見て最初に見つかった solid のYを返す。なければ null。
+  for (let y = WORLD.height - 1; y >= 0; y--) {
+    if (isSolidAt(x, y, z)) return y;
+  }
+  return null;
 }
+
+function findSpawn() {
+  // 中央から近い順に、ちゃんと地面がある地点を探す
+  const cx = Math.floor(WORLD.size / 2);
+  const cz = Math.floor(WORLD.size / 2);
+
+  let best = null;
+
+  for (let r = 0; r <= 8; r++) {
+    for (let dx = -r; dx <= r; dx++) {
+      for (let dz = -r; dz <= r; dz++) {
+        const x = cx + dx;
+        const z = cz + dz;
+        if (x < 0 || x >= WORLD.size || z < 0 || z >= WORLD.size) continue;
+
+        const y = findTopSolidY(x, z);
+        if (y == null) continue;
+
+        // 足元が地面で、頭上2ブロック分くらい空いてる場所が望ましい
+        if (getBlock(x, y + 1, z) == null && getBlock(x, y + 2, z) == null) {
+          best = { x, y, z };
+          break;
+        }
+      }
+      if (best) break;
+    }
+    if (best) break;
+  }
+
+  if (!best) {
+    // 最悪、中央上空（ただし無限ループ回避のため高め）
+    player.pos.set(cx + 0.5, WORLD.height - 2, cz + 0.5);
+  } else {
+    player.pos.set(best.x + 0.5, best.y + 1 + 0.01, best.z + 0.5);
+  }
+
+  player.vel.set(0, 0, 0);
+}
+
 findSpawn();
 controls.getObject().position.copy(player.pos);
 
@@ -1173,3 +1212,11 @@ setMode(mode);
 addEventListener("keydown", (e) => {
   if (e.code === "KeyR") findSpawn();
 });
+  // セーブ消去：Deleteキー
+addEventListener("keydown", (e) => {
+  if (e.code === "Delete") {
+    localStorage.removeItem(CONFIG.SAVE_KEY);
+    location.reload();
+  }
+});
+
