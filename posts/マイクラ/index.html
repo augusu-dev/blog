@@ -5,28 +5,22 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
   <title>Voxel Sandbox</title>
   <link rel="stylesheet" href="./style.css" />
-  <script type="importmap">
-  {
-    "imports": {
-      "three": "https://unpkg.com/three@0.160.1/build/three.module.js",
-      "three/addons/": "https://unpkg.com/three@0.160.1/examples/jsm/"
-    }
-  }
-  </script>
 </head>
 <body>
   <div id="hud">
     <div id="help">
-      <div><b>PC</b>: クリックで開始 / WASD移動 / Spaceジャンプ / 左:破壊 / 右:設置 / 1-6:選択 / Esc解除</div>
-      <div><b>Mobile</b>: 左スティック移動 / 右ドラッグ視点 / モード(破壊⇄設置) / ジャンプ / ホットバー</div>
+      <div><b>PC</b>: クリックで開始 / WASD 移動 / Space ジャンプ / 左:破壊 / 右:設置 / 1-6:選択 / Esc解除</div>
+      <div><b>Mobile</b>: 左スティック移動 / 右ドラッグ視点 / MODEで破壊⇄設置 / JUMP</div>
       <div class="small">
         Seed: <span id="seedText">-</span> /
         Size: <span id="sizeText">-</span> /
         <span id="modeText">MODE:-</span>
       </div>
       <div class="small">
-        URL: ?seed=abc&size=24&h=20 （省略可）
+        URL例: ?seed=abc&size=24&h=20　/　保存消去: 右のRESET
+        <button id="btnReset" type="button">RESET</button>
       </div>
+      <div id="err" class="small"></div>
     </div>
 
     <div id="crosshair" aria-hidden="true"></div>
@@ -36,15 +30,10 @@
       <div class="small" style="margin-top:10px; opacity:.85;">Mobileはそのまま操作できます</div>
     </div>
 
-    <!-- Hotbar -->
     <div id="hotbar" aria-label="hotbar"></div>
 
-    <!-- Mobile controls -->
     <div id="mobileControls">
-      <div id="joystick">
-        <div id="stick"></div>
-      </div>
-
+      <div id="joystick"><div id="stick"></div></div>
       <div id="mobileButtons">
         <button id="btnMode" type="button">MODE: BREAK</button>
         <button id="btnJump" type="button">JUMP</button>
