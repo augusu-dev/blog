@@ -613,20 +613,7 @@ findSpawn();
 controls.getObject().position.copy(player.pos);
 
 function aabbCollides(minX, minY, minZ, maxX, maxY, maxZ) {
-  // ブロック座標範囲を走査
-  const x0 = Math.floor(minX), x1 = Math.floor(maxX);
-  const y0 = Math.floor(minY), y1 = Math.floor(maxY);
-  const z0 = Math.floor(minZ), z1 = Math.floor(maxZ);
-
-  for (let x = x0; x <= x1; x++) {
-    for (let y = y0; y <= y1; y++) {
-      for (let z = z0; z <= z1; z++) {
-        if (!inBounds(x,y,z)) continue;
-        if (isSolidAt(x,y,z)) return true;
-      }
-    }
-  }
-  return false;
+undefined
 }
 
 function moveWithCollisions(dt, wishDir, wishSpeed) {
