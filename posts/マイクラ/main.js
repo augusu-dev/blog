@@ -774,40 +774,6 @@ function moveWithCollisions(dt, wishDir, wishSpeed) {
   if (player.pos.y < -20) findSpawn();
 }
 
-  // 2) Z
-  let nz = player.pos.z + player.vel.z * dt;
-  {
-    const minX = player.pos.x - r, maxX = player.pos.x + r;
-    const minY = player.pos.y, maxY = player.pos.y + h;
-    const minZ = nz - r, maxZ = nz + r;
-
-    if (!aabbCollides(minX, minY, minZ, maxX, maxY, maxZ)) {
-      player.pos.z = nz;
-    } else {
-      player.vel.z = 0;
-    }
-  }
-
-  // 3) Y
-  let ny = player.pos.y + player.vel.y * dt;
-  player.onGround = false;
-  {
-    const minX = player.pos.x - r, maxX = player.pos.x + r;
-    const minY = ny, maxY = ny + h;
-    const minZ = player.pos.z - r, maxZ = player.pos.z + r;
-
-    if (!aabbCollides(minX, minY, minZ, maxX, maxY, maxZ)) {
-      player.pos.y = ny;
-    } else {
-      // 上向きなら頭ぶつけ、下向きなら着地
-      if (player.vel.y < 0) player.onGround = true;
-      player.vel.y = 0;
-    }
-  }
-
-  // 落下しすぎ救済
-  if (player.pos.y < -20) findSpawn();
-}
 
 /* =========================================================
   Input: Desktop keys + Mobile joystick/look + Mode toggle
@@ -942,6 +908,8 @@ if (isTouchDevice) {
       doAction();
     }
   });
+}
+
 
 
 /* =========================================================
