@@ -1,27 +1,46 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
   <title>Voxel Sandbox</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
   <div id="hud">
-    <div id="info">
-      <div><b>PC:</b> クリック開始/WASD/Space/左:破壊/右:設置/1-6</div>
-      <div><b>Mobile:</b> 左スティック/右ドラッグ/TAP/MODE/JUMP</div>
-      <div id="status">Seed:<span id="sd">-</span> Size:<span id="sz">-</span> <span id="md">BREAK</span> <button id="rst">RESET</button></div>
-      <div id="err"></div>
+    <div id="help">
+      <div><b>PC</b>: クリックで開始 / WASD 移動 / Space ジャンプ / 左:破壊 / 右:設置 / 1-6:選択 / Esc解除</div>
+      <div><b>Mobile</b>: 左スティック移動 / 右ドラッグ視点 / MODEで破壊⇄設置 / JUMP</div>
+      <div class="small">
+        Seed: <span id="seedText">-</span> /
+        Size: <span id="sizeText">-</span> /
+        <span id="modeText">MODE:-</span>
+      </div>
+      <div class="small">
+        URL例: ?seed=abc&size=24&h=20　/　保存消去: 右のRESET
+        <button id="btnReset" type="button">RESET</button>
+      </div>
+      <div id="err" class="small"></div>
     </div>
-    <div id="cross"></div>
-    <div id="overlay"><button id="start">クリックして開始</button><p>モバイルはそのまま操作可</p></div>
-    <div id="hotbar"></div>
-    <div id="mobile">
-      <div id="joyArea"><div id="joyBase"><div id="joyStick"></div></div></div>
-      <div id="btns"><button id="modeBtn">BREAK</button><button id="jumpBtn">JUMP</button></div>
+
+    <div id="crosshair" aria-hidden="true"></div>
+
+    <div id="lockOverlay">
+      <div id="lockButton">クリックして開始（Pointer Lock）</div>
+      <div class="small" style="margin-top:10px; opacity:.85;">Mobileはそのまま操作できます</div>
+    </div>
+
+    <div id="hotbar" aria-label="hotbar"></div>
+
+    <div id="mobileControls">
+      <div id="joystick"><div id="stick"></div></div>
+      <div id="mobileButtons">
+        <button id="btnMode" type="button">MODE: BREAK</button>
+        <button id="btnJump" type="button">JUMP</button>
+      </div>
     </div>
   </div>
-  <script src="main.js" type="module"></script>
+
+  <script type="module" src="./main.js"></script>
 </body>
 </html>
