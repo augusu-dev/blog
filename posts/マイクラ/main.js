@@ -1,208 +1,892 @@
-(async()=>{
-// Three.js をdynamic importで読み込み
-const THREE = await import('https://unpkg.com/three@0.150.0/build/three.module.js');
+import * as THREE from "https://unpkg.com/three@0.160.1/build/three.module.js";
+import { PointerLockControls } from "https://unpkg.com/three@0.160.1/examples/jsm/controls/PointerLockControls.js";
+import { createNoise2D } from "https://cdn.jsdelivr.net/npm/simplex-noise@4.0.1/dist/esm/simplex-noise.js";
 
-// エラー表示
-const errEl=document.getElementById('err');
-const showErr=m=>{console.error(m);if(errEl)errEl.textContent='Error: '+m};
-window.onerror=m=>showErr(m);
-window.onunhandledrejection=e=>showErr(e.reason?.message||e.reason);
+/* =========================================================
+  Safety / Debug overlay (mobileでも黒画面で止まらないため)
+========================================================= */
+const errEl = document.getElementById("err");
+function showErr(msg) { if (errEl) errEl.textContent = String(msg ?? ""); }
+window.addEventListener("error", (e) => showErr("JS ERROR: " + (e?.message ?? e)));
+window.addEventListener("unhandledrejection", (e) => showErr("PROMISE ERROR: " + (e?.reason?.message ?? e?.reason ?? e)));
 
-// ユーティリティ
-const hash=s=>{let h=5381;for(let i=0;i<s.length;i++)h=((h<<5)+h)^s.charCodeAt(i);return h>>>0};
-const srand=s=>()=>{s=(s*1103515245+12345)&0x7fffffff;return s/0x7fffffff};
-const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
-
-// ノイズ
-class Noise{
-  constructor(r){this.p=[];for(let i=0;i<256;i++)this.p[i]=i;for(let i=255;i>0;i--){const j=Math.floor(r()*(i+1));[this.p[i],this.p[j]]=[this.p[j],this.p[i]]}this.p=this.p.concat(this.p)}
-  f(t){return t*t*t*(t*(t*6-15)+10)}
-  l(a,b,t){return a+t*(b-a)}
-  g(h,x,y){const v=(h&1)?y:x;return(h&2)?-v:v}
-  n(x,y){const X=Math.floor(x)&255,Y=Math.floor(y)&255;x-=Math.floor(x);y-=Math.floor(y);const u=this.f(x),v=this.f(y),A=this.p[X]+Y,B=this.p[X+1]+Y;return this.l(this.l(this.g(this.p[A],x,y),this.g(this.p[B],x-1,y),u),this.l(this.g(this.p[A+1],x,y-1),this.g(this.p[B+1],x-1,y-1),u),v)}
+/* =========================================================
+  Utils
+========================================================= */
+function clampInt(v, lo, hi) {
+  if (!Number.isFinite(v)) return null;
+  v = Math.trunc(v);
+  if (v < lo || v > hi) return null;
+  return v;
+}
+function hashStringToInt(str) {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+function mulberry32(seed) {
+  return function() {
+    let t = (seed += 0x6D2B79F5);
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }
 
-// 設定
-const params=new URLSearchParams(location.search);
-const mobile=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)||'ontouchstart'in window;
-const C={SZ:clamp(parseInt(params.get('size'))||(mobile?24:32),16,64),H:clamp(parseInt(params.get('h'))||24,16,48),NS:.07,BH:8,AMP:10,TR:.015,PH:1.7,PR:.3,SPD:5,JMP:8,GRV:20,RCH:5,KEY:'vox6'};
+const URLP = new URL(location.href).searchParams;
+const isTouchDevice = matchMedia("(pointer: coarse)").matches || "ontouchstart" in window;
 
-// ブロック
-const B={AIR:-1,GRASS:0,DIRT:1,STONE:2,SAND:3,WOOD:4,LEAF:5};
-const COL={[B.GRASS]:[74,156,45],[B.DIRT]:[139,90,43],[B.STONE]:[128,128,128],[B.SAND]:[194,178,128],[B.WOOD]:[139,69,19],[B.LEAF]:[34,139,34]};
+const CONFIG = {
+  // URL override: ?size=24&h=20&seed=abc
+  WORLD_SIZE: clampInt(parseInt(URLP.get("size") ?? "", 10), 12, 64),
+  WORLD_HEIGHT: clampInt(parseInt(URLP.get("h") ?? "", 10), 12, 48),
 
-// セーブ
-const load=()=>{try{return JSON.parse(localStorage.getItem(C.KEY))}catch{return null}};
-const save=d=>{try{localStorage.setItem(C.KEY,JSON.stringify(d))}catch{}};
-let saved=load();
-const urlSeed=params.get('seed');
-let seed=urlSeed?hash(urlSeed):(saved?.seed??Date.now()>>>0);
-const rng=srand(seed);
-const noise=new Noise(rng);
+  NOISE_SCALE: 0.085,
+  OCTAVES: 4,
+  PERSISTENCE: 0.5,
+  LACUNARITY: 2.0,
+  BASE_HEIGHT: 5,
+  HEIGHT_AMPLITUDE: 7,
 
-document.getElementById('sd').textContent=urlSeed||seed;
-document.getElementById('sz').textContent=C.SZ+'×'+C.SZ;
+  // water無し → 低地を砂っぽく
+  SAND_LEVEL: 6,
+  SAND_CHANCE: 0.55,
 
-// Three.js
-const scene=new THREE.Scene();
-scene.background=new THREE.Color(0x87ceeb);
-scene.fog=new THREE.Fog(0x87ceeb,20,70);
-const camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,.1,500);
-const renderer=new THREE.WebGLRenderer({antialias:true});
-renderer.setSize(innerWidth,innerHeight);
-renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+  TREE_DENSITY: 0.025,
+  TREE_MIN_H: 3,
+  TREE_MAX_H: 5,
+
+  REACH: 6.0,
+  FOG_NEAR: 10,
+  FOG_FAR: 62,
+
+  // physics
+  PLAYER_HEIGHT: 1.78,
+  PLAYER_RADIUS: 0.32,
+  GRAVITY: 20.0,
+  JUMP_VELOCITY: 7.0,
+  MOVE_SPEED: 5.2,
+  AIR_CONTROL: 0.55,
+  SPRINT_MULT: 1.45,
+
+  SAVE_KEY: "voxel_sandbox_save_v2",
+};
+
+const BLOCK = { GRASS:0, DIRT:1, STONE:2, SAND:3, LOG:4, LEAF:5 };
+const BLOCK_NAMES = ["GRASS","DIRT","STONE","SAND","LOG","LEAF"];
+const SOLID = new Set([0,1,2,3,4,5]);
+
+/* =========================================================
+  Save (S1)
+========================================================= */
+function loadSave() {
+  try {
+    const raw = localStorage.getItem(CONFIG.SAVE_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    if (!data || typeof data !== "object") return null;
+    return data;
+  } catch { return null; }
+}
+function writeSave(data) {
+  try { localStorage.setItem(CONFIG.SAVE_KEY, JSON.stringify(data)); } catch {}
+}
+let saveData = loadSave();
+
+document.getElementById("btnReset").addEventListener("click", () => {
+  localStorage.removeItem(CONFIG.SAVE_KEY);
+  location.reload();
+});
+
+/* seed決定：URL seedが最優先。なければ保存のseed。なければ日時 */
+const urlSeed = URLP.get("seed");
+let seedValue = urlSeed ? hashStringToInt(urlSeed) : (saveData?.seed ?? (Date.now() >>> 0));
+
+/* =========================================================
+  World size (mobile-friendly)
+========================================================= */
+function autoWorldSize() {
+  if (isTouchDevice) return { size: 24, h: 20 };
+  return { size: 32, h: 20 };
+}
+const autoWH = autoWorldSize();
+
+const WORLD = {
+  size: CONFIG.WORLD_SIZE ?? (urlSeed ? autoWH.size : (saveData?.size ?? autoWH.size)),
+  height: CONFIG.WORLD_HEIGHT ?? (urlSeed ? autoWH.h : (saveData?.height ?? autoWH.h)),
+};
+
+document.getElementById("seedText").textContent = urlSeed ?? String(seedValue);
+document.getElementById("sizeText").textContent = `${WORLD.size}x${WORLD.size}x${WORLD.height}`;
+
+/* URLでワールド指定（seed/size/h）されてる場合は保存diffを混ぜない */
+const hasExplicitWorld = URLP.has("seed") || URLP.has("size") || URLP.has("h");
+
+/* =========================================================
+  RNG + Noise
+========================================================= */
+const rng = mulberry32(seedValue >>> 0);
+const noise2D = createNoise2D(rng);
+
+/* =========================================================
+  Three.js setup
+========================================================= */
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x87c7ff);
+scene.fog = new THREE.Fog(0x87c7ff, CONFIG.FOG_NEAR, CONFIG.FOG_FAR);
+
+const camera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.1, 400);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 document.body.appendChild(renderer.domElement);
-scene.add(new THREE.AmbientLight(0xffffff,.6));
-const sun=new THREE.DirectionalLight(0xffffff,.8);
-sun.position.set(50,100,50);
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+const sun = new THREE.DirectionalLight(0xffffff, 0.9);
+sun.position.set(8, 12, 6);
 scene.add(sun);
 
-// カメラ操作
-let locked=false;
-const euler=new THREE.Euler(0,0,0,'YXZ');
-const onMM=e=>{if(!locked)return;euler.setFromQuaternion(camera.quaternion);euler.y-=e.movementX*.002;euler.x-=e.movementY*.002;euler.x=clamp(euler.x,-Math.PI/2+.1,Math.PI/2-.1);camera.quaternion.setFromEuler(euler)};
-const onPLC=()=>{locked=document.pointerLockElement===document.body;document.getElementById('overlay').classList.toggle('hidden',locked)};
-document.addEventListener('mousemove',onMM);
-document.addEventListener('pointerlockchange',onPLC);
+/* =========================================================
+  Controls (PC PointerLock / Mobile touch look)
+========================================================= */
+const controls = new PointerLockControls(camera, document.body);
+scene.add(controls.getObject());
 
-if(!mobile){
-  document.getElementById('start').onclick=()=>document.body.requestPointerLock();
-  document.addEventListener('contextmenu',e=>e.preventDefault());
-}else{
-  document.getElementById('overlay').classList.add('hidden');
+const lockOverlay = document.getElementById("lockOverlay");
+const lockButton = document.getElementById("lockButton");
+if (!isTouchDevice) {
+  lockButton.addEventListener("click", () => controls.lock());
+  controls.addEventListener("lock", () => lockOverlay.classList.add("hidden"));
+  controls.addEventListener("unlock", () => lockOverlay.classList.remove("hidden"));
+  window.addEventListener("contextmenu", (e) => e.preventDefault());
+} else {
+  lockOverlay.classList.add("hidden");
+  document.getElementById("mobileControls").style.display = "block";
 }
 
-// テクスチャ
-const mkTex=rgb=>{const c=document.createElement('canvas');c.width=c.height=16;const g=c.getContext('2d');for(let y=0;y<16;y++)for(let x=0;x<16;x++){const v=(rng()-.5)*30;g.fillStyle=`rgb(${clamp(rgb[0]+v,0,255)|0},${clamp(rgb[1]+v,0,255)|0},${clamp(rgb[2]+v,0,255)|0})`;g.fillRect(x,y,1,1)}const t=new THREE.CanvasTexture(c);t.magFilter=t.minFilter=THREE.NearestFilter;return{t,c}};
-const TEX={},CNV={};
-for(const k in B){if(B[k]===B.AIR)continue;const{t,c}=mkTex(COL[B[k]]);TEX[B[k]]=t;CNV[B[k]]=c}
+/* =========================================================
+  Textures (Canvas) + Materials
+========================================================= */
+function makeCanvasTexture(drawFn, size = 32) {
+  const c = document.createElement("canvas");
+  c.width = c.height = size;
+  const g = c.getContext("2d");
+  g.imageSmoothingEnabled = false;
+  drawFn(g, size);
+  const tex = new THREE.CanvasTexture(c);
+  tex.magFilter = THREE.NearestFilter;
+  tex.minFilter = THREE.NearestMipmapNearestFilter;
+  tex.generateMipmaps = true;
+  tex.needsUpdate = true;
+  return { tex, canvas: c };
+}
+function randInt(n) { return (rng() * n) | 0; }
+function drawSpeckle(g, size, base, speck, count) {
+  g.fillStyle = base; g.fillRect(0, 0, size, size);
+  for (let i = 0; i < count; i++) {
+    g.fillStyle = speck;
+    g.fillRect(randInt(size), randInt(size), 1, 1);
+  }
+}
+function texGrass() { return makeCanvasTexture((g,s)=>{ drawSpeckle(g,s,"#3bbf4a","rgba(0,0,0,0.10)",s*s*0.07); }); }
+function texDirt()  { return makeCanvasTexture((g,s)=> drawSpeckle(g,s,"#7a5132","rgba(0,0,0,0.15)",s*s*0.12)); }
+function texStone() { return makeCanvasTexture((g,s)=> drawSpeckle(g,s,"#9aa0a6","rgba(0,0,0,0.18)",s*s*0.10)); }
+function texSand()  { return makeCanvasTexture((g,s)=> drawSpeckle(g,s,"#d9cf8b","rgba(0,0,0,0.10)",s*s*0.06)); }
+function texLog()   { return makeCanvasTexture((g,s)=>{ g.fillStyle="#8b5a2b";g.fillRect(0,0,s,s); for(let x=0;x<s;x+=4){ g.fillStyle="rgba(0,0,0,0.12)"; g.fillRect(x,0,1,s);} }); }
+function texLeaf()  { return makeCanvasTexture((g,s)=>{ g.fillStyle="rgba(47,168,79,0.95)"; g.fillRect(0,0,s,s); for(let i=0;i<s*s*0.20;i++){ g.fillStyle="rgba(0,0,0,0.10)"; g.fillRect(randInt(s),randInt(s),1,1);} for(let i=0;i<s*s*0.08;i++){ g.clearRect(randInt(s),randInt(s),1,1);} }); }
 
-// ワールド
-const base=new Map(),mods=new Map();
-const K=(x,y,z)=>x+','+y+','+z;
-const PK=k=>{const[x,y,z]=k.split(',').map(Number);return{x,y,z}};
-const IN=(x,y,z)=>x>=0&&x<C.SZ&&y>=0&&y<C.H&&z>=0&&z<C.SZ;
-const get=(x,y,z)=>{if(!IN(x,y,z))return B.AIR;const k=K(x,y,z);return mods.has(k)?mods.get(k):(base.get(k)??B.AIR)};
-const solid=(x,y,z)=>get(x,y,z)!==B.AIR;
+const TEX = {
+  [BLOCK.GRASS]: texGrass(),
+  [BLOCK.DIRT]: texDirt(),
+  [BLOCK.STONE]: texStone(),
+  [BLOCK.SAND]: texSand(),
+  [BLOCK.LOG]: texLog(),
+  [BLOCK.LEAF]: texLeaf(),
+};
 
-const setBlk=(x,y,z,t)=>{if(!IN(x,y,z))return;mods.set(K(x,y,z),t);upd(x,y,z);[[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]].forEach(([a,b,c])=>upd(x+a,y+b,z+c));schSave()};
+function matFor(type) {
+  return new THREE.MeshStandardMaterial({
+    map: TEX[type].tex,
+    roughness: 1.0,
+    metalness: 0.0,
+    transparent: type === BLOCK.LEAF,
+    opacity: type === BLOCK.LEAF ? 0.92 : 1.0,
+    alphaTest: type === BLOCK.LEAF ? 0.15 : 0.0,
+  });
+}
 
-const height=(x,z)=>clamp(Math.floor(C.BH+noise.n(x*C.NS,z*C.NS)*C.AMP),1,C.H-3);
+/* =========================================================
+  World data
+========================================================= */
+function keyOf(x,y,z){ return `${x},${y},${z}`; }
+function parseKey(k){ const [x,y,z]=k.split(",").map(Number); return {x,y,z}; }
+function inBounds(x,y,z){ return x>=0&&x<WORLD.size && z>=0&&z<WORLD.size && y>=0&&y<WORLD.height; }
 
-const genWorld=()=>{base.clear();for(let x=0;x<C.SZ;x++)for(let z=0;z<C.SZ;z++){const h=height(x,z);for(let y=0;y<=h;y++){let t=y===h?(h<6?B.SAND:B.GRASS):(y>h-4?B.DIRT:B.STONE);base.set(K(x,y,z),t)}}};
+const baseBlocks = new Map(); // key->type
+const diffs = new Map();      // key->type or -1
 
-const genTrees=()=>{for(let x=2;x<C.SZ-2;x++)for(let z=2;z<C.SZ-2;z++){const h=height(x,z);if(h<7||get(x,h,z)!==B.GRASS||rng()>C.TR)continue;const th=4+(rng()*2|0);for(let i=1;i<=th;i++)mods.set(K(x,h+i,z),B.WOOD);const lb=h+th-1;for(let dy=0;dy<=2;dy++){const r=dy===2?1:2;for(let dx=-r;dx<=r;dx++)for(let dz=-r;dz<=r;dz++){if(dx===0&&dz===0&&dy<2)continue;if(Math.abs(dx)===2&&Math.abs(dz)===2)continue;const lk=K(x+dx,lb+dy,z+dz);if(IN(x+dx,lb+dy,z+dz)&&!base.has(lk)&&!mods.has(lk))mods.set(lk,B.LEAF)}}}};
+function getBlock(x,y,z){
+  const k=keyOf(x,y,z);
+  if (diffs.has(k)) {
+    const v = diffs.get(k);
+    return v === -1 ? null : v;
+  }
+  return baseBlocks.get(k) ?? null;
+}
+function isSolidAt(x,y,z){
+  const t=getBlock(x,y,z);
+  return t != null && SOLID.has(t);
+}
+function isExposed(x,y,z){
+  const dirs = [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]];
+  for (const [dx,dy,dz] of dirs){
+    const nx=x+dx, ny=y+dy, nz=z+dz;
+    if (!inBounds(nx,ny,nz)) return true;
+    if (!isSolidAt(nx,ny,nz)) return true;
+  }
+  return false;
+}
 
-// インスタンスメッシュ
-const geo=new THREE.BoxGeometry(1,1,1);
-const meshes=new Map(),bIdx=new Map(),iBlk=new Map();
-const tmp=new THREE.Matrix4();
+/* =========================================================
+  Instanced rendering (P2)
+========================================================= */
+const cubeGeo = new THREE.BoxGeometry(1,1,1);
 
-const getM=t=>{if(!meshes.has(t)){const mat=new THREE.MeshLambertMaterial({map:TEX[t],transparent:t===B.LEAF,opacity:t===B.LEAF?.9:1});const m=new THREE.InstancedMesh(geo,mat,60000);m.count=0;m.userData.t=t;scene.add(m);meshes.set(t,m);iBlk.set(t,[])}return meshes.get(t)};
+class TypeInstances {
+  constructor(type){
+    this.type = type;
+    this.mesh = new THREE.InstancedMesh(cubeGeo, matFor(type), 1);
+    this.mesh.count = 0;
+    this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.mesh.userData.type = type;
+    this.indexToKey = [];
+    this.keyToIndex = new Map();
+    this._m = new THREE.Matrix4();
+    scene.add(this.mesh);
+  }
+  ensureCapacity(minCap){
+    if (this.mesh.instanceMatrix.count >= minCap) return;
+    const newCap = Math.max(minCap, this.mesh.instanceMatrix.count + 512);
+    const newMesh = new THREE.InstancedMesh(cubeGeo, this.mesh.material, newCap);
+    newMesh.count = this.mesh.count;
+    newMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    newMesh.userData.type = this.type;
+    const tmp = new THREE.Matrix4();
+    for (let i=0;i<this.mesh.count;i++){ this.mesh.getMatrixAt(i,tmp); newMesh.setMatrixAt(i,tmp); }
+    scene.remove(this.mesh);
+    this.mesh = newMesh;
+    scene.add(this.mesh);
+  }
+  has(key){ return this.keyToIndex.has(key); }
+  add(key,x,y,z){
+    const idx = this.mesh.count;
+    this.ensureCapacity(idx+1);
+    this._m.makeTranslation(x+0.5,y+0.5,z+0.5);
+    this.mesh.setMatrixAt(idx,this._m);
+    this.indexToKey[idx]=key;
+    this.keyToIndex.set(key,idx);
+    this.mesh.count++;
+    this.mesh.instanceMatrix.needsUpdate = true;
+  }
+  remove(key){
+    const idx = this.keyToIndex.get(key);
+    if (idx == null) return;
+    const last = this.mesh.count - 1;
+    if (idx !== last){
+      const tmp = new THREE.Matrix4();
+      this.mesh.getMatrixAt(last,tmp);
+      this.mesh.setMatrixAt(idx,tmp);
+      const lastKey = this.indexToKey[last];
+      this.indexToKey[idx]=lastKey;
+      this.keyToIndex.set(lastKey,idx);
+    }
+    this.indexToKey.pop();
+    this.keyToIndex.delete(key);
+    this.mesh.count--;
+    this.mesh.instanceMatrix.needsUpdate = true;
+  }
+}
 
-const exposed=(x,y,z)=>solid(x,y,z)&&(!solid(x+1,y,z)||!solid(x-1,y,z)||!solid(x,y+1,z)||!solid(x,y-1,z)||!solid(x,y,z+1)||!solid(x,y,z-1));
+const typeRenderers = new Map();
+for (const t of Object.values(BLOCK)) {
+  if (typeof t !== "number") continue;
+  typeRenderers.set(t, new TypeInstances(t));
+}
 
-const addI=(x,y,z,t)=>{const m=getM(t),arr=iBlk.get(t),k=K(x,y,z),i=m.count;tmp.setPosition(x+.5,y+.5,z+.5);m.setMatrixAt(i,tmp);m.count++;m.instanceMatrix.needsUpdate=true;arr[i]=k;bIdx.set(k,{t,i})};
+function updateVisualAt(x,y,z){
+  if (!inBounds(x,y,z)) return;
+  const k = keyOf(x,y,z);
+  const t = getBlock(x,y,z);
 
-const remI=k=>{const info=bIdx.get(k);if(!info)return;const{t,i}=info;const m=meshes.get(t),arr=iBlk.get(t);if(m.count>1&&i<m.count-1){const lk=arr[m.count-1];m.getMatrixAt(m.count-1,tmp);m.setMatrixAt(i,tmp);arr[i]=lk;bIdx.set(lk,{t,i})}m.count--;m.instanceMatrix.needsUpdate=true;arr.pop();bIdx.delete(k)};
+  // まず全タイプから消す（あってもなくてもOK）
+  for (const tr of typeRenderers.values()) if (tr.has(k)) tr.remove(k);
 
-const upd=(x,y,z)=>{if(!IN(x,y,z))return;const k=K(x,y,z);if(bIdx.has(k))remI(k);const t=get(x,y,z);if(t!==B.AIR&&exposed(x,y,z))addI(x,y,z,t)};
+  if (t == null) return;
+  if (!isExposed(x,y,z)) return;
 
-const buildAll=()=>{for(const[t,m]of meshes){m.count=0;iBlk.set(t,[])}bIdx.clear();for(let x=0;x<C.SZ;x++)for(let z=0;z<C.SZ;z++)for(let y=0;y<C.H;y++){const t=get(x,y,z);if(t!==B.AIR&&exposed(x,y,z))addI(x,y,z,t)}};
+  typeRenderers.get(t).add(k,x,y,z);
+}
+function updateVisualNeighbors(x,y,z){
+  updateVisualAt(x,y,z);
+  updateVisualAt(x+1,y,z); updateVisualAt(x-1,y,z);
+  updateVisualAt(x,y+1,z); updateVisualAt(x,y-1,z);
+  updateVisualAt(x,y,z+1); updateVisualAt(x,y,z-1);
+}
 
-// ホットバー
-const slots=[B.GRASS,B.DIRT,B.STONE,B.SAND,B.WOOD,B.LEAF];
-let sel=0;
+function clearAllInstances(){
+  for (const tr of typeRenderers.values()){
+    tr.mesh.count = 0;
+    tr.indexToKey.length = 0;
+    tr.keyToIndex.clear();
+    tr.mesh.instanceMatrix.needsUpdate = true;
+  }
+}
+function rebuildAllVisible(){
+  clearAllInstances();
+  for (let x=0;x<WORLD.size;x++){
+    for (let z=0;z<WORLD.size;z++){
+      for (let y=0;y<WORLD.height;y++){
+        const t = getBlock(x,y,z);
+        if (t == null) continue;
+        if (!isExposed(x,y,z)) continue;
+        typeRenderers.get(t).add(keyOf(x,y,z),x,y,z);
+      }
+    }
+  }
+}
 
-const buildHB=()=>{const hb=document.getElementById('hotbar');hb.innerHTML='';slots.forEach((t,i)=>{const s=document.createElement('div');s.className='slot'+(i===sel?' sel':'');s.innerHTML=`<span>${i+1}</span>`;const cv=document.createElement('canvas');cv.width=cv.height=16;cv.getContext('2d').drawImage(CNV[t],0,0);s.appendChild(cv);s.onclick=()=>selS(i);hb.appendChild(s)})};
-const selS=i=>{sel=(i+6)%6;document.querySelectorAll('.slot').forEach((s,j)=>s.classList.toggle('sel',j===sel))};
-buildHB();
+/* =========================================================
+  Terrain generation
+========================================================= */
+function fractalNoise(x,z){
+  let amp=1,freq=1,sum=0,norm=0;
+  for (let o=0;o<CONFIG.OCTAVES;o++){
+    sum += noise2D(x*CONFIG.NOISE_SCALE*freq, z*CONFIG.NOISE_SCALE*freq) * amp;
+    norm += amp;
+    amp *= CONFIG.PERSISTENCE;
+    freq *= CONFIG.LACUNARITY;
+  }
+  return sum/(norm||1);
+}
+function heightAt(x,z){
+  const n = fractalNoise(x,z);
+  const h = Math.floor(CONFIG.BASE_HEIGHT + n*CONFIG.HEIGHT_AMPLITUDE);
+  return Math.max(1, Math.min(WORLD.height-2, h));
+}
+function baseTypeAt(x,y,z){
+  const h = heightAt(x,z);
+  if (y>h) return null;
+  const dirtDepth = 3;
+  if (y===h){
+    if (h <= CONFIG.SAND_LEVEL && rng() < CONFIG.SAND_CHANCE) return BLOCK.SAND;
+    return BLOCK.GRASS;
+  }
+  if (y >= h - dirtDepth) return BLOCK.DIRT;
+  return BLOCK.STONE;
+}
 
-document.addEventListener('keydown',e=>{if(e.key>='1'&&e.key<='6')selS(+e.key-1)});
-document.addEventListener('wheel',e=>{if(locked||mobile)selS(sel+(e.deltaY>0?1:-1))});
+function generateBaseWorld(){
+  baseBlocks.clear();
+  for (let x=0;x<WORLD.size;x++){
+    for (let z=0;z<WORLD.size;z++){
+      const h = heightAt(x,z);
+      for (let y=0;y<=h;y++){
+        const t = baseTypeAt(x,y,z);
+        if (t != null) baseBlocks.set(keyOf(x,y,z), t);
+      }
+    }
+  }
+}
 
-// レイキャスト
-const ray=new THREE.Raycaster();
-ray.far=C.RCH;
-const hl=new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1.01,1.01,1.01)),new THREE.LineBasicMaterial({color:0xffffff,opacity:.8,transparent:true}));
-hl.visible=false;
-scene.add(hl);
+function addTree(x,z){
+  const h = heightAt(x,z);
+  if (h <= CONFIG.SAND_LEVEL + 1) return;
+  if (getBlock(x,h,z) !== BLOCK.GRASS) return;
+  if (x < 2 || z < 2 || x > WORLD.size-3 || z > WORLD.size-3) return;
+  if (rng() >= CONFIG.TREE_DENSITY) return;
 
-let tgt=null,tgtF=null;
+  const trunkH = CONFIG.TREE_MIN_H + ((rng()*(CONFIG.TREE_MAX_H-CONFIG.TREE_MIN_H+1))|0);
+  for (let i=1;i<=trunkH;i++){
+    const y = h+i;
+    if (!inBounds(x,y,z)) break;
+    diffs.set(keyOf(x,y,z), BLOCK.LOG);
+  }
+  const leafBase = h+trunkH;
+  for (let dx=-2;dx<=2;dx++){
+    for (let dz=-2;dz<=2;dz++){
+      for (let dy=-1;dy<=1;dy++){
+        const dist = Math.abs(dx)+Math.abs(dz)+Math.abs(dy);
+        if (dist>5) continue;
+        const xx=x+dx, yy=leafBase+dy, zz=z+dz;
+        if (!inBounds(xx,yy,zz)) continue;
+        if (getBlock(xx,yy,zz)==null) diffs.set(keyOf(xx,yy,zz), BLOCK.LEAF);
+      }
+    }
+  }
+  if (inBounds(x,leafBase+2,z) && getBlock(x,leafBase+2,z)==null) diffs.set(keyOf(x,leafBase+2,z), BLOCK.LEAF);
+}
 
-const updTgt=()=>{ray.setFromCamera(new THREE.Vector2(0,0),camera);const hits=ray.intersectObjects([...meshes.values()],false);if(!hits.length){tgt=null;hl.visible=false;return}const h=hits[0],arr=iBlk.get(h.object.userData.t),k=arr?.[h.instanceId];if(!k){tgt=null;hl.visible=false;return}tgt=PK(k);tgtF=h.face?.normal?.clone()||new THREE.Vector3(0,1,0);hl.position.set(tgt.x+.5,tgt.y+.5,tgt.z+.5);hl.visible=true};
+function resetDiffsForNewWorld(){
+  diffs.clear();
+  for (let x=0;x<WORLD.size;x++){
+    for (let z=0;z<WORLD.size;z++) addTree(x,z);
+  }
+}
 
-let mode='BREAK';
-const mdEl=document.getElementById('md');
-const mdBtn=document.getElementById('modeBtn');
-const setM=m=>{mode=m;mdEl.textContent=m;if(mdBtn)mdBtn.textContent=m};
+function applySavedDiffsIfAny(){
+  if (hasExplicitWorld) return;
+  if (saveData?.seed === (seedValue>>>0) && saveData?.diffs && typeof saveData.diffs === "object"){
+    for (const [k,v] of Object.entries(saveData.diffs)){
+      if (typeof v === "number") diffs.set(k,v);
+    }
+  }
+}
 
-const act=(m=mode)=>{if(!tgt)return;if(m==='BREAK'){setBlk(tgt.x,tgt.y,tgt.z,B.AIR)}else{const nx=tgt.x+Math.round(tgtF.x),ny=tgt.y+Math.round(tgtF.y),nz=tgt.z+Math.round(tgtF.z);if(!IN(nx,ny,nz)||get(nx,ny,nz)!==B.AIR)return;const px=P.pos.x,py=P.pos.y,pz=P.pos.z,r=C.PR,ph=C.PH;if(nx+1>px-r&&nx<px+r&&ny+1>py&&ny<py+ph&&nz+1>pz-r&&nz<pz+r)return;setBlk(nx,ny,nz,slots[sel])}};
+generateBaseWorld();
+resetDiffsForNewWorld();
+applySavedDiffsIfAny();
+rebuildAllVisible();
 
-if(!mobile){document.addEventListener('mousedown',e=>{if(!locked)return;if(e.button===0){setM('BREAK');act('BREAK')}if(e.button===2){setM('PLACE');act('PLACE')}})}
+/* =========================================================
+  Hotbar
+========================================================= */
+const hotbar = document.getElementById("hotbar");
+const slotTypes = [BLOCK.GRASS,BLOCK.DIRT,BLOCK.STONE,BLOCK.SAND,BLOCK.LOG,BLOCK.LEAF];
+let selectedSlot = 0;
 
-// セーブ
-let svT=null;
-const schSave=()=>{if(svT)return;svT=setTimeout(()=>{svT=null;save({seed,sz:C.SZ,mods:Object.fromEntries(mods),ts:Date.now()})},500)};
-const loadMods=()=>{if(saved?.seed===seed&&saved?.mods)for(const[k,v]of Object.entries(saved.mods))mods.set(k,v)};
-document.getElementById('rst').onclick=()=>{localStorage.removeItem(C.KEY);location.reload()};
+function buildHotbar(){
+  hotbar.innerHTML = "";
+  for (let i=0;i<6;i++){
+    const type = slotTypes[i];
+    const el = document.createElement("div");
+    el.className = "slot" + (i===selectedSlot ? " selected" : "");
+    const num = document.createElement("div");
+    num.className = "num";
+    num.textContent = String(i+1);
+    el.appendChild(num);
 
-// プレイヤー
-const P={pos:new THREE.Vector3(),vel:new THREE.Vector3(),gnd:false,jmp:false};
+    const icon = document.createElement("canvas");
+    icon.width = icon.height = 32;
+    const g = icon.getContext("2d");
+    g.imageSmoothingEnabled = false;
+    g.drawImage(TEX[type].canvas,0,0);
+    el.appendChild(icon);
 
-const findSpawn=()=>{const c=Math.floor(C.SZ/2);for(let r=0;r<=10;r++)for(let dx=-r;dx<=r;dx++)for(let dz=-r;dz<=r;dz++){const x=c+dx,z=c+dz;if(!IN(x,0,z))continue;for(let y=C.H-2;y>=0;y--)if(solid(x,y,z)&&!solid(x,y+1,z)&&!solid(x,y+2,z))return new THREE.Vector3(x+.5,y+1.01,z+.5)}return new THREE.Vector3(c+.5,C.H,c+.5)};
+    el.addEventListener("click", () => selectSlot(i));
+    hotbar.appendChild(el);
+  }
+}
+function selectSlot(i){
+  selectedSlot = (i+6)%6;
+  [...hotbar.querySelectorAll(".slot")].forEach((s,idx)=>s.classList.toggle("selected", idx===selectedSlot));
+}
+buildHotbar();
+selectSlot(0);
 
-const spawn=()=>{P.pos.copy(findSpawn());P.vel.set(0,0,0);camera.position.copy(P.pos)};
+/* =========================================================
+  Aim + Highlight + Place/Break
+========================================================= */
+const raycaster = new THREE.Raycaster();
+raycaster.far = CONFIG.REACH;
 
-const col=(x,y,z,r,h)=>{for(let bx=Math.floor(x-r);bx<=Math.floor(x+r);bx++)for(let by=Math.floor(y);by<=Math.floor(y+h);by++)for(let bz=Math.floor(z-r);bz<=Math.floor(z+r);bz++)if(solid(bx,by,bz))return{hit:true,y:by};return{hit:false}};
+const highlight = new THREE.LineSegments(
+  new THREE.EdgesGeometry(new THREE.BoxGeometry(1.01,1.01,1.01)),
+  new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9 })
+);
+highlight.visible = false;
+scene.add(highlight);
 
-const physics=dt=>{const r=C.PR,h=C.PH;P.vel.y-=C.GRV*dt;if(P.jmp&&P.gnd){P.vel.y=C.JMP;P.gnd=false}P.jmp=false;P.pos.x+=P.vel.x*dt;if(col(P.pos.x,P.pos.y,P.pos.z,r,h).hit){P.pos.x-=P.vel.x*dt;P.vel.x=0}P.pos.z+=P.vel.z*dt;if(col(P.pos.x,P.pos.y,P.pos.z,r,h).hit){P.pos.z-=P.vel.z*dt;P.vel.z=0}P.gnd=false;P.pos.y+=P.vel.y*dt;const c=col(P.pos.x,P.pos.y,P.pos.z,r,h);if(c.hit){if(P.vel.y<0){P.pos.y=c.y+1+.001;P.gnd=true}else{P.pos.y=c.y-h-.001}P.vel.y=0}if(P.pos.y<-20)spawn();camera.position.copy(P.pos)};
+let aimed = null; // {x,y,z, faceNormal}
 
-// 入力
-const keys={w:0,a:0,s:0,d:0,sp:0,sh:0};
-document.addEventListener('keydown',e=>{if(e.code==='KeyW')keys.w=1;if(e.code==='KeyA')keys.a=1;if(e.code==='KeyS')keys.s=1;if(e.code==='KeyD')keys.d=1;if(e.code==='Space'){keys.sp=1;e.preventDefault()}if(e.code==='ShiftLeft')keys.sh=1;if(e.code==='KeyR')spawn()});
-document.addEventListener('keyup',e=>{if(e.code==='KeyW')keys.w=0;if(e.code==='KeyA')keys.a=0;if(e.code==='KeyS')keys.s=0;if(e.code==='KeyD')keys.d=0;if(e.code==='Space')keys.sp=0;if(e.code==='ShiftLeft')keys.sh=0});
+function updateAimed(){
+  raycaster.setFromCamera(new THREE.Vector2(0,0), camera);
+  const meshes = [...typeRenderers.values()].map(tr=>tr.mesh);
+  const hits = raycaster.intersectObjects(meshes,false);
+  if (!hits.length){ aimed=null; highlight.visible=false; return; }
 
-let mIn={x:0,z:0},mLk={x:0,y:0};
+  const hit = hits[0];
+  const type = hit.object.userData.type;
+  const tr = typeRenderers.get(type);
+  const key = tr.indexToKey[hit.instanceId];
+  if (!key){ aimed=null; highlight.visible=false; return; }
 
-if(mobile){
-  const jB=document.getElementById('joyBase'),jS=document.getElementById('joyStick');
-  let jA=false,jC={x:0,y:0};
-  jB.addEventListener('pointerdown',e=>{jA=true;jB.setPointerCapture(e.pointerId);const r=jB.getBoundingClientRect();jC={x:r.left+r.width/2,y:r.top+r.height/2}});
-  jB.addEventListener('pointermove',e=>{if(!jA)return;const dx=e.clientX-jC.x,dy=e.clientY-jC.y,max=40,d=Math.hypot(dx,dy),sc=d>max?max/d:1;jS.style.transform=`translate(${dx*sc}px,${dy*sc}px)`;mIn.x=dx*sc/max;mIn.z=dy*sc/max});
-  jB.addEventListener('pointerup',()=>{jA=false;jS.style.transform='translate(0,0)';mIn.x=mIn.z=0});
+  const {x,y,z} = parseKey(key);
+  const fn = hit.face?.normal?.clone() ?? new THREE.Vector3(0,1,0);
+  aimed = {x,y,z, faceNormal: fn};
 
-  let lA=false,lP={x:0,y:0};
-  document.addEventListener('pointerdown',e=>{if(e.target.closest('#joyArea,#btns,#hotbar,#info'))return;lA=true;lP={x:e.clientX,y:e.clientY}});
-  document.addEventListener('pointermove',e=>{if(!lA)return;mLk.x+=e.clientX-lP.x;mLk.y+=e.clientY-lP.y;lP={x:e.clientX,y:e.clientY}});
-  document.addEventListener('pointerup',()=>{lA=false});
+  highlight.position.set(x+0.5,y+0.5,z+0.5);
+  highlight.visible = true;
+}
 
+let saveTimer = null;
+function scheduleSave(){
+  if (hasExplicitWorld) return; // URL指定ワールドは保存しない（混乱防止）
+  if (saveTimer) return;
+  saveTimer = setTimeout(()=>{
+    saveTimer = null;
+    const out = {
+      seed: seedValue>>>0,
+      size: WORLD.size,
+      height: WORLD.height,
+      diffs: Object.fromEntries(diffs.entries()),
+      ts: Date.now(),
+    };
+    writeSave(out);
+    saveData = out;
+  }, 400);
+}
+
+function setDiffBlock(x,y,z,typeOrNull){
+  if (!inBounds(x,y,z)) return false;
+  const k = keyOf(x,y,z);
+  if (typeOrNull == null) diffs.set(k, -1);
+  else diffs.set(k, typeOrNull);
+
+  updateVisualNeighbors(x,y,z);
+  scheduleSave();
+  return true;
+}
+
+let mode = "BREAK";
+const modeText = document.getElementById("modeText");
+function setMode(m){
+  mode = m;
+  if (modeText) modeText.textContent = `MODE:${mode}`;
+  const btn = document.getElementById("btnMode");
+  if (btn) btn.textContent = `MODE: ${mode}`;
+}
+setMode("BREAK");
+
+function doAction(actionMode){
+  if (!aimed) return;
+  const m = actionMode ?? mode;
+
+  if (m === "BREAK"){
+    setDiffBlock(aimed.x, aimed.y, aimed.z, null);
+    highlight.material.opacity = 0.2;
+    setTimeout(()=>highlight.material.opacity=0.9, 60);
+  } else {
+    const nx = aimed.x + Math.round(aimed.faceNormal.x);
+    const ny = aimed.y + Math.round(aimed.faceNormal.y);
+    const nz = aimed.z + Math.round(aimed.faceNormal.z);
+    if (!inBounds(nx,ny,nz)) return;
+    if (getBlock(nx,ny,nz) != null) return;
+    setDiffBlock(nx,ny,nz, slotTypes[selectedSlot]);
+  }
+}
+
+/* Desktop mouse */
+if (!isTouchDevice){
+  window.addEventListener("mousedown", (e)=>{
+    if (!controls.isLocked) return;
+    if (e.button===0){ setMode("BREAK"); doAction("BREAK"); }
+    if (e.button===2){ setMode("PLACE"); doAction("PLACE"); }
+  });
+  window.addEventListener("wheel", (e)=>{
+    if (!controls.isLocked) return;
+    selectSlot(selectedSlot + (e.deltaY>0 ? 1 : -1));
+  }, { passive:true });
+
+  window.addEventListener("keydown", (e)=>{
+    if (/Digit[1-6]/.test(e.code)) selectSlot(parseInt(e.code.slice(5),10)-1);
+  });
+}
+
+/* =========================================================
+  Player + Physics (F3)
+========================================================= */
+const player = {
+  pos: new THREE.Vector3(0,0,0),
+  vel: new THREE.Vector3(0,0,0),
+  onGround: false,
+  wantJump: false,
+};
+
+const EPS = 1e-4;
+
+function findTopSolidY(x,z){
+  for (let y=WORLD.height-1;y>=0;y--) if (isSolidAt(x,y,z)) return y;
+  return null;
+}
+function findSpawn(){
+  const cx = Math.floor(WORLD.size/2);
+  const cz = Math.floor(WORLD.size/2);
+  let best = null;
+
+  for (let r=0;r<=10;r++){
+    for (let dx=-r;dx<=r;dx++){
+      for (let dz=-r;dz<=r;dz++){
+        const x=cx+dx, z=cz+dz;
+        if (x<0||x>=WORLD.size||z<0||z>=WORLD.size) continue;
+        const y = findTopSolidY(x,z);
+        if (y==null) continue;
+        if (getBlock(x,y+1,z)==null && getBlock(x,y+2,z)==null) { best={x,y,z}; break; }
+      }
+      if (best) break;
+    }
+    if (best) break;
+  }
+
+  if (!best) player.pos.set(cx+0.5, WORLD.height-2, cz+0.5);
+  else player.pos.set(best.x+0.5, best.y+1+0.02, best.z+0.5);
+  player.vel.set(0,0,0);
+}
+findSpawn();
+controls.getObject().position.copy(player.pos);
+
+function collisionBounds(minX,minY,minZ,maxX,maxY,maxZ){
+  const x0=Math.floor(minX), x1=Math.floor(maxX-EPS);
+  const y0=Math.floor(minY), y1=Math.floor(maxY-EPS);
+  const z0=Math.floor(minZ), z1=Math.floor(maxZ-EPS);
+
+  let hit=false;
+  let minBX=Infinity,maxBX=-Infinity,minBY=Infinity,maxBY=-Infinity,minBZ=Infinity,maxBZ=-Infinity;
+
+  for (let x=x0;x<=x1;x++) for (let y=y0;y<=y1;y++) for (let z=z0;z<=z1;z++){
+    if (!inBounds(x,y,z)) continue;
+    if (!isSolidAt(x,y,z)) continue;
+    hit=true;
+    if (x<minBX) minBX=x; if (x>maxBX) maxBX=x;
+    if (y<minBY) minBY=y; if (y>maxBY) maxBY=y;
+    if (z<minBZ) minBZ=z; if (z>maxBZ) maxBZ=z;
+  }
+  return hit ? {hit,minBX,maxBX,minBY,maxBY,minBZ,maxBZ} : {hit:false};
+}
+
+function moveWithCollisions(dt, wishDir, wishSpeed){
+  const accel = player.onGround ? 45 : 45 * CONFIG.AIR_CONTROL;
+  const targetVx = wishDir.x * wishSpeed;
+  const targetVz = wishDir.z * wishSpeed;
+
+  player.vel.x += (targetVx - player.vel.x) * Math.min(1, accel*dt);
+  player.vel.z += (targetVz - player.vel.z) * Math.min(1, accel*dt);
+
+  player.vel.y -= CONFIG.GRAVITY * dt;
+
+  if (player.wantJump && player.onGround){
+    player.vel.y = CONFIG.JUMP_VELOCITY;
+    player.onGround = false;
+  }
+  player.wantJump = false;
+
+  const r = CONFIG.PLAYER_RADIUS;
+  const hh = CONFIG.PLAYER_HEIGHT;
+
+  const maxStep = 1/120;
+  const steps = Math.max(1, Math.ceil(dt/maxStep));
+  const sdt = dt/steps;
+
+  for (let i=0;i<steps;i++){
+    // X
+    let dx = player.vel.x * sdt;
+    if (dx){
+      player.pos.x += dx;
+      const b = collisionBounds(player.pos.x-r, player.pos.y, player.pos.z-r, player.pos.x+r, player.pos.y+hh, player.pos.z+r);
+      if (b.hit){
+        player.pos.x = dx>0 ? (b.minBX - r - EPS) : (b.maxBX + 1 + r + EPS);
+        player.vel.x = 0;
+      }
+    }
+    // Z
+    let dz = player.vel.z * sdt;
+    if (dz){
+      player.pos.z += dz;
+      const b = collisionBounds(player.pos.x-r, player.pos.y, player.pos.z-r, player.pos.x+r, player.pos.y+hh, player.pos.z+r);
+      if (b.hit){
+        player.pos.z = dz>0 ? (b.minBZ - r - EPS) : (b.maxBZ + 1 + r + EPS);
+        player.vel.z = 0;
+      }
+    }
+    // Y
+    player.onGround = false;
+    let dy = player.vel.y * sdt;
+    if (dy){
+      player.pos.y += dy;
+      const b = collisionBounds(player.pos.x-r, player.pos.y, player.pos.z-r, player.pos.x+r, player.pos.y+hh, player.pos.z+r);
+      if (b.hit){
+        if (dy < 0){
+          player.pos.y = b.maxBY + 1 + EPS;
+          player.onGround = true;
+        } else {
+          player.pos.y = b.minBY - hh - EPS;
+        }
+        player.vel.y = 0;
+      }
+    }
+  }
+
+  if (player.pos.y < -30) findSpawn();
+}
+
+/* =========================================================
+  Input: keyboard + mobile joystick/look + tap action
+========================================================= */
+const keys = { w:false,a:false,s:false,d:false,space:false,shift:false };
+window.addEventListener("keydown",(e)=>{
+  if (e.code==="KeyW") keys.w=true;
+  if (e.code==="KeyA") keys.a=true;
+  if (e.code==="KeyS") keys.s=true;
+  if (e.code==="KeyD") keys.d=true;
+  if (e.code==="Space") keys.space=true;
+  if (e.code==="ShiftLeft"||e.code==="ShiftRight") keys.shift=true;
+  if (e.code==="KeyR") findSpawn();
+});
+window.addEventListener("keyup",(e)=>{
+  if (e.code==="KeyW") keys.w=false;
+  if (e.code==="KeyA") keys.a=false;
+  if (e.code==="KeyS") keys.s=false;
+  if (e.code==="KeyD") keys.d=false;
+  if (e.code==="Space") keys.space=false;
+  if (e.code==="ShiftLeft"||e.code==="ShiftRight") keys.shift=false;
+});
+
+let mobileMove = { x:0, y:0 };
+let mobileLook = { dx:0, dy:0 };
+
+if (isTouchDevice){
+  document.getElementById("btnMode").addEventListener("click", ()=>{
+    setMode(mode==="BREAK" ? "PLACE" : "BREAK");
+  });
+  document.getElementById("btnJump").addEventListener("pointerdown", ()=>{
+    player.wantJump = true;
+  });
+
+  // joystick
+  const joy = document.getElementById("joystick");
+  const stick = document.getElementById("stick");
+  let joyActive=false;
+  let joyCenter={x:0,y:0};
+
+  function setStick(dx,dy){
+    const max=38;
+    const len=Math.hypot(dx,dy);
+    const k=len>max ? (max/len) : 1;
+    const sx=dx*k, sy=dy*k;
+    stick.style.transform = `translate(calc(-50% + ${sx}px), calc(-50% + ${sy}px))`;
+    mobileMove.x = sx/max;
+    mobileMove.y = sy/max;
+  }
+
+  joy.addEventListener("pointerdown",(e)=>{
+    joyActive=true;
+    joy.setPointerCapture(e.pointerId);
+    const r=joy.getBoundingClientRect();
+    joyCenter={x:r.left+r.width/2, y:r.top+r.height/2};
+    setStick(e.clientX-joyCenter.x, e.clientY-joyCenter.y);
+  });
+  joy.addEventListener("pointermove",(e)=>{
+    if (!joyActive) return;
+    setStick(e.clientX-joyCenter.x, e.clientY-joyCenter.y);
+  });
+  joy.addEventListener("pointerup",()=>{
+    joyActive=false;
+    stick.style.transform="translate(-50%, -50%)";
+    mobileMove.x=0; mobileMove.y=0;
+  });
+
+  // look drag (right side)
+  let lookActive=false;
+  let last={x:0,y:0};
+  window.addEventListener("pointerdown",(e)=>{
+    const t=e.target;
+    if (t.closest?.("#joystick") || t.closest?.("#mobileButtons") || t.closest?.("#hotbar") || t.closest?.("#help")) return;
+    lookActive=true;
+    last={x:e.clientX,y:e.clientY};
+  });
+  window.addEventListener("pointermove",(e)=>{
+    if (!lookActive) return;
+    const dx=e.clientX-last.x, dy=e.clientY-last.y;
+    last={x:e.clientX,y:e.clientY};
+    mobileLook.dx += dx;
+    mobileLook.dy += dy;
+  });
+  window.addEventListener("pointerup",()=>{ lookActive=false; });
+
+  // tap action (short tap only)
   let tap=null;
-  document.addEventListener('pointerdown',e=>{if(e.target.closest('#joyArea,#btns,#hotbar,#info'))return;tap={x:e.clientX,y:e.clientY,t:Date.now()}});
-  document.addEventListener('pointerup',e=>{if(!tap||e.target.closest('#joyArea,#btns,#hotbar,#info')){tap=null;return}if(Date.now()-tap.t<200&&Math.hypot(e.clientX-tap.x,e.clientY-tap.y)<15)act();tap=null});
-
-  mdBtn.onclick=()=>setM(mode==='BREAK'?'PLACE':'BREAK');
-  document.getElementById('jumpBtn').addEventListener('pointerdown',()=>{P.jmp=true});
+  window.addEventListener("pointerdown",(e)=>{
+    const t=e.target;
+    if (t.closest?.("#joystick") || t.closest?.("#mobileButtons") || t.closest?.("#hotbar") || t.closest?.("#help")) return;
+    tap={x:e.clientX,y:e.clientY,time:performance.now()};
+  });
+  window.addEventListener("pointerup",(e)=>{
+    if (!tap) return;
+    const t=e.target;
+    if (t.closest?.("#joystick") || t.closest?.("#mobileButtons") || t.closest?.("#hotbar") || t.closest?.("#help")) { tap=null; return; }
+    const dt=performance.now()-tap.time;
+    const dx=e.clientX-tap.x, dy=e.clientY-tap.y;
+    tap=null;
+    if (dt<280 && (dx*dx+dy*dy)<(10*10)) doAction();
+  });
 }
 
-const moveDir=()=>{const fwd=new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);fwd.y=0;fwd.normalize();const rt=new THREE.Vector3().crossVectors(fwd,new THREE.Vector3(0,1,0)).normalize();const dir=new THREE.Vector3();if(mobile){dir.addScaledVector(fwd,-mIn.z);dir.addScaledVector(rt,mIn.x)}else{if(keys.w)dir.add(fwd);if(keys.s)dir.sub(fwd);if(keys.d)dir.add(rt);if(keys.a)dir.sub(rt)}if(dir.lengthSq()>0)dir.normalize();return dir};
+/* =========================================================
+  Per-frame helpers
+========================================================= */
+function getWishDir(){
+  const forward = new THREE.Vector3();
+  controls.getDirection(forward);
+  forward.y = 0; forward.normalize();
+  const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0,1,0)).normalize();
 
-const applyML=()=>{if(!mobile)return;camera.rotation.order='YXZ';camera.rotation.y-=mLk.x*.003;camera.rotation.x=clamp(camera.rotation.x-mLk.y*.003,-Math.PI/2+.1,Math.PI/2-.1);mLk.x=mLk.y=0};
+  let mx=0, mz=0;
+  if (isTouchDevice){
+    mz += (-mobileMove.y);
+    mx += ( mobileMove.x);
+  } else {
+    if (keys.w) mz += 1;
+    if (keys.s) mz -= 1;
+    if (keys.d) mx += 1;
+    if (keys.a) mx -= 1;
+  }
 
-// ループ
-const clock=new THREE.Clock();
-const loop=()=>{requestAnimationFrame(loop);const dt=Math.min(clock.getDelta(),.05);applyML();if(!mobile&&keys.sp)P.jmp=true;const dir=moveDir();const spd=C.SPD*(keys.sh?1.5:1);const acc=P.gnd?30:15;P.vel.x+=(dir.x*spd-P.vel.x)*Math.min(1,acc*dt);P.vel.z+=(dir.z*spd-P.vel.z)*Math.min(1,acc*dt);physics(dt);updTgt();renderer.render(scene,camera)};
+  const dir = new THREE.Vector3();
+  dir.addScaledVector(forward, mz);
+  dir.addScaledVector(right, mx);
+  if (dir.lengthSq()>0) dir.normalize();
+  return dir;
+}
 
-window.addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});
+function applyMobileLook(){
+  const sens = 0.0024;
+  const yaw = -mobileLook.dx * sens;
+  const pitch = -mobileLook.dy * sens;
+  mobileLook.dx = 0; mobileLook.dy = 0;
 
-// 初期化
-console.log('Init...');
-genWorld();
-genTrees();
-loadMods();
-buildAll();
-spawn();
-loop();
-console.log('Ready!');
+  const obj = controls.getObject();
+  obj.rotation.y += yaw;
+  camera.rotation.x += pitch;
+  camera.rotation.x = THREE.MathUtils.clamp(camera.rotation.x, -Math.PI/2+0.01, Math.PI/2-0.01);
+}
 
-})();
+/* =========================================================
+  Loop
+========================================================= */
+const clock = new THREE.Clock();
+renderer.setAnimationLoop(()=>{
+  const dt = Math.min(clock.getDelta(), 0.05);
+
+  if (isTouchDevice) applyMobileLook();
+
+  if (!isTouchDevice && keys.space) player.wantJump = true;
+
+  const wishDir = getWishDir();
+  const sprint = (!isTouchDevice && keys.shift);
+  const wishSpeed = CONFIG.MOVE_SPEED * (sprint ? CONFIG.SPRINT_MULT : 1.0);
+
+  moveWithCollisions(dt, wishDir, wishSpeed);
+  controls.getObject().position.copy(player.pos);
+
+  updateAimed();
+  renderer.render(scene, camera);
+});
+
+addEventListener("resize", ()=>{
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
