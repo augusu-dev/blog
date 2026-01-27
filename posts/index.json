@@ -29,10 +29,11 @@
     "section": "other"
   },
   {
+    "slug": "5",
     "title": "マインクラフト",
-    "description": "クリエイティブモードで遊べるWebブラウザ版マイクラです。",
-    "url": "./minecraft/index.html",  // 直接HTMLを指定
-    "type": "html_app",               // アプリであることを識別させるタグ
+    "excerpt": "クリエイティブモードで遊べるWebブラウザ版マイクラです。",
+    "date": "2026-01-27",
+    "file": "2026-01-27o.md",
+    "section": "other"
   }
-
 ]
