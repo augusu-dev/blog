@@ -2,32 +2,87 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Minecraft Web - Creative Mode</title>
-    <link rel="stylesheet" href="style.css">
     <style>
-        body { margin: 0; overflow: hidden; }
+        body { margin: 0; overflow: hidden; touch-action: none; font-family: 'Courier New', Courier, monospace; }
         #crosshair {
-            position: absolute; top: 50%; left: 50%; width: 20px; height: 20px;
-            background: transparent; border: 2px solid white; border-radius: 50%;
-            transform: translate(-50%, -50%); pointer-events: none; mix-blend-mode: difference;
+            position: absolute; top: 50%; left: 50%; width: 16px; height: 16px;
+            background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><path d="M8 0v16M0 8h16" stroke="white" stroke-width="2" /></svg>') no-repeat center;
+            transform: translate(-50%, -50%); pointer-events: none; mix-blend-mode: difference; z-index: 10;
         }
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+        
+        /* インストラクション */
         #instructions {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            color: white; font-family: sans-serif; text-align: center; background: rgba(0,0,0,0.5); padding: 20px;
-            cursor: pointer;
+            color: white; background: rgba(0,0,0,0.7); padding: 20px; border-radius: 8px;
+            text-align: center; pointer-events: auto; cursor: pointer;
         }
+
+        /* ホットバー */
+        #hotbar {
+            position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%);
+            display: flex; gap: 5px; background: rgba(0,0,0,0.5); padding: 5px; border-radius: 5px; pointer-events: auto;
+        }
+        .slot {
+            width: 40px; height: 40px; border: 2px solid #555; cursor: pointer;
+            display: flex; justify-content: center; align-items: center; font-size: 10px; color: white;
+        }
+        .slot.active { border-color: white; transform: scale(1.1); }
+
+        /* モバイルコントロール */
+        .touch-controls { display: none; pointer-events: auto; position: absolute; }
+        @media (hover: none) and (pointer: coarse) {
+            .touch-controls { display: block; }
+            #instructions p { display: none; } 
+            #instructions h1::after { content: "\A タップして開始"; white-space: pre; font-size: 16px; }
+        }
+
+        #dpad { bottom: 20px; left: 20px; width: 120px; height: 120px; position: absolute; }
+        .btn { position: absolute; width: 40px; height: 40px; background: rgba(255,255,255,0.3); border-radius: 5px; border: 1px solid rgba(255,255,255,0.5); }
+        .btn:active { background: rgba(255,255,255,0.6); }
+        #btn-up { top: 0; left: 40px; }
+        #btn-down { bottom: 0; left: 40px; }
+        #btn-left { top: 40px; left: 0; }
+        #btn-right { top: 40px; right: 0; }
+
+        #action-buttons { bottom: 80px; right: 20px; position: absolute; display: flex; flex-direction: column; gap: 10px; }
+        .action-btn { width: 50px; height: 50px; background: rgba(255,255,255,0.3); border-radius: 50%; border: 1px solid white; color: white; display: flex; justify-content: center; align-items: center; font-weight: bold; }
+        
+        #mode-info { position: absolute; top: 10px; left: 10px; color: yellow; text-shadow: 1px 1px 0 #000; }
     </style>
 </head>
 <body>
     <div id="crosshair"></div>
-    <div id="instructions">
-        <h1>クリックして開始</h1>
-        <p>移動: WASD, ジャンプ: Space</p>
-        <p>破壊: 左クリック, 設置: 右クリック</p>
-    </div>
+    <div id="mode-info">Creative Mode (Fly: F / Double Jump)</div>
     
-    <!-- Three.js CDN -->
+    <div id="ui-layer">
+        <div id="instructions">
+            <h1>Minecraft Web</h1>
+            <p>PC: WASD移動, SPACEジャンプ/上昇, SHIFT下降<br>左クリック破壊, 右クリック設置, F飛行切替</p>
+        </div>
+
+        <div id="hotbar">
+            <!-- JSで生成 -->
+        </div>
+
+        <!-- モバイル用UI -->
+        <div id="dpad" class="touch-controls">
+            <div id="btn-up" class="btn"></div>
+            <div id="btn-down" class="btn"></div>
+            <div id="btn-left" class="btn"></div>
+            <div id="btn-right" class="btn"></div>
+        </div>
+        <div id="action-buttons" class="touch-controls">
+            <div id="btn-jump" class="action-btn">JMP</div>
+            <div id="btn-fly" class="action-btn">FLY</div>
+            <div id="btn-place" class="action-btn" style="background: rgba(0,255,0,0.3);">PUT</div>
+            <div id="btn-break" class="action-btn" style="background: rgba(255,0,0,0.3);">BRK</div>
+        </div>
+    </div>
+
+    <!-- Three.js Import -->
     <script type="importmap">
         {
             "imports": {
