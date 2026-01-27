@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minecraft Web - Creative Mode</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        body { margin: 0; overflow: hidden; }
+        #crosshair {
+            position: absolute; top: 50%; left: 50%; width: 20px; height: 20px;
+            background: transparent; border: 2px solid white; border-radius: 50%;
+            transform: translate(-50%, -50%); pointer-events: none; mix-blend-mode: difference;
+        }
+        #instructions {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            color: white; font-family: sans-serif; text-align: center; background: rgba(0,0,0,0.5); padding: 20px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div id="crosshair"></div>
+    <div id="instructions">
+        <h1>クリックして開始</h1>
+        <p>移動: WASD, ジャンプ: Space</p>
+        <p>破壊: 左クリック, 設置: 右クリック</p>
+    </div>
+    
+    <!-- Three.js CDN -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+    <script type="module" src="script.js"></script>
+</body>
+</html>
