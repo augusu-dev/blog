@@ -28,12 +28,14 @@
     "file": "2026-01-25o2.md",
     "section": "other"
   },
-  {
-    "slug": "5",
-    "title": "マインクラフト",
-    "excerpt": "クリエイティブモードで遊べるWebブラウザ版マイクラです。",
+    {
+    "slug": "minecraft",
+    "title": "マインクラフト (Web版)",
+    "excerpt": "ブラウザで遊べるクリエイティブモード。モバイル対応。",
     "date": "2026-01-27",
-    "file": "2026-01-27o.md",
-    "section": "other"
+    "file": "minecraft/index.html", 
+    "section": "other",
+    "isApp": true
   }
+
 ]
