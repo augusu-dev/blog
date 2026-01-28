@@ -31,9 +31,15 @@
     {
     "slug": "minecraft",
     "title": "マインクラフト (Web版)",
-    "excerpt": "ブラウザで遊べるクリエイティブモード。モバイル対応。",
     "date": "2026-01-27",
     "file": "minecraft/index.html", 
+    "section": "other"
+    },
+   {
+    "slug": "mine",
+    "title": "オープンソースの",
+    "date": "2026-01-28",
+    "file": "https://dgreenheck.github.io/minecraft-threejs-clone/", 
     "section": "other"
   }
 ]
