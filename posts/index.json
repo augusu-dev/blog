@@ -29,13 +29,14 @@
     "section": "other"
   },
     {
-    "slug": "minecraft",
+    "slug": "試作品",
     "title": "マインクラフト (Web版)",
     "date": "2026-01-27",
     "file": "minecraft/index.html", 
     "section": "other"
     },
    {
+    "slug": "minecraft2",
     "title": "オープンソースの",
     "date": "2026-02-06",
     "file": "2026-02-06o.md", 
