@@ -1,0 +1,120 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url("https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&display=swap");
+
+:root {
+  --azuki-bg: #f5e0e0;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: "Noto Sans JP", sans-serif;
+}
+
+/* PC border - azuki color background visible as border */
+@media (min-width: 768px) {
+  body {
+    background-color: var(--azuki-bg);
+  }
+}
+
+/* Article prose styling */
+.prose h1 {
+  @apply text-2xl font-bold mt-8 mb-4;
+}
+.prose h2 {
+  @apply text-xl font-bold mt-6 mb-3;
+}
+.prose h3 {
+  @apply text-lg font-semibold mt-4 mb-2;
+}
+.prose p {
+  @apply mb-4 leading-relaxed;
+}
+.prose ul {
+  @apply list-disc pl-6 mb-4;
+}
+.prose ol {
+  @apply list-decimal pl-6 mb-4;
+}
+.prose li {
+  @apply mb-1;
+}
+.prose a {
+  @apply text-azuki-600 underline hover:text-azuki-800;
+}
+.prose blockquote {
+  @apply border-l-4 border-azuki-300 pl-4 italic text-gray-600 my-4;
+}
+.prose code {
+  @apply bg-gray-100 px-1.5 py-0.5 rounded text-sm;
+}
+.prose pre {
+  @apply bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto my-4;
+}
+.prose pre code {
+  @apply bg-transparent p-0;
+}
+.prose img {
+  @apply rounded-lg my-4 max-w-full;
+}
+.prose hr {
+  @apply my-8 border-gray-200;
+}
+.prose table {
+  @apply w-full border-collapse my-4;
+}
+.prose th,
+.prose td {
+  @apply border border-gray-200 px-4 py-2 text-left;
+}
+.prose th {
+  @apply bg-gray-50 font-semibold;
+}
+
+/* Calendar styling */
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 1px;
+}
+
+/* Timeline styling */
+.timeline-line {
+  position: relative;
+}
+.timeline-line::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: linear-gradient(
+    to bottom,
+    #d49494,
+    #a85555,
+    #6e3333
+  );
+  transform: translateX(-50%);
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #d49494;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #a85555;
+}
