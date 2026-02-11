@@ -1,0 +1,950 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Augusuのブログ</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.1/marked.min.js"></script>
+  <style>
+    /* ========================================
+       RESET & BASE
+       ======================================== */
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: 'Zen Kaku Gothic New', sans-serif;
+      background: #faf5f3;
+      color: #4a3535;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    :root {
+      --bg: #faf5f3;
+      --bg-soft: #f3ebe7;
+      --card: #ffffff;
+      --azuki: #9b6b6b;
+      --azuki-light: #c4a0a0;
+      --azuki-pale: #e8d5d0;
+      --azuki-deep: #7a4f4f;
+      --text: #4a3535;
+      --text-soft: #8a7070;
+      --accent: #d4877a;
+      --border: #e8d5d0;
+      --white: #ffffff;
+      --serif: 'Cormorant Garamond', serif;
+      --sans: 'Zen Kaku Gothic New', sans-serif;
+    }
+
+    /* ========================================
+       NAVBAR — logo left, links center
+       ======================================== */
+    .navbar {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: center;
+      padding: 14px 32px;
+      background: rgba(250, 245, 243, 0.92);
+      backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+      border-bottom: 1px solid var(--border);
+      transition: box-shadow 0.3s ease;
+    }
+    .navbar.scrolled { box-shadow: 0 2px 20px rgba(155, 107, 107, 0.06); }
+
+    .nav-logo {
+      position: absolute; left: 32px;
+      display: flex; align-items: center; gap: 8px;
+      text-decoration: none; font-family: var(--serif);
+      font-size: 20px; font-weight: 400; color: var(--text);
+      letter-spacing: 0.06em; cursor: pointer; border: none; background: none;
+    }
+    .nav-logo-img {
+      width: 28px; height: 28px; border-radius: 8px; object-fit: cover;
+    }
+
+    .nav-links { display: flex; gap: 4px; }
+    .nav-link {
+      display: flex; align-items: center; gap: 6px;
+      padding: 7px 14px; border-radius: 10px; border: none; cursor: pointer;
+      font-size: 13px; font-family: var(--sans);
+      background: transparent; color: var(--text-soft); font-weight: 400;
+      transition: all 0.2s ease;
+    }
+    .nav-link:hover { background: rgba(232, 213, 208, 0.4); }
+    .nav-link.active {
+      background: rgba(155, 107, 107, 0.08);
+      color: var(--azuki-deep); font-weight: 600;
+    }
+
+    /* ========================================
+       PAGE DOTS
+       ======================================== */
+    .page-dots {
+      display: flex; justify-content: center; gap: 6px;
+      padding: 10px 0;
+      position: fixed; top: 56px; left: 0; right: 0; z-index: 99;
+      background: rgba(250, 245, 243, 0.8);
+      backdrop-filter: blur(8px);
+    }
+    .page-dot {
+      height: 5px; border-radius: 3px;
+      background: var(--azuki-pale);
+      transition: all 0.35s ease;
+    }
+    .page-dot.active { width: 20px !important; background: var(--accent); }
+
+    /* ========================================
+       MAIN CONTENT
+       ======================================== */
+    .main-content {
+      max-width: 740px; width: 100%; margin: 0 auto;
+      padding: 90px 24px 0;
+    }
+    .section {
+      padding: 48px 0 56px; min-height: 50vh;
+      opacity: 0; transform: translateY(20px);
+      transition: opacity 0.6s ease, transform 0.6s ease;
+    }
+    .section.visible { opacity: 1; transform: translateY(0); }
+    .section-divider {
+      width: 60px; height: 1px; background: var(--azuki-pale); margin: 0 auto;
+    }
+    .section-title {
+      font-family: var(--serif); font-size: 28px; font-weight: 400;
+      color: var(--text); margin-bottom: 24px; letter-spacing: 0.04em;
+    }
+
+    /* ========================================
+       HERO — with background image
+       ======================================== */
+    .hero {
+      text-align: center; position: relative;
+      overflow: hidden; border-radius: 20px; margin-bottom: 8px;
+    }
+    .hero-bg {
+      position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+      background: url('images/b.png') center 40% / cover no-repeat;
+      filter: brightness(0.45) saturate(0.8);
+      z-index: 0;
+    }
+    .hero-content {
+      position: relative; z-index: 1;
+      padding: 60px 24px;
+    }
+    .hero h1 {
+      font-family: var(--serif); font-size: 44px; font-weight: 300;
+      color: var(--white); margin-bottom: 12px; letter-spacing: 0.06em;
+      text-shadow: 0 2px 16px rgba(0, 0, 0, 0.3);
+    }
+    .hero p {
+      font-size: 14px; color: rgba(255, 255, 255, 0.85);
+      letter-spacing: 0.08em; text-shadow: 0 1px 8px rgba(0, 0, 0, 0.3);
+    }
+
+    /* ========================================
+       CARDS & TAGS
+       ======================================== */
+    .card {
+      background: var(--card); border-radius: 14px;
+      border: 1px solid var(--border);
+      transition: transform 0.25s ease, box-shadow 0.25s ease;
+      cursor: pointer;
+    }
+    .card:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 8px 24px rgba(155, 107, 107, 0.1);
+    }
+    .card-sm:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 18px rgba(155, 107, 107, 0.08);
+    }
+    .tag {
+      display: inline-block; padding: 2px 10px; border-radius: 12px;
+      font-size: 11px; font-weight: 500; letter-spacing: 0.02em;
+    }
+
+    /* ========================================
+       HOME — recommend grids
+       ======================================== */
+    .recommend-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 32px;
+    }
+    .recommend-row {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 40px;
+    }
+
+    /* ========================================
+       BLOG LIST
+       ======================================== */
+    .blog-list {
+      display: flex; flex-direction: column; gap: 14px; margin-bottom: 24px;
+    }
+    .blog-item {
+      background: var(--card); border-radius: 14px; padding: 22px 26px;
+      border: 1px solid var(--border);
+      display: flex; justify-content: space-between; align-items: flex-start; gap: 20px;
+      cursor: pointer; transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .blog-item:hover {
+      transform: translateX(4px);
+      box-shadow: inset 3px 0 0 var(--accent);
+    }
+    .blog-item h3 {
+      font-size: 16px; font-weight: 600; color: var(--text);
+      line-height: 1.5; margin-bottom: 5px;
+    }
+    .blog-item p {
+      font-size: 13px; color: var(--text-soft); line-height: 1.7;
+    }
+    .blog-date {
+      font-size: 12px; color: var(--azuki-light); white-space: nowrap; margin-top: 4px;
+    }
+
+    /* ========================================
+       PAGINATION
+       ======================================== */
+    .pagination {
+      display: flex; justify-content: center; align-items: center; gap: 16px; margin-top: 8px;
+    }
+    .page-btn {
+      width: 36px; height: 36px; border-radius: 10px;
+      border: 1px solid var(--border); background: var(--card);
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      color: var(--text-soft); transition: all 0.2s ease;
+    }
+    .page-btn:hover:not(:disabled) {
+      background: var(--azuki); color: var(--white); border-color: var(--azuki);
+    }
+    .page-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+    .page-info { font-size: 12px; color: var(--text-soft); letter-spacing: 0.04em; }
+
+    /* ========================================
+       PRODUCT GRID
+       ======================================== */
+    .product-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px;
+    }
+    .product-card {
+      background: var(--card); border-radius: 14px;
+      border: 1px solid var(--border); overflow: hidden;
+      cursor: pointer; transition: transform 0.25s ease, box-shadow 0.25s ease;
+    }
+    .product-card:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 8px 24px rgba(155, 107, 107, 0.08);
+    }
+    .product-thumb {
+      height: 90px; display: flex; align-items: center; justify-content: center;
+    }
+    .product-thumb-inner {
+      width: 44px; height: 44px; border-radius: 12px;
+      background: rgba(255, 255, 255, 0.45); backdrop-filter: blur(4px);
+    }
+    .product-info { padding: 16px 18px; }
+    .product-info h3 {
+      font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 3px;
+    }
+    .product-info p { font-size: 12px; color: var(--text-soft); line-height: 1.5; }
+
+    .more-btn {
+      display: block; width: 100%; padding: 13px 0; border-radius: 12px;
+      border: 1px dashed var(--azuki-light); background: transparent;
+      color: var(--azuki); font-size: 13px; font-family: var(--sans);
+      letter-spacing: 0.06em; cursor: pointer;
+      transition: all 0.25s ease; margin-top: 4px;
+    }
+    .more-btn:hover {
+      background: var(--azuki); color: var(--white); border-style: solid;
+    }
+
+    /* ========================================
+       ABOUT ME
+       ======================================== */
+    .about-header {
+      display: flex; gap: 28px; align-items: flex-start; margin-bottom: 32px;
+    }
+    .about-avatar {
+      width: 80px; height: 80px; border-radius: 20px; object-fit: cover;
+      flex-shrink: 0; box-shadow: 0 4px 16px rgba(155, 107, 107, 0.15);
+    }
+    .about-name {
+      font-family: var(--serif); font-size: 24px; font-weight: 400;
+      color: var(--text); margin-bottom: 4px; letter-spacing: 0.04em;
+    }
+    .about-role {
+      font-size: 13px; color: var(--text-soft); letter-spacing: 0.02em;
+    }
+    .about-bio {
+      background: var(--card); border-radius: 16px; padding: 28px 32px;
+      border: 1px solid var(--border); margin-bottom: 24px;
+    }
+    .about-bio p { font-size: 15px; color: var(--text); line-height: 2; }
+    .about-bio p + p { margin-top: 16px; }
+
+    .skill-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 48px; }
+    .skill-tag {
+      padding: 5px 14px; border-radius: 16px; font-size: 12px;
+      color: var(--azuki); background: rgba(232, 213, 208, 0.35);
+      border: 1px solid var(--azuki-pale); letter-spacing: 0.02em;
+    }
+
+    /* Contact sub-section */
+    .scroll-hint {
+      text-align: center; cursor: pointer; padding: 12px 0 0;
+      opacity: 0.7; transition: opacity 0.3s;
+    }
+    .scroll-hint:hover { opacity: 1; }
+    .scroll-hint p {
+      font-size: 12px; color: var(--azuki-light);
+      margin-bottom: 8px; letter-spacing: 0.06em;
+    }
+    .scroll-line {
+      width: 1px; height: 32px;
+      background: linear-gradient(to bottom, var(--azuki-light), transparent);
+      margin: 0 auto; animation: scrollPulse 2s ease-in-out infinite;
+    }
+    @keyframes scrollPulse {
+      0%, 100% { opacity: 0.4; transform: scaleY(1); }
+      50% { opacity: 1; transform: scaleY(1.3); }
+    }
+
+    .contact-section { padding-top: 32px; min-height: 30vh; }
+    .contact-title {
+      font-family: var(--serif); font-size: 22px; font-weight: 400;
+      color: var(--text); margin-bottom: 8px; letter-spacing: 0.04em;
+    }
+    .contact-desc {
+      font-size: 14px; color: var(--text-soft); line-height: 1.8; margin-bottom: 24px;
+    }
+    .contact-links { display: flex; flex-direction: column; gap: 14px; }
+    .contact-link {
+      display: flex; align-items: center; justify-content: space-between;
+      background: var(--card); border-radius: 14px; padding: 20px 24px;
+      border: 1px solid var(--border); text-decoration: none;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .contact-link:hover {
+      transform: translateX(4px);
+      box-shadow: 0 4px 16px rgba(155, 107, 107, 0.08);
+    }
+    .contact-link-inner { display: flex; align-items: center; gap: 14px; }
+    .contact-icon {
+      width: 40px; height: 40px; border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 15px;
+    }
+    .contact-name { font-size: 15px; font-weight: 600; color: var(--text); }
+    .contact-handle { font-size: 12px; color: var(--text-soft); }
+
+    /* ========================================
+       FOOTER
+       ======================================== */
+    .footer {
+      border-top: 1px solid var(--border); padding: 20px 32px;
+      display: flex; align-items: center; justify-content: center;
+      margin-top: 40px;
+    }
+    .footer-copy {
+      font-family: var(--serif); font-size: 13px;
+      color: var(--azuki-light); letter-spacing: 0.04em;
+    }
+
+    /* ========================================
+       POST OVERLAY (slide-in reader)
+       ======================================== */
+    .post-overlay {
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 200;
+      background: rgba(74, 53, 53, 0.3);
+      backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+      opacity: 0; pointer-events: none; transition: opacity 0.3s ease;
+    }
+    .post-overlay.open { opacity: 1; pointer-events: auto; }
+    .post-panel {
+      position: absolute; top: 0; right: 0; bottom: 0;
+      width: min(640px, 90vw); background: var(--bg);
+      border-left: 1px solid var(--border); overflow-y: auto;
+      transform: translateX(100%);
+      transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .post-overlay.open .post-panel { transform: translateX(0); }
+    .post-panel-header {
+      position: sticky; top: 0; z-index: 10;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 28px;
+      background: rgba(250, 245, 243, 0.95);
+      backdrop-filter: blur(10px); border-bottom: 1px solid var(--border);
+    }
+    .post-close-btn {
+      width: 32px; height: 32px; border-radius: 8px;
+      border: 1px solid var(--border); background: var(--card);
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      color: var(--text-soft); transition: all 0.2s ease;
+    }
+    .post-close-btn:hover {
+      background: var(--azuki); color: var(--white); border-color: var(--azuki);
+    }
+    .post-panel-body { padding: 36px 32px 60px; }
+    .post-panel-body .post-meta {
+      display: flex; gap: 8px; align-items: center;
+      margin-bottom: 20px; flex-wrap: wrap;
+    }
+
+    /* Markdown rendered content */
+    .md-content h1 {
+      font-family: var(--serif); font-size: 28px; font-weight: 400;
+      color: var(--text); margin-bottom: 24px; line-height: 1.5;
+    }
+    .md-content h2 {
+      font-size: 18px; font-weight: 700; color: var(--text);
+      margin: 32px 0 12px; padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    .md-content h3 {
+      font-size: 16px; font-weight: 700; color: var(--text); margin: 24px 0 8px;
+    }
+    .md-content p {
+      font-size: 15px; color: var(--text); line-height: 2; margin-bottom: 16px;
+    }
+    .md-content ul, .md-content ol {
+      padding-left: 24px; margin-bottom: 16px;
+    }
+    .md-content li {
+      font-size: 15px; color: var(--text); line-height: 2; margin-bottom: 4px;
+    }
+    .md-content code {
+      font-family: 'SFMono-Regular', 'Consolas', monospace;
+      background: var(--bg-soft); padding: 2px 6px; border-radius: 4px;
+      font-size: 13px; color: var(--azuki-deep);
+    }
+    .md-content pre {
+      background: #2d2424; color: #e8d5d0; border-radius: 12px;
+      padding: 20px 24px; margin-bottom: 20px; overflow-x: auto;
+    }
+    .md-content pre code {
+      background: none; padding: 0; color: inherit; font-size: 13px; line-height: 1.7;
+    }
+    .md-content blockquote {
+      border-left: 3px solid var(--azuki-pale); padding: 12px 20px;
+      margin: 16px 0; background: var(--bg-soft); border-radius: 0 8px 8px 0;
+    }
+    .md-content blockquote p { color: var(--text-soft); margin-bottom: 0; }
+
+    /* ========================================
+       ANIMATIONS
+       ======================================== */
+    .fade-item {
+      opacity: 0; transform: translateY(14px);
+      transition: opacity 0.5s ease, transform 0.5s ease;
+    }
+    .fade-item.show { opacity: 1; transform: translateY(0); }
+
+    /* ========================================
+       RESPONSIVE
+       ======================================== */
+    @media (max-width: 640px) {
+      .navbar { padding: 12px 16px; justify-content: space-between; }
+      .nav-logo { position: static; }
+      .nav-links { gap: 2px; }
+      .nav-link { padding: 6px 10px; font-size: 12px; }
+      .nav-link svg { display: none; }
+      .main-content { padding: 82px 16px 0; }
+      .hero h1 { font-size: 32px; }
+      .hero-content { padding: 32px 16px; }
+      .recommend-grid { grid-template-columns: 1fr; }
+      .recommend-row { grid-template-columns: 1fr 1fr; }
+      .product-grid { grid-template-columns: 1fr; }
+      .blog-item { flex-direction: column; gap: 8px; }
+      .about-header { flex-direction: column; align-items: center; text-align: center; }
+      .post-panel { width: 100vw; }
+      .post-panel-body { padding: 24px 20px 40px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ====== NAVBAR ====== -->
+  <nav class="navbar" id="navbar">
+    <button class="nav-logo" onclick="goTo('home')">
+      <img src="images/a.png" alt="Augusu" class="nav-logo-img">
+      Augusu
+    </button>
+    <div class="nav-links">
+      <button class="nav-link active" data-section="home" onclick="goTo('home')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        Home
+      </button>
+      <button class="nav-link" data-section="blog" onclick="goTo('blog')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+        Blog
+      </button>
+      <button class="nav-link" data-section="product" onclick="goTo('product')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+        Product
+      </button>
+      <button class="nav-link" data-section="about" onclick="goTo('about')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        About Me
+      </button>
+    </div>
+  </nav>
+
+  <!-- ====== PAGE DOTS ====== -->
+  <div class="page-dots" id="pageDots">
+    <div class="page-dot active" style="width:20px" data-section="home"></div>
+    <div class="page-dot" style="width:6px" data-section="blog"></div>
+    <div class="page-dot" style="width:6px" data-section="product"></div>
+    <div class="page-dot" style="width:6px" data-section="about"></div>
+  </div>
+
+  <!-- ====== MAIN CONTENT ====== -->
+  <div class="main-content">
+
+    <!-- ──── HOME ──── -->
+    <section class="section visible" id="home">
+      <div class="hero">
+        <div class="hero-bg"></div>
+        <div class="hero-content">
+          <h1>Augusu Blog</h1>
+          <p>学び、作り、考える。日々の記録。</p>
+        </div>
+      </div>
+      <h2 class="section-title fade-item">おすすめ</h2>
+      <div class="recommend-grid" id="recommendGrid"></div>
+      <div class="recommend-row" id="recommendRow"></div>
+    </section>
+
+    <div class="section-divider"></div>
+
+    <!-- ──── BLOG ──── -->
+    <section class="section" id="blog">
+      <h2 class="section-title">Blog</h2>
+      <div class="blog-list" id="blogList"></div>
+      <div class="pagination" id="blogPagination" style="display:none">
+        <button class="page-btn" id="blogPrev" onclick="blogNav(-1)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <span class="page-info" id="blogPageInfo"></span>
+        <button class="page-btn" id="blogNext" onclick="blogNav(1)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+      </div>
+    </section>
+
+    <div class="section-divider"></div>
+
+    <!-- ──── PRODUCT ──── -->
+    <section class="section" id="product">
+      <h2 class="section-title">Product</h2>
+      <div class="product-grid" id="productGrid"></div>
+      <button class="more-btn" id="productMoreBtn" onclick="loadMoreProducts()">もっと見る ＋</button>
+      <div class="pagination" id="productPagination" style="display:none">
+        <button class="page-btn" id="prodPrev" onclick="productNav(-1)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <span class="page-info" id="prodPageInfo"></span>
+        <button class="page-btn" id="prodNext" onclick="productNav(1)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+      </div>
+    </section>
+
+    <div class="section-divider"></div>
+
+    <!-- ──── ABOUT ME ──── -->
+    <section class="section" id="about">
+      <h2 class="section-title">About Me</h2>
+
+      <div class="about-header">
+        <img src="images/a.png" alt="Augusu" class="about-avatar">
+        <div>
+          <h3 class="about-name">Augusu</h3>
+          <p class="about-role">開発者 / 思考する人</p>
+        </div>
+      </div>
+
+      <div class="about-bio">
+        <p>学ぶこと、作ること、考えることが好きです。テクノロジーと哲学の交差点で、小さなプロジェクトや文章を生み出しています。</p>
+        <p>このブログでは、日々の学びや実験、考察を記録しています。コードを書くことも、言葉を紡ぐことも、どちらも同じ「表現」だと思っています。</p>
+        <p>AIと共に成長し、希少価値を生み出すクリエイターを目指します。ふと思ったこと、考えを自分の言葉で表します。</p>
+      </div>
+
+      <div class="skill-tags">
+        <span class="skill-tag">JavaScript</span>
+        <span class="skill-tag">React</span>
+        <span class="skill-tag">Three.js</span>
+        <span class="skill-tag">Python</span>
+        <span class="skill-tag">哲学</span>
+        <span class="skill-tag">仏教思想</span>
+        <span class="skill-tag">AI</span>
+      </div>
+
+      <div class="scroll-hint" onclick="document.getElementById('contact').scrollIntoView({behavior:'smooth'})">
+        <p>Contact</p>
+        <div class="scroll-line"></div>
+      </div>
+
+      <div class="contact-section" id="contact">
+        <h3 class="contact-title">Contact</h3>
+        <p class="contact-desc">ご連絡はSNSからお気軽にどうぞ。</p>
+        <div class="contact-links">
+          <a href="https://bsky.app/profile/augusu.bsky.social" target="_blank" rel="noopener" class="contact-link">
+            <div class="contact-link-inner">
+              <div class="contact-icon" style="background:rgba(0,133,255,0.08);color:#0085ff;">B</div>
+              <div>
+                <div class="contact-name">Bluesky</div>
+                <div class="contact-handle">@augusu.bsky.social</div>
+              </div>
+            </div>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--azuki-light)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+          </a>
+          <a href="https://github.com/augusu-dev" target="_blank" rel="noopener" class="contact-link">
+            <div class="contact-link-inner">
+              <div class="contact-icon" style="background:rgba(51,51,51,0.08);color:#333;">G</div>
+              <div>
+                <div class="contact-name">GitHub</div>
+                <div class="contact-handle">github.com/augusu-dev</div>
+              </div>
+            </div>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--azuki-light)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+          </a>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- ====== FOOTER ====== -->
+  <footer class="footer">
+    <span class="footer-copy">© 2026 Augusu Blog</span>
+  </footer>
+
+  <!-- ====== POST READER OVERLAY ====== -->
+  <div class="post-overlay" id="postOverlay" onclick="closePost(event)">
+    <div class="post-panel" onclick="event.stopPropagation()">
+      <div class="post-panel-header">
+        <span style="font-size:13px;color:var(--text-soft)" id="postHeaderDate"></span>
+        <button class="post-close-btn" onclick="closePost()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="post-panel-body">
+        <div class="post-meta" id="postMeta"></div>
+        <div class="md-content" id="postContent">
+          <p style="color:var(--text-soft)">読み込み中...</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== JAVASCRIPT ====== -->
+  <script>
+    /* ─── State ─── */
+    let posts = [];
+    let products = [];
+
+    const BLOG_PER_PAGE = 7;
+    const PROD_PER_PAGE = 12;
+    let blogPage = 0;
+    let prodShown = 4;        // progressive: 4 → 8 → 12
+    let prodPage = 0;
+    let prodPagMode = false;  // switches to pagination after 12
+
+    /* ─── Tag colors ─── */
+    const TAG_COLORS = {
+      "AI": "#d4877a", "思考": "#8a7a6b", "コード": "#6b7a8a",
+      "3D": "#8a6b7a", "哲学": "#7a6b8a", "テクノロジー": "#d4877a",
+      "社会": "#6b8a7a", "作品": "#7a8a6b", "ツール": "#6b8a8a",
+      "デザイン": "#8a6b6b", "言語": "#6b6b8a",
+    };
+
+    function makeTag(label) {
+      const c = TAG_COLORS[label] || "#9b6b6b";
+      return '<span class="tag" style="color:' + c + ';background:' + c + '18;border:1px solid ' + c + '30">' + label + '</span>';
+    }
+
+    function fmtDate(d) { return d.replace(/-/g, '.'); }
+
+    /* ─── Navigation ─── */
+    function goTo(id) {
+      document.getElementById(id).scrollIntoView({ behavior: 'smooth' });
+    }
+
+    /* ─── Init: load JSON data ─── */
+    async function init() {
+      posts = await fetch('posts.json').then(function(r) { return r.json(); });
+      products = await fetch('products.json').then(function(r) { return r.json(); });
+
+      renderHome();
+      renderBlog();
+      renderProduct();
+      setupObserver();
+      window.addEventListener('scroll', updateNav, { passive: true });
+      updateNav();
+
+      // initial fade-in for home
+      requestAnimationFrame(function() {
+        var items = document.querySelectorAll('#home .fade-item');
+        items.forEach(function(el, i) {
+          setTimeout(function() { el.classList.add('show'); }, 200 + i * 100);
+        });
+      });
+    }
+
+    /* ─── Shuffle helper ─── */
+    function shuffle(arr) {
+      var a = arr.slice();
+      for (var i = a.length - 1; i > 0; i--) {
+        var j = Math.floor(Math.random() * (i + 1));
+        var tmp = a[i]; a[i] = a[j]; a[j] = tmp;
+      }
+      return a;
+    }
+
+    /* ════════════════════════════════════════
+       HOME — random 2 products + random 3 blog posts
+       ════════════════════════════════════════ */
+    function renderHome() {
+      var grid = document.getElementById('recommendGrid');
+      var row = document.getElementById('recommendRow');
+
+      // Big cards: random 2 products
+      var randProducts = shuffle(products).slice(0, 2);
+      grid.innerHTML = randProducts.map(function(p) {
+        return '<div class="card fade-item" style="padding:0;min-height:160px;display:flex;flex-direction:column;overflow:hidden">' +
+          '<div style="height:80px;background:linear-gradient(135deg,' + p.color + ',' + p.color + '88);display:flex;align-items:center;justify-content:center">' +
+            '<div style="width:44px;height:44px;border-radius:12px;background:rgba(255,255,255,0.45)"></div>' +
+          '</div>' +
+          '<div style="padding:18px 20px;flex:1;display:flex;flex-direction:column;justify-content:space-between">' +
+            '<div>' +
+              '<h3 style="font-size:16px;font-weight:600;line-height:1.5;margin-bottom:6px">' + p.name + '</h3>' +
+              '<p style="font-size:13px;color:var(--text-soft);line-height:1.6">' + p.desc + '</p>' +
+            '</div>' +
+            '<div style="font-size:11px;color:var(--azuki-light);margin-top:10px">Product</div>' +
+          '</div>' +
+        '</div>';
+      }).join('');
+
+      // Small cards: random 3 blog posts
+      var randPosts = shuffle(posts).slice(0, 3);
+      row.innerHTML = randPosts.map(function(p) {
+        return '<div class="card card-sm fade-item" style="padding:18px" onclick="openPost(\'' + p.id + '\')">' +
+          '<div style="display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap">' + p.tags.map(makeTag).join('') + '</div>' +
+          '<h4 style="font-size:14px;font-weight:600;line-height:1.5;margin-bottom:6px">' + p.title + '</h4>' +
+          '<p style="font-size:12px;color:var(--azuki-light)">' + fmtDate(p.date) + '</p>' +
+        '</div>';
+      }).join('');
+    }
+
+    /* ════════════════════════════════════════
+       BLOG — 7 per page, pagination
+       ════════════════════════════════════════ */
+    function renderBlog() {
+      var list = document.getElementById('blogList');
+      var totalPages = Math.ceil(posts.length / BLOG_PER_PAGE);
+      var start = blogPage * BLOG_PER_PAGE;
+      var items = posts.slice(start, start + BLOG_PER_PAGE);
+
+      list.innerHTML = items.map(function(p, i) {
+        return '<div class="blog-item fade-item" style="transition-delay:' + (i * 60) + 'ms" onclick="openPost(\'' + p.id + '\')">' +
+          '<div style="flex:1">' +
+            '<div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">' + p.tags.map(makeTag).join('') + '</div>' +
+            '<h3>' + p.title + '</h3>' +
+            '<p>' + p.excerpt + '</p>' +
+          '</div>' +
+          '<div class="blog-date">' + fmtDate(p.date) + '</div>' +
+        '</div>';
+      }).join('');
+
+      var pag = document.getElementById('blogPagination');
+      if (totalPages > 1) {
+        pag.style.display = 'flex';
+        document.getElementById('blogPageInfo').textContent = (blogPage + 1) + ' / ' + totalPages;
+        document.getElementById('blogPrev').disabled = (blogPage === 0);
+        document.getElementById('blogNext').disabled = (blogPage === totalPages - 1);
+      } else {
+        pag.style.display = 'none';
+      }
+      fadeInChildren(list);
+    }
+
+    function blogNav(dir) {
+      var tp = Math.ceil(posts.length / BLOG_PER_PAGE);
+      blogPage = Math.max(0, Math.min(tp - 1, blogPage + dir));
+      renderBlog();
+      goTo('blog');
+    }
+
+    /* ════════════════════════════════════════
+       PRODUCT — progressive 4→8→12, then paginate
+       ════════════════════════════════════════ */
+    function renderProduct() {
+      var grid = document.getElementById('productGrid');
+      var btn = document.getElementById('productMoreBtn');
+      var pag = document.getElementById('productPagination');
+
+      if (!prodPagMode) {
+        // Progressive mode
+        var items = products.slice(0, prodShown);
+        grid.innerHTML = items.map(makeProductCard).join('');
+
+        // Show "more" button if there are more to show and we haven't hit 12
+        if (prodShown < products.length && prodShown < 12) {
+          btn.style.display = 'block';
+        } else {
+          btn.style.display = 'none';
+        }
+
+        // If we've reached 12 and there are more, switch to pagination
+        if (prodShown >= 12 && products.length > 12) {
+          prodPagMode = true;
+          prodPage = 0;
+          btn.style.display = 'none';
+          renderProductPaginated();
+          return;
+        }
+
+        pag.style.display = 'none';
+      } else {
+        renderProductPaginated();
+      }
+      fadeInChildren(grid);
+    }
+
+    function renderProductPaginated() {
+      var grid = document.getElementById('productGrid');
+      var pag = document.getElementById('productPagination');
+      var tp = Math.ceil(products.length / PROD_PER_PAGE);
+      var start = prodPage * PROD_PER_PAGE;
+      grid.innerHTML = products.slice(start, start + PROD_PER_PAGE).map(makeProductCard).join('');
+
+      document.getElementById('productMoreBtn').style.display = 'none';
+
+      if (tp > 1) {
+        pag.style.display = 'flex';
+        document.getElementById('prodPageInfo').textContent = (prodPage + 1) + ' / ' + tp;
+        document.getElementById('prodPrev').disabled = (prodPage === 0);
+        document.getElementById('prodNext').disabled = (prodPage === tp - 1);
+      } else {
+        pag.style.display = 'none';
+      }
+      fadeInChildren(grid);
+    }
+
+    function makeProductCard(p) {
+      return '<div class="product-card fade-item">' +
+        '<div class="product-thumb" style="background:linear-gradient(135deg,' + p.color + ',' + p.color + '88)">' +
+          '<div class="product-thumb-inner"></div>' +
+        '</div>' +
+        '<div class="product-info"><h3>' + p.name + '</h3><p>' + p.desc + '</p></div>' +
+      '</div>';
+    }
+
+    function loadMoreProducts() {
+      prodShown = Math.min(prodShown + 4, products.length);
+      renderProduct();
+    }
+
+    function productNav(dir) {
+      var tp = Math.ceil(products.length / PROD_PER_PAGE);
+      prodPage = Math.max(0, Math.min(tp - 1, prodPage + dir));
+      renderProductPaginated();
+      goTo('product');
+    }
+
+    /* ════════════════════════════════════════
+       POST READER — loads markdown from posts/
+       ════════════════════════════════════════ */
+    async function openPost(id) {
+      var post = posts.find(function(p) { return p.id === id; });
+      if (!post) return;
+
+      document.getElementById('postHeaderDate').textContent = fmtDate(post.date);
+      document.getElementById('postMeta').innerHTML = post.tags.map(makeTag).join(' ');
+      document.getElementById('postContent').innerHTML = '<p style="color:var(--text-soft)">読み込み中...</p>';
+      document.getElementById('postOverlay').classList.add('open');
+      document.body.style.overflow = 'hidden';
+
+      try {
+        var res = await fetch('posts/' + id + '.md');
+        if (!res.ok) throw new Error('Not found');
+        var md = await res.text();
+        document.getElementById('postContent').innerHTML = marked.parse(md);
+      } catch (e) {
+        // fetch失敗（ローカルfile://など）→ 直接.mdファイルを開く
+        closePost();
+        window.open('posts/' + id + '.md', '_blank');
+      }
+    }
+
+    function closePost(e) {
+      if (e && e.target !== e.currentTarget) return;
+      document.getElementById('postOverlay').classList.remove('open');
+      document.body.style.overflow = '';
+    }
+
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') closePost();
+    });
+
+    /* ════════════════════════════════════════
+       SCROLL TRACKING — nav highlight + dots
+       ════════════════════════════════════════ */
+    var SECTIONS = ['home', 'blog', 'product', 'about'];
+
+    function updateNav() {
+      var sy = window.scrollY + 120;
+      var cur = 'home';
+
+      SECTIONS.forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el && el.offsetTop <= sy) cur = id;
+      });
+
+      // Nav links
+      document.querySelectorAll('.nav-link').forEach(function(link) {
+        link.classList.toggle('active', link.dataset.section === cur);
+      });
+
+      // Dots
+      document.querySelectorAll('.page-dot').forEach(function(dot) {
+        var isActive = dot.dataset.section === cur;
+        dot.classList.toggle('active', isActive);
+        dot.style.width = isActive ? '20px' : '6px';
+      });
+
+      // Navbar shadow
+      document.getElementById('navbar').classList.toggle('scrolled', window.scrollY > 10);
+    }
+
+    /* ════════════════════════════════════════
+       INTERSECTION OBSERVER — fade-in on scroll
+       ════════════════════════════════════════ */
+    function setupObserver() {
+      var obs = new IntersectionObserver(function(entries) {
+        entries.forEach(function(entry) {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('visible');
+            fadeInChildren(entry.target);
+          }
+        });
+      }, { threshold: 0.08 });
+
+      document.querySelectorAll('.section').forEach(function(s) {
+        obs.observe(s);
+      });
+    }
+
+    function fadeInChildren(parent) {
+      requestAnimationFrame(function() {
+        var items = parent.querySelectorAll('.fade-item:not(.show)');
+        items.forEach(function(el, i) {
+          setTimeout(function() { el.classList.add('show'); }, i * 70);
+        });
+      });
+    }
+
+    /* ─── Start ─── */
+    init();
+  </script>
+</body>
+</html>
