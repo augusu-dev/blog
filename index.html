@@ -895,14 +895,14 @@
       document.body.style.overflow = 'hidden';
 
       try {
-        var res = await fetch('posts/' + id + '.md');
+        var res = await fetch('posts/' + post.file);
         if (!res.ok) throw new Error('Not found');
         var md = await res.text();
         document.getElementById('postContent').innerHTML = marked.parse(md);
       } catch (e) {
         // fetch失敗（ローカルfile://など）→ 同じタブで.mdファイルに遷移
         closePost();
-        window.location.href = 'posts/' + id + '.md';
+        window.location.href = 'posts/' + post.file;
       }
     }
 
