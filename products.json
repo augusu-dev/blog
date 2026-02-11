@@ -1,5 +1,5 @@
 [
-  { "slug": ""02-11p, "title": "初投稿", "date": "2026-02-11", "file": "02-11p.md", "section": "main", "color": "#e8d5d0" },
+  { "slug": "02-11p", "title": "初投稿", "date": "2026-02-11", "file": "02-11p.md", "section": "main", "color": "#e8d5d0" },
   { "id": 2, "name": "実験プロジェクト B", "desc": "Three.jsを使った3D実験", "color": "#d5dde8" },
   { "id": 3, "name": "学習ノート C", "desc": "公開学習ログテンプレート", "color": "#d5e8d8" },
   { "id": 4, "name": "CLI ツール D", "desc": "開発効率を上げるCLIツール", "color": "#e8e0d5" },
