@@ -1,290 +1,198 @@
 "use client";
 
-import { useEffect, useState, useRef, useCallback } from "react";
-import Navbar from "@/components/Navbar";
+import { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
+import Link from "next/link";
 
-/* ─── Types ─── */
 interface Post {
   id: string;
   title: string;
-  content: string;
-  excerpt: string;
-  headerImage?: string;
-  tags: string[];
-  published: boolean;
-  date?: string;
-  createdAt?: string;
-  slug?: string;
-  file?: string;
-  author?: { name: string | null; email: string | null };
-}
-
-interface Product {
-  id: string;
-  name?: string;
-  title?: string;
-  desc: string;
-  color: string;
-  headerImage?: string;
-  tags?: string[];
   content?: string;
+  excerpt?: string;
+  tags: string[];
+  createdAt: string;
   author?: { name: string | null; email: string | null };
 }
 
-/* ─── Helpers ─── */
-const fmtDate = (d?: string) =>
-  d ? new Date(d).toLocaleDateString("ja-JP", { year: "numeric", month: "2-digit", day: "2-digit" }) : "";
-
-const stripHtml = (html: string) => {
-  if (typeof document === "undefined") return html.replace(/<[^>]*>/g, "");
-  const tmp = document.createElement("div");
-  tmp.innerHTML = html;
-  return tmp.textContent || tmp.innerText || "";
+const TAG_COLORS: Record<string, string> = {
+  "AI": "#d4877a", "思考": "#8a7a6b", "コード": "#6b7a8a",
+  "3D": "#8a6b7a", "哲学": "#7a6b8a", "テクノロジー": "#d4877a",
+  "社会": "#6b8a7a", "作品": "#7a8a6b", "ツール": "#6b8a8a",
 };
 
-export default function HomePage() {
-  const [posts, setPosts] = useState<Post[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [activeSection, setActiveSection] = useState("home");
-  const sectionsRef = useRef<HTMLElement[]>([]);
+function fmtDate(d: string) {
+  if (!d) return "";
+  return d.substring(0, 10).replace(/-/g, ".");
+}
 
-  /* overlay state */
+export default function HomePage() {
+  const { data: session } = useSession();
+  const [posts, setPosts] = useState<Post[]>([]);
   const [overlayOpen, setOverlayOpen] = useState(false);
   const [overlayContent, setOverlayContent] = useState("");
   const [overlayMeta, setOverlayMeta] = useState({ date: "", tags: [] as string[], author: "" });
-  const [overlayType, setOverlayType] = useState<"post" | "product">("post");
-
-  /* ─── Fetch data ─── */
-  useEffect(() => {
-    async function loadData() {
-      try {
-        const res = await fetch("/api/posts");
-        if (res.ok) {
-          const data = await res.json();
-          const allPosts = data.map((p: Post) => ({
-            ...p,
-            date: p.date || p.createdAt,
-            excerpt: p.excerpt || (p.content ? stripHtml(p.content).substring(0, 100) + "..." : ""),
-          }));
-          setPosts(allPosts.filter((p: Post) => !p.tags?.includes("product")));
-          setProducts(allPosts.filter((p: Post) => p.tags?.includes("product")).map((p: Post) => ({
-            ...p,
-            name: p.title,
-            desc: p.excerpt || "",
-            color: "#e8d5d0",
-          })));
-        }
-      } catch (e) { console.warn("Failed to load:", e); }
-    }
-    loadData();
-  }, []);
-
-  /* ─── Scroll ─── */
-  const SECTIONS = ["home", "blog", "product"];
-
-  const updateNav = useCallback(() => {
-    const sy = window.scrollY + 120;
-    let cur = "home";
-    SECTIONS.forEach((id) => {
-      const el = document.getElementById(id);
-      if (el && el.offsetTop <= sy) cur = id;
-    });
-    setActiveSection(cur);
-    document.querySelectorAll(".nav-link").forEach((link) => {
-      link.classList.toggle("active", link.getAttribute("data-section") === cur);
-    });
-  }, []);
 
   useEffect(() => {
-    window.addEventListener("scroll", updateNav, { passive: true });
-    return () => window.removeEventListener("scroll", updateNav);
-  }, [updateNav]);
+    fetch("/api/posts")
+      .then((r) => r.json())
+      .then((data) => {
+        setPosts(data.map((p: Post) => ({
+          ...p,
+          excerpt: p.excerpt || (p.content ? p.content.replace(/<[^>]*>/g, "").substring(0, 120) + "..." : ""),
+        })));
+      })
+      .catch(console.error);
+  }, []);
 
-  /* ─── Open post ─── */
   const openPost = (post: Post) => {
-    setOverlayType("post");
     setOverlayMeta({
-      date: fmtDate(post.date || post.createdAt),
+      date: fmtDate(post.createdAt),
       tags: post.tags || [],
       author: post.author?.name || "",
     });
-    setOverlayOpen(true);
-    document.body.style.overflow = "hidden";
-    window.history.pushState({ type: "post", id: post.id }, "", `/post/${post.slug || post.id}`);
     setOverlayContent(post.content || "<p>記事の内容がありません。</p>");
-  };
-
-  /* ─── Open product ─── */
-  const openProduct = (prod: Product) => {
-    setOverlayType("product");
-    setOverlayMeta({ date: "Product", tags: prod.tags || [], author: prod.author?.name || "" });
-    const imgHtml = prod.headerImage
-      ? `<img src="${prod.headerImage}" alt="${prod.name || prod.title}" style="width:100%;height:200px;object-fit:cover;border-radius:14px;margin-bottom:24px" />`
-      : "";
-    setOverlayContent(
-      `<h1 style="font-family:var(--serif);font-size:28px;font-weight:400;color:var(--text);margin-bottom:16px">${prod.name || prod.title}</h1>` +
-      imgHtml +
-      (prod.content || `<p style="font-size:15px;color:var(--text);line-height:2">${prod.desc}</p>`)
-    );
     setOverlayOpen(true);
     document.body.style.overflow = "hidden";
-    window.history.pushState({ type: "product", id: prod.id }, "", `/product/${prod.id}`);
   };
 
-  /* ─── Close overlay ─── */
   const closeOverlay = () => {
     setOverlayOpen(false);
     document.body.style.overflow = "";
-    window.history.pushState(null, "", "/");
   };
 
-  const closeOverlayFromPopState = () => {
-    setOverlayOpen(false);
-    document.body.style.overflow = "";
-  };
-
-  /* ─── ESC + Popstate ─── */
   useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => { if (e.key === "Escape" && overlayOpen) closeOverlay(); };
-    const handlePop = () => { if (overlayOpen) closeOverlayFromPopState(); };
-    window.addEventListener("keydown", handleKey);
-    window.addEventListener("popstate", handlePop);
-    return () => { window.removeEventListener("keydown", handleKey); window.removeEventListener("popstate", handlePop); };
-  }, [overlayOpen]);
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") closeOverlay(); };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, []);
+
+  const blogPosts = posts.filter((p) => !p.tags?.includes("product"));
+  const productPosts = posts.filter((p) => p.tags?.includes("product"));
 
   return (
     <>
-      <Navbar />
-
-      {/* ====== HERO ====== */}
-      <section
-        className="hero-section"
-        id="home"
-        ref={(el) => { if (el) sectionsRef.current[0] = el; }}
-        style={{
-          minHeight: "60vh",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          textAlign: "center",
-          padding: "120px 20px 60px",
-          background: "linear-gradient(180deg, var(--bg-soft) 0%, var(--bg) 100%)",
-        }}
-      >
-        <h1 style={{
-          fontFamily: "var(--serif)",
-          fontSize: "clamp(36px, 6vw, 56px)",
-          fontWeight: 300,
-          color: "var(--azuki-deep)",
-          marginBottom: 16,
-          letterSpacing: "0.06em",
-        }}>
+      {/* ─── Navbar ─── */}
+      <nav className="navbar" id="navbar" style={{ justifyContent: "space-between" }}>
+        <Link href="/" className="nav-logo" style={{ textDecoration: "none" }}>
+          <img src="/images/a.png" alt="Next Blog" className="nav-logo-img" />
           Next Blog
-        </h1>
-        <p style={{
-          fontSize: 16,
-          color: "var(--text-soft)",
-          maxWidth: 480,
-          lineHeight: 1.8,
-          marginBottom: 32,
+        </Link>
+        <div className="nav-auth">
+          {session ? (
+            <>
+              <Link href="/editor" className="nav-auth-btn nav-write-btn">✏ 記事を書く</Link>
+              <Link href={`/user/${session.user?.name || ""}`} className="nav-auth-btn nav-user-btn" style={{ textDecoration: "none" }}>
+                マイページ
+              </Link>
+              <Link href="/settings" className="nav-auth-btn nav-user-btn" style={{ textDecoration: "none" }}>⚙</Link>
+            </>
+          ) : (
+            <Link href="/login" className="nav-auth-btn nav-login-btn">ログイン</Link>
+          )}
+        </div>
+      </nav>
+
+      {/* ─── Hero ─── */}
+      <div className="main-content">
+        <section style={{
+          textAlign: "center",
+          padding: "100px 20px 60px",
         }}>
-          思考と創造を共有するプラットフォーム。<br />
-          あなたの言葉を、ここから発信しよう。
-        </p>
-        {posts.length === 0 && products.length === 0 && (
-          <p style={{ fontSize: 14, color: "var(--azuki-pale)" }}>
-            まだ投稿がありません。ログインして最初の記事を書きましょう。
+          <h1 style={{
+            fontFamily: "var(--serif)",
+            fontSize: "clamp(32px, 5vw, 48px)",
+            fontWeight: 300,
+            color: "var(--azuki-deep)",
+            marginBottom: 12,
+            letterSpacing: "0.06em",
+          }}>
+            Next Blog
+          </h1>
+          <p style={{
+            fontSize: 15,
+            color: "var(--text-soft)",
+            maxWidth: 420,
+            margin: "0 auto",
+            lineHeight: 1.8,
+          }}>
+            思考と創造を共有するプラットフォーム。
           </p>
-        )}
-      </section>
+        </section>
 
-      {/* ====== BLOG SECTION ====== */}
-      {posts.length > 0 && (
-        <section
-          className="section"
-          id="blog"
-          ref={(el) => { if (el) sectionsRef.current[1] = el; }}
-        >
+        <div className="section-divider" />
+
+        {/* ─── Recent Blog Posts ─── */}
+        <section className="section">
           <h2 className="section-title">最近の記事</h2>
-          <div className="blog-list">
-            {posts.map((post, i) => (
-              <article
-                key={post.id}
-                className="blog-card"
-                onClick={() => openPost(post)}
-                style={{ animationDelay: `${i * 0.06}s` }}
-              >
-                <div className="blog-card-top">
-                  <div className="blog-tags">
-                    {(post.tags || []).filter(t => t !== "product").slice(0, 3).map((t) => (
-                      <span key={t} className="blog-tag">{t}</span>
-                    ))}
+          {blogPosts.length === 0 ? (
+            <p style={{ textAlign: "center", color: "var(--text-soft)", padding: "40px 0" }}>
+              まだ記事がありません。ログインして最初の記事を書きましょう。
+            </p>
+          ) : (
+            <div className="blog-list">
+              {blogPosts.slice(0, 10).map((p) => (
+                <div key={p.id} className="blog-item" onClick={() => openPost(p)} style={{ cursor: "pointer" }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
+                      {(p.tags || []).filter(t => t !== "product").map((t) => {
+                        const c = TAG_COLORS[t] || "#9b6b6b";
+                        return <span key={t} className="tag" style={{ color: c, background: c + "18", border: `1px solid ${c}30` }}>{t}</span>;
+                      })}
+                    </div>
+                    <h3>{p.title}</h3>
+                    <p>{p.excerpt}</p>
+                    <div style={{ fontSize: 12, color: "var(--azuki-light)", marginTop: 8 }}>
+                      by{" "}
+                      <Link
+                        href={`/user/${p.author?.name || ""}`}
+                        style={{ color: "var(--azuki)", textDecoration: "none" }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {p.author?.name || "Anonymous"}
+                      </Link>
+                    </div>
                   </div>
-                  <span className="blog-date">{fmtDate(post.date)}</span>
+                  <div className="blog-date">{fmtDate(p.createdAt)}</div>
                 </div>
-                <h3 className="blog-title">{post.title}</h3>
-                <p className="blog-excerpt">{stripHtml(post.excerpt || "")}</p>
-                <div style={{ marginTop: "auto", paddingTop: 8, fontSize: 12, color: "var(--azuki-light)" }}>
-                  by {post.author?.name || "Anonymous"}
-                </div>
-              </article>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </section>
-      )}
 
-      {/* ====== PRODUCT SECTION ====== */}
-      {products.length > 0 && (
-        <section
-          className="section"
-          id="product"
-          ref={(el) => { if (el) sectionsRef.current[2] = el; }}
-        >
-          <h2 className="section-title">プロダクト</h2>
-          <div className="product-showcase">
-            {products.map((prod, i) => (
-              <div
-                key={prod.id}
-                className="product-card"
-                onClick={() => openProduct(prod)}
-                style={{ animationDelay: `${i * 0.08}s` }}
-              >
-                {prod.headerImage ? (
-                  <img
-                    src={prod.headerImage}
-                    alt={prod.name || prod.title || ""}
-                    style={{ width: "100%", height: 100, objectFit: "cover", borderRadius: 10, marginBottom: 12 }}
-                  />
-                ) : (
-                  <div
-                    className="product-visual"
-                    style={{ background: `linear-gradient(135deg,${prod.color},${prod.color}88)` }}
-                  >
-                    <div className="product-icon" />
+        {/* ─── Products ─── */}
+        {productPosts.length > 0 && (
+          <>
+            <div className="section-divider" />
+            <section className="section">
+              <h2 className="section-title">プロダクト</h2>
+              <div className="product-grid">
+                {productPosts.slice(0, 8).map((p) => (
+                  <div key={p.id} className="product-card" onClick={() => openPost(p)} style={{ cursor: "pointer" }}>
+                    <div className="product-thumb" style={{ background: "linear-gradient(135deg,#e8d5d0,#e8d5d088)" }}>
+                      <div className="product-thumb-inner" />
+                    </div>
+                    <div className="product-info">
+                      <h3>{p.title}</h3>
+                      <p>{p.excerpt}</p>
+                      <div style={{ fontSize: 11, color: "var(--azuki-light)", marginTop: 6 }}>
+                        by {p.author?.name || "Anonymous"}
+                      </div>
+                    </div>
                   </div>
-                )}
-                <h3 className="product-name">{prod.name || prod.title}</h3>
-                <p className="product-desc">{prod.desc}</p>
-                <div style={{ marginTop: "auto", paddingTop: 8, fontSize: 11, color: "var(--azuki-light)" }}>
-                  by {prod.author?.name || "Anonymous"}
-                </div>
+                ))}
               </div>
-            ))}
-          </div>
-        </section>
-      )}
+            </section>
+          </>
+        )}
+      </div>
 
-      {/* ====== FOOTER ====== */}
+      {/* ─── Footer ─── */}
       <footer className="footer">
         <span className="footer-copy">© 2026 Next Blog</span>
       </footer>
 
-      {/* ====== POST READER OVERLAY ====== */}
-      <div
-        className={`post-overlay ${overlayOpen ? "open" : ""}`}
-        onClick={closeOverlay}
-      >
+      {/* ─── Overlay ─── */}
+      <div className={`post-overlay ${overlayOpen ? "open" : ""}`} onClick={closeOverlay}>
         <div className="post-panel" onClick={(e) => e.stopPropagation()}>
           <div className="post-panel-header">
             <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
@@ -297,14 +205,15 @@ export default function HomePage() {
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
             </button>
           </div>
-          {overlayMeta.tags.length > 0 && (
-            <div style={{ padding: "0 40px", display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {overlayMeta.tags.filter(t => t !== "product").map((t) => (
-                <span key={t} className="blog-tag">{t}</span>
-              ))}
-            </div>
-          )}
           <div className="post-panel-body">
+            {overlayMeta.tags.length > 0 && (
+              <div className="post-meta">
+                {overlayMeta.tags.filter(t => t !== "product").map((t) => {
+                  const c = TAG_COLORS[t] || "#9b6b6b";
+                  return <span key={t} className="tag" style={{ color: c, background: c + "18", border: `1px solid ${c}30` }}>{t}</span>;
+                })}
+              </div>
+            )}
             <div className="md-content" dangerouslySetInnerHTML={{ __html: overlayContent }} />
           </div>
         </div>
