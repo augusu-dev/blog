@@ -47,6 +47,7 @@ model User {
   image         String?
   password      String?
   bio           String?   @db.Text
+  aboutMe       String?   @db.Text
   links         String?   @db.Text
   accounts      Account[]
   sessions      Session[]

@@ -18,6 +18,7 @@ export default function SettingsPage() {
     const [email, setEmail] = useState("");
     const [image, setImage] = useState("");
     const [bio, setBio] = useState("");
+    const [aboutMe, setAboutMe] = useState("");
     const [links, setLinks] = useState<SocialLink[]>([]);
     const [saving, setSaving] = useState(false);
     const [message, setMessage] = useState("");
@@ -35,6 +36,7 @@ export default function SettingsPage() {
                     setName(data.name || "");
                     setImage(data.image || "");
                     setBio(data.bio || "");
+                    setAboutMe(data.aboutMe || "");
                     setLinks(data.links || []);
                 })
                 .catch(() => { });
@@ -48,7 +50,7 @@ export default function SettingsPage() {
             const res = await fetch("/api/user/settings", {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ name, bio, links, image }),
+                body: JSON.stringify({ name, bio, aboutMe, links, image }),
             });
             if (res.ok) setMessage("✅ 設定を保存しました。");
             else setMessage("❌ 保存に失敗しました。");
@@ -176,13 +178,23 @@ export default function SettingsPage() {
                     <input type="email" className="login-input" value={email} disabled style={{ marginBottom: 4, opacity: 0.6 }} />
                     <p style={{ fontSize: 11, color: "var(--azuki-light)", marginBottom: 16 }}>メールアドレスは変更できません</p>
 
-                    <label className="settings-label">自己紹介</label>
+                    <label className="settings-label">自己紹介 (短め・ホーム用)</label>
                     <textarea
                         className="login-input"
                         value={bio}
                         onChange={(e) => setBio(e.target.value)}
-                        placeholder="自分について紹介してください..."
-                        rows={3}
+                        placeholder="一行から二行程度の自己紹介..."
+                        rows={2}
+                        style={{ marginBottom: 16, resize: "vertical", fontFamily: "var(--sans)" }}
+                    />
+
+                    <label className="settings-label">About me (長めのプロフ・詳細用)</label>
+                    <textarea
+                        className="login-input"
+                        value={aboutMe}
+                        onChange={(e) => setAboutMe(e.target.value)}
+                        placeholder="自分について詳しく紹介してください..."
+                        rows={6}
                         style={{ marginBottom: 16, resize: "vertical", fontFamily: "var(--sans)" }}
                     />
                 </section>

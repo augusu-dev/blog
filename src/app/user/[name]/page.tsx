@@ -30,6 +30,7 @@ interface UserProfile {
     email: string;
     image?: string | null;
     bio: string;
+    aboutMe: string;
     links: SocialLink[];
     posts: Post[];
 }
@@ -236,7 +237,7 @@ export default function UserPage() {
                     </button>
                     <button className="nav-link" data-section="about" onClick={() => scrollTo("about")}>
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
-                        About
+                        About me
                     </button>
                 </div>
                 <div className="nav-auth">
@@ -356,7 +357,7 @@ export default function UserPage() {
 
                 {/* ──── ABOUT ──── */}
                 <section className="section" id="about" ref={(el) => { if (el) sectionsRef.current[3] = el; }}>
-                    <h2 className="section-title">About</h2>
+                    <h2 className="section-title">About me</h2>
                     <div className="about-header">
                         <div className="about-avatar" style={{ width: 72, height: 72, borderRadius: "50%", background: "var(--bg-soft)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, color: "var(--azuki)", overflow: "hidden", border: "1px solid var(--border)" }}>
                             {user.image ? (
@@ -370,47 +371,56 @@ export default function UserPage() {
                             <p className="about-role">{user.email}</p>
                         </div>
                     </div>
-                    {user.bio && (
-                        <div className="about-bio">
-                            <p>{user.bio}</p>
+                    {user.aboutMe && (
+                        <div className="about-bio" style={{ whiteSpace: "pre-wrap" }}>
+                            <p>{user.aboutMe}</p>
                         </div>
                     )}
 
                     {/* SNS / Contact Links */}
-                    <div className="contact-section" style={{ marginTop: 32 }}>
-                        <h3 className="contact-title">Links & Contact</h3>
-                        <div className="contact-links">
-                            {/* Email: Always Show */}
-                            <a href={`mailto:${user.email}`} className="contact-link">
-                                <div className="contact-link-inner">
-                                    <div className="contact-icon" style={{ background: "rgba(155,107,107,0.08)", color: "var(--azuki)" }}>E</div>
-                                    <div>
-                                        <div className="contact-name">Email</div>
-                                        <div className="contact-handle">{user.email}</div>
-                                    </div>
-                                </div>
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--azuki-light)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" /><polyline points="22,6 12,13 2,6" /></svg>
-                            </a>
+                    {user.links && user.links.length > 0 && (
+                        <div className="contact-section" style={{ marginTop: 32 }}>
+                            <h3 className="contact-title">Links</h3>
+                            <div className="contact-links">
+                                {user.links.map((link, i) => {
+                                    const isEmail = link.label.toLowerCase() === "email" || link.label === "メール";
+                                    const rawUrl = isEmail && !link.url.startsWith("mailto:") ? `mailto:${link.url}` : link.url;
+                                    const displayUrl = link.url.replace(/^https?:\/\//, "").replace(/^mailto:/, "");
 
-                            {/* GitHub (If present in links or added manually). 
-                                We'll just display User's links. But user requested Github. We can add a placeholder or rely on `links` if user added it. 
-                                Since users can add any link in settings, let's just loop them here. */}
-                            {user.links && user.links.map((link, i) => (
-                                <a key={i} href={link.url} target="_blank" rel="noopener noreferrer" className="contact-link">
-                                    <div className="contact-link-inner">
-                                        <div className="contact-icon" style={{ background: "rgba(155,107,107,0.08)", color: "var(--azuki)" }}>
-                                            {link.label.charAt(0).toUpperCase()}
+                                    return (
+                                        <div key={i} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                                            <a href={rawUrl} target="_blank" rel="noopener noreferrer" className="contact-link" style={{ flex: 1, marginBottom: 0 }}>
+                                                <div className="contact-link-inner">
+                                                    <div className="contact-icon" style={{ background: "rgba(155,107,107,0.08)", color: "var(--azuki)" }}>
+                                                        {link.label.charAt(0).toUpperCase()}
+                                                    </div>
+                                                    <div>
+                                                        <div className="contact-name">{link.label}</div>
+                                                        <div className="contact-handle">{displayUrl}</div>
+                                                    </div>
+                                                </div>
+                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--azuki-light)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" /></svg>
+                                            </a>
+                                            {isEmail && (
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.preventDefault();
+                                                        navigator.clipboard.writeText(displayUrl);
+                                                        alert("メールアドレスをコピーしました！");
+                                                    }}
+                                                    className="editor-btn editor-btn-secondary"
+                                                    style={{ height: "100%", padding: "0 12px", border: "1px solid var(--border)", background: "var(--bg-card)", cursor: "pointer", borderRadius: 12, display: "flex", alignItems: "center" }}
+                                                    title="アドレスをコピー"
+                                                >
+                                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--azuki)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
+                                                </button>
+                                            )}
                                         </div>
-                                        <div>
-                                            <div className="contact-name">{link.label}</div>
-                                            <div className="contact-handle">{link.url.replace(/^https?:\/\//, "")}</div>
-                                        </div>
-                                    </div>
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--azuki-light)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" /></svg>
-                                </a>
-                            ))}
+                                    );
+                                })}
+                            </div>
                         </div>
-                    </div>
+                    )}
                 </section>
             </div>
 

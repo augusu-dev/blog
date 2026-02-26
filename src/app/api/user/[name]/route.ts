@@ -17,6 +17,7 @@ export async function GET(
                 email: true,
                 image: true,
                 bio: true,
+                aboutMe: true,
                 links: true,
                 posts: {
                     where: { published: true },

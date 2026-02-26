@@ -10,7 +10,7 @@ export async function GET() {
 
     const user = await prisma.user.findUnique({
         where: { id: session.user.id },
-        select: { id: true, name: true, email: true, image: true, bio: true, links: true },
+        select: { id: true, name: true, email: true, image: true, bio: true, aboutMe: true, links: true },
     });
 
     return NextResponse.json({
@@ -25,17 +25,18 @@ export async function PUT(request: NextRequest) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { name, bio, links, image } = await request.json();
+    const { name, bio, aboutMe, links, image } = await request.json();
 
     const user = await prisma.user.update({
         where: { id: session.user.id },
         data: {
             ...(name !== undefined && { name }),
             ...(bio !== undefined && { bio }),
+            ...(aboutMe !== undefined && { aboutMe }),
             ...(image !== undefined && { image }),
             ...(links !== undefined && { links: JSON.stringify(links) }),
         },
-        select: { id: true, name: true, email: true, image: true, bio: true, links: true },
+        select: { id: true, name: true, email: true, image: true, bio: true, aboutMe: true, links: true },
     });
 
     return NextResponse.json({
