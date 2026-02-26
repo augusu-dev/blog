@@ -210,6 +210,10 @@ export default function Home() {
     setOverlayOpen(true);
     document.body.style.overflow = "hidden";
 
+    // URLを変更（ページ遷移なし）
+    const postId = post.slug || post.id;
+    window.history.pushState({ type: "post", id: postId }, "", `/post/${postId}`);
+
     // If post has content from DB, render it directly
     if (post.content) {
       setOverlayContent(marked.parse(post.content) as string);
@@ -255,9 +259,23 @@ export default function Home() {
     );
     setOverlayOpen(true);
     document.body.style.overflow = "hidden";
+
+    // URLを変更（ページ遷移なし）
+    const prodId = prod.slug || prod.id;
+    window.history.pushState({ type: "product", id: prodId }, "", `/product/${prodId}`);
   };
 
   const closeOverlay = () => {
+    setOverlayOpen(false);
+    document.body.style.overflow = "";
+    // URLを元に戻す
+    if (window.location.pathname !== "/") {
+      window.history.pushState({}, "", "/");
+    }
+  };
+
+  // ブラウザの戻るボタンで閉じる場合（URLは既に変わっている）
+  const closeOverlayFromPopState = () => {
     setOverlayOpen(false);
     document.body.style.overflow = "";
   };
@@ -267,6 +285,17 @@ export default function Home() {
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape") closeOverlay(); };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
+  }, []);
+
+  /* ─── Browser back button ─── */
+  useEffect(() => {
+    const handlePopState = () => {
+      if (window.location.pathname === "/") {
+        closeOverlayFromPopState();
+      }
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
   }, []);
 
   /* ─── Computed pagination ─── */
