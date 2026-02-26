@@ -196,23 +196,14 @@ export default function UserPage() {
     const blogTotalPages = Math.ceil(posts.length / BLOG_PER_PAGE);
     const blogItems = posts.slice(blogPage * BLOG_PER_PAGE, (blogPage + 1) * BLOG_PER_PAGE);
     // おすすめの抽出
-    const pinnedProducts = products.filter((p: any) => p.pinned).slice(0, 2);
-    const pinnedBlogs = posts.filter((p: any) => p.pinned).slice(0, 3);
+    const pinnedPosts = posts.filter((p: any) => p.pinned);
 
     // 足りない分は新しい順から補填する
-    let finalProducts = [...pinnedProducts];
-    if (finalProducts.length < 2) {
-        const unpinnedProducts = products.filter((p: any) => !p.pinned);
-        finalProducts = [...finalProducts, ...unpinnedProducts.slice(0, 2 - finalProducts.length)];
+    let recommendPosts = [...pinnedPosts];
+    if (recommendPosts.length < 5) {
+        const unpinnedPosts = posts.filter((p: any) => !p.pinned);
+        recommendPosts = [...recommendPosts, ...unpinnedPosts.slice(0, 5 - recommendPosts.length)];
     }
-
-    let finalBlogs = [...pinnedBlogs];
-    if (finalBlogs.length < 3) {
-        const unpinnedBlogs = posts.filter((p: any) => !p.pinned);
-        finalBlogs = [...finalBlogs, ...unpinnedBlogs.slice(0, 3 - finalBlogs.length)];
-    }
-
-    const recommendPosts = [...finalProducts, ...finalBlogs];
 
     const scrollTo = (id: string) => {
         const el = document.getElementById(id);

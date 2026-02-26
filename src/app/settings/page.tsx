@@ -112,14 +112,9 @@ export default function SettingsPage() {
     const togglePinned = async (post: Post) => {
         const isPinned = !post.pinned;
         if (isPinned) {
-            const isProduct = post.tags?.includes("product");
-            const currentlyPinned = myPosts.filter((p: any) => !!p.pinned && !!p.published && (isProduct ? p.tags?.includes("product") : !p.tags?.includes("product")));
-            if (isProduct && currentlyPinned.length >= 2) {
-                setMessage("❌ プロダクトのおすすめは最大2つまでです");
-                return;
-            }
-            if (!isProduct && currentlyPinned.length >= 3) {
-                setMessage("❌ Blogのおすすめは最大3つまでです");
+            const currentlyPinned = myPosts.filter((p: any) => !!p.pinned && !!p.published);
+            if (currentlyPinned.length >= 5) {
+                setMessage("❌ おすすめは最大5つまでです");
                 return;
             }
         }
@@ -338,7 +333,7 @@ export default function SettingsPage() {
                     <h2 className="settings-section-title">おすすめの表示設定</h2>
                     <p style={{ fontSize: 13, color: "var(--text-soft)", marginBottom: 16 }}>
                         あなたのプロフィールに「おすすめ」として表示されるコンテンツを選べます。<br />
-                        （プロダクト最大2つ、Blog最大3つまで）
+                        （最大5つまで）
                     </p>
                     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                         {myPosts.filter((p: any) => !!p.published).map(p => {
