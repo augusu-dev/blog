@@ -3,7 +3,7 @@ import "./globals.css";
 import Providers from "@/components/Providers";
 
 export const metadata: Metadata = {
-  title: "Augusuのブログ",
+  title: "Next Blog",
   description: "学び、作り、考える。日々の記録。",
 };
 

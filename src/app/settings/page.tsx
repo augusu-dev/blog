@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { upload } from '@vercel/blob/client';
 
 interface SocialLink {
     label: string;
@@ -149,16 +148,11 @@ export default function SettingsPage() {
 
     return (
         <>
-            <nav className="navbar" style={{ justifyContent: "space-between" }}>
-                <Link href="/" className="nav-logo">
+            <nav className="navbar" style={{ justifyContent: "center" }}>
+                <Link href="/" className="nav-logo" style={{ textDecoration: "none" }}>
                     <img src="/images/a.png" alt="Next Blog" className="nav-logo-img" />
                     Next Blog
                 </Link>
-                <div style={{ display: "flex", gap: 8 }}>
-                    <Link href="/editor" className="nav-auth-btn nav-write-btn" style={{ textDecoration: "none" }}>
-                        ✏ 記事を書く
-                    </Link>
-                </div>
             </nav>
 
             <div className="editor-container" style={{ maxWidth: 600 }}>
@@ -186,7 +180,7 @@ export default function SettingsPage() {
                             {image ? <img src={image} alt="Profile" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ color: "var(--text-soft)", fontSize: 24 }}>👤</span>}
                         </div>
                         <label className="editor-btn editor-btn-secondary" style={{ cursor: "pointer", fontSize: 13, padding: "6px 14px" }}>
-                            画像を選択 (最大6MB)
+                            画像を選択 (最大4.5MB)
                             <input
                                 type="file"
                                 accept="image/*"
@@ -194,20 +188,25 @@ export default function SettingsPage() {
                                 onChange={async (e) => {
                                     const file = e.target.files?.[0];
                                     if (!file) return;
-                                    if (file.size > 6 * 1024 * 1024) {
-                                        setMessage("❌ 6MB以下の画像を選択してください");
+                                    if (file.size > 4.5 * 1024 * 1024) {
+                                        setMessage("❌ 4.5MB以下の画像を選択してください");
                                         return;
                                     }
                                     setMessage("画像をアップロード中...");
+                                    const formData = new FormData();
+                                    formData.append("file", file);
                                     try {
-                                        const newBlob = await upload(file.name, file, {
-                                            access: 'public',
-                                            handleUploadUrl: '/api/upload',
-                                        });
-                                        setImage(newBlob.url);
-                                        setMessage("");
+                                        const res = await fetch("/api/upload", { method: "POST", body: formData });
+                                        if (res.ok) {
+                                            const data = await res.json();
+                                            setImage(data.url);
+                                            setMessage("");
+                                        } else {
+                                            const err = await res.json();
+                                            setMessage("❌ " + (err.error || "アップロード失敗"));
+                                        }
                                     } catch (err) {
-                                        setMessage("❌ " + ((err as Error).message || "アップロード失敗"));
+                                        setMessage("❌ 予期せぬエラーが発生しました");
                                     } finally {
                                         e.target.value = "";
                                     }
@@ -225,7 +224,7 @@ export default function SettingsPage() {
                             {headerImage ? <img src={headerImage} alt="Header" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ color: "var(--text-soft)", fontSize: 12 }}>未設定</span>}
                         </div>
                         <label className="editor-btn editor-btn-secondary" style={{ cursor: "pointer", fontSize: 13, padding: "6px 14px" }}>
-                            画像を選択 (最大6MB)
+                            画像を選択 (最大4.5MB)
                             <input
                                 type="file"
                                 accept="image/*"
@@ -233,20 +232,25 @@ export default function SettingsPage() {
                                 onChange={async (e) => {
                                     const file = e.target.files?.[0];
                                     if (!file) return;
-                                    if (file.size > 6 * 1024 * 1024) {
-                                        setMessage("❌ 6MB以下の画像を選択してください");
+                                    if (file.size > 4.5 * 1024 * 1024) {
+                                        setMessage("❌ 4.5MB以下の画像を選択してください");
                                         return;
                                     }
                                     setMessage("ヘッダー画像をアップロード中...");
+                                    const formData = new FormData();
+                                    formData.append("file", file);
                                     try {
-                                        const newBlob = await upload(file.name, file, {
-                                            access: 'public',
-                                            handleUploadUrl: '/api/upload',
-                                        });
-                                        setHeaderImage(newBlob.url);
-                                        setMessage("");
+                                        const res = await fetch("/api/upload", { method: "POST", body: formData });
+                                        if (res.ok) {
+                                            const data = await res.json();
+                                            setHeaderImage(data.url);
+                                            setMessage("");
+                                        } else {
+                                            const err = await res.json();
+                                            setMessage("❌ " + (err.error || "アップロード失敗"));
+                                        }
                                     } catch (err) {
-                                        setMessage("❌ " + ((err as Error).message || "アップロード失敗"));
+                                        setMessage("❌ 予期せぬエラーが発生しました");
                                     } finally {
                                         e.target.value = "";
                                     }

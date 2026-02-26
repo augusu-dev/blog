@@ -1,43 +1,36 @@
-import { handleUpload, type HandleUploadBody } from '@vercel/blob/client';
-import { NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
+import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@/lib/auth";
+import { put } from "@vercel/blob";
 
-export async function POST(request: Request) {
-    const body = (await request.json()) as HandleUploadBody;
+export async function POST(request: NextRequest) {
+    const session = await auth();
+    if (!session?.user?.id) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
     try {
-        const jsonResponse = await handleUpload({
-            body,
-            request,
-            onBeforeGenerateToken: async (pathname) => {
-                const session = await auth();
-                if (!session?.user?.id) {
-                    throw new Error('Unauthorized');
-                }
+        const formData = await request.formData();
+        const file = formData.get("file") as File | null;
 
-                if (!process.env.BLOB_READ_WRITE_TOKEN) {
-                    throw new Error('BLOB_READ_WRITE_TOKEN env var is missing');
-                }
+        if (!file) {
+            return NextResponse.json({ error: "No file provided" }, { status: 400 });
+        }
 
-                return {
-                    allowedContentTypes: ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/avif'],
-                    maximumSizeInBytes: 6 * 1024 * 1024,
-                    tokenPayload: JSON.stringify({
-                        userId: session.user.id,
-                    }),
-                };
-            },
-            onUploadCompleted: async ({ blob, tokenPayload }) => {
-                console.log('blob upload completed', blob, tokenPayload);
-            },
+        if (!file.type.startsWith("image/")) {
+            return NextResponse.json({ error: "Only image files are allowed" }, { status: 400 });
+        }
+
+        if (file.size > 4.5 * 1024 * 1024) {
+            return NextResponse.json({ error: "File size must be under 4.5MB" }, { status: 400 });
+        }
+
+        const blob = await put(`uploads/${session.user.id}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.\-_]/g, '')}`, file, {
+            access: "public",
         });
 
-        return NextResponse.json(jsonResponse);
+        return NextResponse.json({ url: blob.url });
     } catch (error) {
         console.error("Upload error:", error);
-        return NextResponse.json(
-            { error: (error as Error).message },
-            { status: 400 },
-        );
+        return NextResponse.json({ error: "Upload failed" }, { status: 500 });
     }
 }
