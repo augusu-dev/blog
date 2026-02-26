@@ -4,8 +4,8 @@
 import { useEffect, useState, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { marked } from "marked";
 import Link from "next/link";
+import RichEditor from "@/components/RichEditor";
 
 interface Post {
     id: string;
@@ -31,8 +31,6 @@ export default function EditorPage() {
     const [published, setPublished] = useState(false);
     const [saving, setSaving] = useState(false);
     const [myPosts, setMyPosts] = useState<Post[]>([]);
-    const [preview, setPreview] = useState("");
-    const [showPreview, setShowPreview] = useState(true);
     const [message, setMessage] = useState("");
 
     // Redirect to login if not authenticated
@@ -75,14 +73,12 @@ export default function EditorPage() {
         }
     }, [editId, session]);
 
-    // Preview update
-    useEffect(() => {
-        if (content) {
-            setPreview(marked.parse(content) as string);
-        } else {
-            setPreview("");
-        }
-    }, [content]);
+    // Strip HTML for excerpt generation
+    const stripHtml = (html: string) => {
+        const tmp = document.createElement("div");
+        tmp.innerHTML = html;
+        return tmp.textContent || tmp.innerText || "";
+    };
 
     // Save post
     const savePost = async (pub: boolean) => {
@@ -108,7 +104,7 @@ export default function EditorPage() {
                 body: JSON.stringify({
                     title: title.trim(),
                     content,
-                    excerpt: excerpt.trim() || content.substring(0, 100) + "...",
+                    excerpt: excerpt.trim() || stripHtml(content).substring(0, 100) + "...",
                     tags,
                     published: pub,
                 }),
@@ -188,7 +184,7 @@ export default function EditorPage() {
                 </Link>
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                     <span style={{ fontSize: 12, color: "var(--text-soft)" }}>
-                        {session.user?.email}
+                        {session.user?.name || session.user?.email}
                     </span>
                     <button className="nav-auth-btn nav-user-btn" onClick={newPost}>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
@@ -228,12 +224,6 @@ export default function EditorPage() {
                     <div className="editor-actions">
                         <button
                             className="editor-btn editor-btn-secondary"
-                            onClick={() => setShowPreview(!showPreview)}
-                        >
-                            {showPreview ? "エディタのみ" : "プレビュー表示"}
-                        </button>
-                        <button
-                            className="editor-btn editor-btn-secondary"
                             onClick={() => savePost(false)}
                             disabled={saving}
                         >
@@ -257,40 +247,12 @@ export default function EditorPage() {
                     onChange={(e) => setExcerpt(e.target.value)}
                 />
 
-                <div className={`editor-body ${!showPreview ? "preview-only" : ""}`}>
-                    <textarea
-                        className="editor-textarea"
-                        placeholder="Markdownで記事を書きましょう...
-
-# 見出し
-## 小見出し
-
-本文を書きます。**太字**や*斜体*も使えます。
-
-- リスト項目1
-- リスト項目2
-
-```
-コードブロック
-```"
-                        value={content}
-                        onChange={(e) => setContent(e.target.value)}
-                    />
-                    {showPreview && (
-                        <div className="editor-preview">
-                            {preview ? (
-                                <div
-                                    className="md-content"
-                                    dangerouslySetInnerHTML={{ __html: preview }}
-                                />
-                            ) : (
-                                <p style={{ color: "var(--text-soft)", fontSize: 14 }}>
-                                    プレビューがここに表示されます
-                                </p>
-                            )}
-                        </div>
-                    )}
-                </div>
+                {/* Rich text editor */}
+                <RichEditor
+                    value={content}
+                    onChange={setContent}
+                    placeholder="ここに記事を書きましょう..."
+                />
 
                 {/* My posts list */}
                 {myPosts.length > 0 && (

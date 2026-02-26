@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
-import { marked } from "marked";
 import Navbar from "@/components/Navbar";
 
 /* ─── Types ─── */
@@ -94,56 +93,26 @@ export default function Home() {
 
   /* ─── Fetch data ─── */
   useEffect(() => {
-    // Try DB API first, fallback to static JSON
     async function loadData() {
       try {
         const res = await fetch("/api/posts");
         if (res.ok) {
           const data = await res.json();
-          if (data.length > 0) {
-            setPosts(data.map((p: Post) => ({
-              ...p,
-              date: p.date || p.createdAt,
-              excerpt: p.excerpt || (p.content ? p.content.substring(0, 100) + "..." : ""),
-            })));
-          } else {
-            throw new Error("No posts in DB");
-          }
-        } else {
-          throw new Error("API failed");
+          setPosts(data.map((p: Post) => ({
+            ...p,
+            date: p.date || p.createdAt,
+            excerpt: p.excerpt || (p.content ? p.content.replace(/<[^>]*>/g, '').substring(0, 100) + "..." : ""),
+          })));
         }
-      } catch {
-        // Fallback to static posts.json
-        try {
-          const r = await fetch("/posts.json");
-          if (r.ok) {
-            const data = await r.json();
-            setPosts(data);
-          }
-        } catch (e) { console.warn("posts.json load failed:", e); }
-      }
+      } catch (e) { console.warn("Failed to load posts:", e); }
 
       try {
         const res = await fetch("/api/products");
         if (res.ok) {
           const data = await res.json();
-          if (data.length > 0) {
-            setProducts(data);
-          } else {
-            throw new Error("No products in DB");
-          }
-        } else {
-          throw new Error("API failed");
+          setProducts(data);
         }
-      } catch {
-        try {
-          const r = await fetch("/products.json");
-          if (r.ok) {
-            const data = await r.json();
-            setProducts(data);
-          }
-        } catch (e) { console.warn("products.json load failed:", e); }
-      }
+      } catch (e) { console.warn("Failed to load products:", e); }
     }
     loadData();
   }, []);
@@ -206,7 +175,6 @@ export default function Home() {
   const openPost = async (post: Post) => {
     setOverlayType("post");
     setOverlayMeta({ date: fmtDate(post.date || post.createdAt), tags: post.tags || [] });
-    setOverlayContent("<p style='color:var(--text-soft)'>読み込み中...</p>");
     setOverlayOpen(true);
     document.body.style.overflow = "hidden";
 
@@ -214,36 +182,12 @@ export default function Home() {
     const postId = post.slug || post.id;
     window.history.pushState({ type: "post", id: postId }, "", `/post/${postId}`);
 
-    // If post has content from DB, render it directly
+    // コンテンツはHTMLとしてそのまま表示
     if (post.content) {
-      setOverlayContent(marked.parse(post.content) as string);
-      return;
+      setOverlayContent(post.content);
+    } else {
+      setOverlayContent("<p style='color:var(--text-soft)'>記事の内容がありません。</p>");
     }
-
-    // Otherwise try to load from posts/ directory (legacy)
-    if (post.file) {
-      try {
-        const res = await fetch(`/posts/${post.file}`);
-        if (res.ok) {
-          const md = await res.text();
-          setOverlayContent(marked.parse(md) as string);
-          return;
-        }
-      } catch { /* fallback below */ }
-    }
-
-    // Try loading by slug or id
-    const filename = (post.slug || post.id) + ".md";
-    try {
-      const res = await fetch(`/posts/${filename}`);
-      if (res.ok) {
-        const md = await res.text();
-        setOverlayContent(marked.parse(md) as string);
-        return;
-      }
-    } catch { /* */ }
-
-    setOverlayContent("<p style='color:var(--text-soft)'>記事の読み込みに失敗しました。</p>");
   };
 
   /* ─── Open product ─── */
@@ -523,12 +467,12 @@ export default function Home() {
             <h3 className="contact-title">Contact</h3>
             <p className="contact-desc">ご連絡はSNSからお気軽にどうぞ。</p>
             <div className="contact-links">
-              <a href="https://bsky.app/profile/augusu.bsky.social" target="_blank" rel="noopener" className="contact-link">
+              <a href="mailto:nanmoki457@gmail.com" className="contact-link">
                 <div className="contact-link-inner">
-                  <div className="contact-icon" style={{ background: "rgba(0,133,255,0.08)", color: "#0085ff" }}>B</div>
+                  <div className="contact-icon" style={{ background: "rgba(212,135,122,0.08)", color: "var(--accent)" }}>✉</div>
                   <div>
-                    <div className="contact-name">Bluesky</div>
-                    <div className="contact-handle">@augusu.bsky.social</div>
+                    <div className="contact-name">Email</div>
+                    <div className="contact-handle">nanmoki457@gmail.com</div>
                   </div>
                 </div>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--azuki-light)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" /></svg>
