@@ -451,11 +451,7 @@ export default function Home() {
             <p>このブログでは、日々の学びや実験、考察を記録しています。コードを書くことも、言葉を紡ぐことも、どちらも同じ「表現」だと思っています。</p>
             <p>AIと共に成長し、希少価値を生み出すクリエイターを目指します。ふと思ったこと、考えを自分の言葉で表します。</p>
           </div>
-          <div className="skill-tags">
-            {["JavaScript", "React", "Three.js", "Python", "哲学", "仏教思想", "AI"].map((s) => (
-              <span key={s} className="skill-tag">{s}</span>
-            ))}
-          </div>
+
           <div
             className="scroll-hint"
             onClick={() => document.getElementById("contact")?.scrollIntoView({ behavior: "smooth" })}
@@ -494,7 +490,7 @@ export default function Home() {
 
       {/* ====== FOOTER ====== */}
       <footer className="footer">
-        <span className="footer-copy">© 2026 Augusu Blog</span>
+        <span className="footer-copy">© 2026 Next Blog</span>
       </footer>
 
       {/* ====== POST READER OVERLAY ====== */}

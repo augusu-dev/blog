@@ -1518,3 +1518,22 @@ body {
   color: var(--white);
   border-color: var(--azuki);
 }
+
+/* ========================================
+   SETTINGS PAGE
+   ======================================== */
+.settings-section-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 16px;
+  color: var(--text);
+  font-family: var(--sans);
+}
+
+.settings-label {
+  font-size: 13px;
+  color: var(--text-soft);
+  display: block;
+  margin-bottom: 6px;
+  font-family: var(--sans);
+}

@@ -33,6 +33,7 @@ export default function EditorPage() {
     const [title, setTitle] = useState("");
     const [content, setContent] = useState("");
     const [excerpt, setExcerpt] = useState("");
+    const [headerImage, setHeaderImage] = useState("");
     const [tags, setTags] = useState<string[]>([]);
     const [published, setPublished] = useState(false);
     const [saving, setSaving] = useState(false);
@@ -73,13 +74,10 @@ export default function EditorPage() {
                     setTitle(post.title || "");
                     setContent(post.content || "");
                     setExcerpt(post.excerpt || "");
+                    setHeaderImage(post.headerImage || "");
                     setTags(post.tags || []);
                     setPublished(post.published || false);
-                    // Determine post type from tags
-                    if (post.tags?.includes("product")) {
-                        setPostType("product");
-                    }
-                    // Force re-render of RichEditor with new content
+                    if (post.tags?.includes("product")) setPostType("product");
                     contentKeyRef.current += 1;
                 })
                 .catch(console.error);
@@ -119,6 +117,7 @@ export default function EditorPage() {
                     title: title.trim(),
                     content,
                     excerpt: excerpt.trim() || stripHtml(content).substring(0, 100) + "...",
+                    headerImage: postType === "product" ? headerImage : undefined,
                     tags: finalTags,
                     published: pub,
                 }),
@@ -164,6 +163,7 @@ export default function EditorPage() {
     const resetForm = () => {
         setTitle("");
         setContent("");
+        setHeaderImage("");
         setExcerpt("");
         setTags([]);
         setPublished(false);
@@ -278,6 +278,28 @@ export default function EditorPage() {
                         {saving ? "保存中..." : "公開する"}
                     </button>
                 </div>
+
+                {postType === "product" && (
+                    <div style={{ marginBottom: 16 }}>
+                        <input
+                            type="url"
+                            className="editor-excerpt-input"
+                            placeholder="見出し画像のURL（https://...）"
+                            value={headerImage}
+                            onChange={(e) => setHeaderImage(e.target.value)}
+                        />
+                        {headerImage && (
+                            <div style={{ marginTop: 8, borderRadius: 12, overflow: "hidden", border: "1px solid var(--border)" }}>
+                                <img
+                                    src={headerImage}
+                                    alt="プレビュー"
+                                    style={{ width: "100%", height: 160, objectFit: "cover", display: "block" }}
+                                    onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                                />
+                            </div>
+                        )}
+                    </div>
+                )}
 
                 <input
                     type="text"
