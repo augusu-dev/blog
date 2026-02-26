@@ -16,6 +16,7 @@ export default function SettingsPage() {
 
     const [name, setName] = useState("");
     const [email, setEmail] = useState("");
+    const [image, setImage] = useState("");
     const [bio, setBio] = useState("");
     const [links, setLinks] = useState<SocialLink[]>([]);
     const [saving, setSaving] = useState(false);
@@ -32,6 +33,7 @@ export default function SettingsPage() {
                 .then((r) => r.json())
                 .then((data) => {
                     setName(data.name || "");
+                    setImage(data.image || "");
                     setBio(data.bio || "");
                     setLinks(data.links || []);
                 })
@@ -46,7 +48,7 @@ export default function SettingsPage() {
             const res = await fetch("/api/user/settings", {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ name, bio, links }),
+                body: JSON.stringify({ name, bio, links, image }),
             });
             if (res.ok) setMessage("✅ 設定を保存しました。");
             else setMessage("❌ 保存に失敗しました。");
@@ -131,6 +133,44 @@ export default function SettingsPage() {
 
                     <label className="settings-label">ユーザー名</label>
                     <input type="text" className="login-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="ユーザー名" style={{ marginBottom: 16 }} />
+
+                    <label className="settings-label">プロフィール画像</label>
+                    <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 16 }}>
+                        <div style={{
+                            width: 60, height: 60, borderRadius: "50%", background: "var(--bg-soft)",
+                            display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", border: "1px solid var(--border)"
+                        }}>
+                            {image ? <img src={image} alt="Profile" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ color: "var(--text-soft)", fontSize: 24 }}>👤</span>}
+                        </div>
+                        <label className="editor-btn editor-btn-secondary" style={{ cursor: "pointer", fontSize: 13, padding: "6px 14px" }}>
+                            画像を選択 (最大6MB)
+                            <input
+                                type="file"
+                                accept="image/*"
+                                style={{ display: "none" }}
+                                onChange={async (e) => {
+                                    const file = e.target.files?.[0];
+                                    if (!file) return;
+                                    setMessage("画像をアップロード中...");
+                                    const formData = new FormData();
+                                    formData.append("file", file);
+                                    try {
+                                        const res = await fetch("/api/upload", { method: "POST", body: formData });
+                                        if (res.ok) {
+                                            const data = await res.json();
+                                            setImage(data.url);
+                                            setMessage("");
+                                        } else {
+                                            const err = await res.json();
+                                            setMessage("❌ " + (err.error || "アップロード失敗"));
+                                        }
+                                    } catch {
+                                        setMessage("❌ アップロードに失敗しました");
+                                    }
+                                }}
+                            />
+                        </label>
+                    </div>
 
                     <label className="settings-label">メールアドレス</label>
                     <input type="email" className="login-input" value={email} disabled style={{ marginBottom: 4, opacity: 0.6 }} />

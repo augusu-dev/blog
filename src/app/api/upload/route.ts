@@ -21,9 +21,9 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: "Only image files are allowed" }, { status: 400 });
         }
 
-        // Max 4MB
-        if (file.size > 4 * 1024 * 1024) {
-            return NextResponse.json({ error: "File size must be under 4MB" }, { status: 400 });
+        // Max 6MB
+        if (file.size > 6 * 1024 * 1024) {
+            return NextResponse.json({ error: "File size must be under 6MB" }, { status: 400 });
         }
 
         const blob = await put(`uploads/${session.user.id}/${Date.now()}-${file.name}`, file, {

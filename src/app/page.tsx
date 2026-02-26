@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 
 interface Post {
@@ -27,10 +28,12 @@ function fmtDate(d: string) {
 
 export default function HomePage() {
   const { data: session } = useSession();
+  const router = useRouter();
   const [posts, setPosts] = useState<Post[]>([]);
   const [overlayOpen, setOverlayOpen] = useState(false);
   const [overlayContent, setOverlayContent] = useState("");
   const [overlayMeta, setOverlayMeta] = useState({ date: "", tags: [] as string[], author: "" });
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     fetch("/api/posts")
@@ -68,6 +71,13 @@ export default function HomePage() {
 
   const blogPosts = posts.filter((p) => !p.tags?.includes("product"));
   const productPosts = posts.filter((p) => p.tags?.includes("product"));
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (searchQuery.trim()) {
+      router.push(`/user/${encodeURIComponent(searchQuery.trim())}`);
+    }
+  };
 
   return (
     <>
@@ -117,6 +127,20 @@ export default function HomePage() {
           }}>
             思考と創造を共有するプラットフォーム。
           </p>
+
+          <form onSubmit={handleSearch} style={{ marginTop: 32, display: "flex", justifyContent: "center", gap: 8 }}>
+            <input
+              type="text"
+              placeholder="ユーザーを検索..."
+              className="login-input"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{ width: 280, marginBottom: 0, border: "1px solid var(--border)", background: "var(--bg-card)" }}
+            />
+            <button type="submit" className="editor-btn editor-btn-primary" style={{ padding: "0 24px" }}>
+              検索
+            </button>
+          </form>
         </section>
 
         <div className="section-divider" />

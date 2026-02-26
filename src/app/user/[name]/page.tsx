@@ -28,6 +28,7 @@ interface UserProfile {
     id: string;
     name: string;
     email: string;
+    image?: string | null;
     bio: string;
     links: SocialLink[];
     posts: Post[];
@@ -357,8 +358,12 @@ export default function UserPage() {
                 <section className="section" id="about" ref={(el) => { if (el) sectionsRef.current[3] = el; }}>
                     <h2 className="section-title">About</h2>
                     <div className="about-header">
-                        <div className="about-avatar" style={{ width: 72, height: 72, borderRadius: "50%", background: "var(--azuki-pale)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, color: "var(--azuki)" }}>
-                            {displayName.charAt(0).toUpperCase()}
+                        <div className="about-avatar" style={{ width: 72, height: 72, borderRadius: "50%", background: "var(--bg-soft)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, color: "var(--azuki)", overflow: "hidden", border: "1px solid var(--border)" }}>
+                            {user.image ? (
+                                <img src={user.image} alt="Avatar" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                            ) : (
+                                displayName.charAt(0).toUpperCase()
+                            )}
                         </div>
                         <div>
                             <h3 className="about-name">{displayName}</h3>
@@ -371,28 +376,41 @@ export default function UserPage() {
                         </div>
                     )}
 
-                    {/* SNS Links */}
-                    {user.links && user.links.length > 0 && (
-                        <div className="contact-section" style={{ marginTop: 32 }}>
-                            <h3 className="contact-title">Links</h3>
-                            <div className="contact-links">
-                                {user.links.map((link, i) => (
-                                    <a key={i} href={link.url} target="_blank" rel="noopener noreferrer" className="contact-link">
-                                        <div className="contact-link-inner">
-                                            <div className="contact-icon" style={{ background: "rgba(155,107,107,0.08)", color: "var(--azuki)" }}>
-                                                {link.label.charAt(0).toUpperCase()}
-                                            </div>
-                                            <div>
-                                                <div className="contact-name">{link.label}</div>
-                                                <div className="contact-handle">{link.url.replace(/^https?:\/\//, "")}</div>
-                                            </div>
+                    {/* SNS / Contact Links */}
+                    <div className="contact-section" style={{ marginTop: 32 }}>
+                        <h3 className="contact-title">Links & Contact</h3>
+                        <div className="contact-links">
+                            {/* Email: Always Show */}
+                            <a href={`mailto:${user.email}`} className="contact-link">
+                                <div className="contact-link-inner">
+                                    <div className="contact-icon" style={{ background: "rgba(155,107,107,0.08)", color: "var(--azuki)" }}>E</div>
+                                    <div>
+                                        <div className="contact-name">Email</div>
+                                        <div className="contact-handle">{user.email}</div>
+                                    </div>
+                                </div>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--azuki-light)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" /><polyline points="22,6 12,13 2,6" /></svg>
+                            </a>
+
+                            {/* GitHub (If present in links or added manually). 
+                                We'll just display User's links. But user requested Github. We can add a placeholder or rely on `links` if user added it. 
+                                Since users can add any link in settings, let's just loop them here. */}
+                            {user.links && user.links.map((link, i) => (
+                                <a key={i} href={link.url} target="_blank" rel="noopener noreferrer" className="contact-link">
+                                    <div className="contact-link-inner">
+                                        <div className="contact-icon" style={{ background: "rgba(155,107,107,0.08)", color: "var(--azuki)" }}>
+                                            {link.label.charAt(0).toUpperCase()}
                                         </div>
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--azuki-light)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" /></svg>
-                                    </a>
-                                ))}
-                            </div>
+                                        <div>
+                                            <div className="contact-name">{link.label}</div>
+                                            <div className="contact-handle">{link.url.replace(/^https?:\/\//, "")}</div>
+                                        </div>
+                                    </div>
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--azuki-light)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" /></svg>
+                                </a>
+                            ))}
                         </div>
-                    )}
+                    </div>
                 </section>
             </div>
 
