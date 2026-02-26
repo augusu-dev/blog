@@ -79,8 +79,33 @@ export default function EditorPage() {
                     contentKeyRef.current += 1;
                 })
                 .catch(console.error);
+        } else if (!editId) {
+            // Load autosave from local storage for new posts
+            const saved = localStorage.getItem("draft-post");
+            if (saved) {
+                try {
+                    const data = JSON.parse(saved);
+                    if (data.title) setTitle(data.title);
+                    if (data.content) { setContent(data.content); contentKeyRef.current += 1; }
+                    if (data.excerpt) setExcerpt(data.excerpt);
+                    if (data.tags) setTags(data.tags);
+                    if (data.postType) setPostType(data.postType);
+                } catch { }
+            }
         }
     }, [editId, session]);
+
+    // Auto-save to local storage on change
+    useEffect(() => {
+        if (!editId) {
+            const timer = setTimeout(() => {
+                if (title || content) {
+                    localStorage.setItem("draft-post", JSON.stringify({ title, content, excerpt, tags, postType }));
+                }
+            }, 1000);
+            return () => clearTimeout(timer);
+        }
+    }, [title, content, excerpt, tags, postType, editId]);
 
     // Strip HTML for excerpt
     const stripHtml = (html: string) => {
@@ -122,6 +147,7 @@ export default function EditorPage() {
 
             if (res.ok) {
                 setMessage(pub ? "✅ 記事を公開しました！" : "✅ 下書きを保存しました。");
+                if (!editId) localStorage.removeItem("draft-post");
                 loadMyPosts();
                 if (!editId) {
                     const post = await res.json();

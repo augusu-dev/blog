@@ -42,7 +42,7 @@ export async function PUT(
     const { id } = await params;
     try {
         const body = await request.json();
-        const { title, content, excerpt, tags, published } = body;
+        const { title, content, excerpt, tags, published, pinned } = body;
 
         const post = await prisma.post.update({
             where: { id },
@@ -52,6 +52,7 @@ export async function PUT(
                 ...(excerpt !== undefined && { excerpt }),
                 ...(tags !== undefined && { tags }),
                 ...(published !== undefined && { published }),
+                ...(pinned !== undefined && { pinned }),
             },
         });
 

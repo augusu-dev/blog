@@ -4,10 +4,19 @@ import { useEffect, useState } from "react";
 import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { upload } from '@vercel/blob/client';
 
 interface SocialLink {
     label: string;
     url: string;
+}
+
+interface Post {
+    id: string;
+    title: string;
+    tags: string[];
+    pinned: boolean;
+    published: boolean;
 }
 
 export default function SettingsPage() {
@@ -21,6 +30,7 @@ export default function SettingsPage() {
     const [bio, setBio] = useState("");
     const [aboutMe, setAboutMe] = useState("");
     const [links, setLinks] = useState<SocialLink[]>([]);
+    const [myPosts, setMyPosts] = useState<Post[]>([]);
     const [saving, setSaving] = useState(false);
     const [message, setMessage] = useState("");
 
@@ -41,6 +51,10 @@ export default function SettingsPage() {
                     setAboutMe(data.aboutMe || "");
                     setLinks(data.links || []);
                 })
+                .catch(() => { });
+            fetch("/api/posts/my")
+                .then((r) => r.json())
+                .then((posts) => setMyPosts(posts))
                 .catch(() => { });
         }
     }, [session]);
@@ -94,6 +108,31 @@ export default function SettingsPage() {
         } catch {
             setMessage("❌ エラーが発生しました。");
         }
+    };
+
+    const togglePinned = async (post: Post) => {
+        const isPinned = !post.pinned;
+        if (isPinned) {
+            const isProduct = post.tags?.includes("product");
+            const currentlyPinned = myPosts.filter((p: any) => !!p.pinned && !!p.published && (isProduct ? p.tags?.includes("product") : !p.tags?.includes("product")));
+            if (isProduct && currentlyPinned.length >= 2) {
+                setMessage("❌ プロダクトのおすすめは最大2つまでです");
+                return;
+            }
+            if (!isProduct && currentlyPinned.length >= 3) {
+                setMessage("❌ Blogのおすすめは最大3つまでです");
+                return;
+            }
+        }
+
+        setMyPosts(myPosts.map(p => p.id === post.id ? { ...p, pinned: isPinned } : p));
+        try {
+            await fetch(`/api/posts/${post.id}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ pinned: isPinned })
+            });
+        } catch { }
     };
 
     if (status === "loading") {
@@ -160,20 +199,15 @@ export default function SettingsPage() {
                                         return;
                                     }
                                     setMessage("画像をアップロード中...");
-                                    const formData = new FormData();
-                                    formData.append("file", file);
                                     try {
-                                        const res = await fetch("/api/upload", { method: "POST", body: formData });
-                                        if (res.ok) {
-                                            const data = await res.json();
-                                            setImage(data.url);
-                                            setMessage("");
-                                        } else {
-                                            const err = await res.json();
-                                            setMessage("❌ " + (err.error || "アップロード失敗"));
-                                        }
+                                        const newBlob = await upload(file.name, file, {
+                                            access: 'public',
+                                            handleUploadUrl: '/api/upload',
+                                        });
+                                        setImage(newBlob.url);
+                                        setMessage("");
                                     } catch (err) {
-                                        setMessage("❌ アップロードに失敗しました");
+                                        setMessage("❌ " + ((err as Error).message || "アップロード失敗"));
                                     } finally {
                                         e.target.value = "";
                                     }
@@ -204,20 +238,15 @@ export default function SettingsPage() {
                                         return;
                                     }
                                     setMessage("ヘッダー画像をアップロード中...");
-                                    const formData = new FormData();
-                                    formData.append("file", file);
                                     try {
-                                        const res = await fetch("/api/upload", { method: "POST", body: formData });
-                                        if (res.ok) {
-                                            const data = await res.json();
-                                            setHeaderImage(data.url);
-                                            setMessage("");
-                                        } else {
-                                            const err = await res.json();
-                                            setMessage("❌ " + (err.error || "アップロード失敗"));
-                                        }
+                                        const newBlob = await upload(file.name, file, {
+                                            access: 'public',
+                                            handleUploadUrl: '/api/upload',
+                                        });
+                                        setHeaderImage(newBlob.url);
+                                        setMessage("");
                                     } catch (err) {
-                                        setMessage("❌ アップロードに失敗しました");
+                                        setMessage("❌ " + ((err as Error).message || "アップロード失敗"));
                                     } finally {
                                         e.target.value = "";
                                     }
@@ -298,6 +327,41 @@ export default function SettingsPage() {
                     >
                         {links.length >= 5 ? "最大5つまで" : `＋ リンクを追加 (${links.length}/5)`}
                     </button>
+                </section>
+
+                {/* おすすめ設定 */}
+                <section style={{ marginBottom: 40 }}>
+                    <h2 className="settings-section-title">おすすめの表示設定</h2>
+                    <p style={{ fontSize: 13, color: "var(--text-soft)", marginBottom: 16 }}>
+                        あなたのプロフィールに「おすすめ」として表示されるコンテンツを選べます。<br />
+                        （プロダクト最大2つ、Blog最大3つまで）
+                    </p>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                        {myPosts.filter((p: any) => !!p.published).map(p => {
+                            const isProduct = p.tags?.includes("product");
+                            return (
+                                <div key={p.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: 8 }}>
+                                    <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 8 }}>
+                                        <span style={{ fontSize: 11, padding: "2px 6px", borderRadius: 4, background: isProduct ? "var(--azuki-light)" : "#888", color: "#fff" }}>
+                                            {isProduct ? "Product" : "Blog"}
+                                        </span>
+                                        <span style={{ fontSize: 14, fontWeight: 500 }}>{p.title}</span>
+                                    </div>
+                                    <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+                                        <span style={{ fontSize: 12, color: "var(--text-soft)" }}>おすすめ表示</span>
+                                        <input
+                                            type="checkbox"
+                                            checked={!!p.pinned}
+                                            onChange={() => togglePinned(p)}
+                                        />
+                                    </label>
+                                </div>
+                            );
+                        })}
+                        {myPosts.filter((p: any) => !!p.published).length === 0 && (
+                            <p style={{ fontSize: 13, color: "var(--text-soft)" }}>公開済みの記事やプロダクトがありません。</p>
+                        )}
+                    </div>
                 </section>
 
                 {/* 保存 */}

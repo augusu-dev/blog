@@ -73,6 +73,7 @@ model Post {
   headerImage String?
   tags        String[]
   published   Boolean  @default(false)
+  pinned      Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   author      User     @relation(fields: [authorId], references: [id], onDelete: Cascade)

@@ -1,36 +1,43 @@
-import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
-import { put } from "@vercel/blob";
+import { handleUpload, type HandleUploadBody } from '@vercel/blob/client';
+import { NextResponse } from 'next/server';
+import { auth } from '@/lib/auth';
 
-export async function POST(request: NextRequest) {
-    const session = await auth();
-    if (!session?.user?.id) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+export async function POST(request: Request) {
+    const body = (await request.json()) as HandleUploadBody;
 
     try {
-        const formData = await request.formData();
-        const file = formData.get("file") as File | null;
+        const jsonResponse = await handleUpload({
+            body,
+            request,
+            onBeforeGenerateToken: async (pathname) => {
+                const session = await auth();
+                if (!session?.user?.id) {
+                    throw new Error('Unauthorized');
+                }
 
-        if (!file) {
-            return NextResponse.json({ error: "No file provided" }, { status: 400 });
-        }
+                if (!process.env.BLOB_READ_WRITE_TOKEN) {
+                    throw new Error('BLOB_READ_WRITE_TOKEN env var is missing');
+                }
 
-        if (!file.type.startsWith("image/")) {
-            return NextResponse.json({ error: "Only image files are allowed" }, { status: 400 });
-        }
-
-        if (file.size > 6 * 1024 * 1024) {
-            return NextResponse.json({ error: "File size must be under 6MB" }, { status: 400 });
-        }
-
-        const blob = await put(`uploads/${session.user.id}/${Date.now()}-${file.name}`, file, {
-            access: "public",
+                return {
+                    allowedContentTypes: ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/avif'],
+                    maximumSizeInBytes: 6 * 1024 * 1024,
+                    tokenPayload: JSON.stringify({
+                        userId: session.user.id,
+                    }),
+                };
+            },
+            onUploadCompleted: async ({ blob, tokenPayload }) => {
+                console.log('blob upload completed', blob, tokenPayload);
+            },
         });
 
-        return NextResponse.json({ url: blob.url });
+        return NextResponse.json(jsonResponse);
     } catch (error) {
         console.error("Upload error:", error);
-        return NextResponse.json({ error: "Upload failed" }, { status: 500 });
+        return NextResponse.json(
+            { error: (error as Error).message },
+            { status: 400 },
+        );
     }
 }

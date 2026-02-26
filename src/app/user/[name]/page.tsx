@@ -195,7 +195,16 @@ export default function UserPage() {
     /* ─── Computed ─── */
     const blogTotalPages = Math.ceil(posts.length / BLOG_PER_PAGE);
     const blogItems = posts.slice(blogPage * BLOG_PER_PAGE, (blogPage + 1) * BLOG_PER_PAGE);
-    const randPosts = posts.length > 0 ? shuffle(posts).slice(0, 3) : [];
+
+    // おすすめの抽出
+    const pinnedProducts = products.filter((p: any) => p.pinned).slice(0, 2);
+    const pinnedBlogs = posts.filter((p: any) => p.pinned).slice(0, 3);
+    let recommendPosts = [...pinnedProducts, ...pinnedBlogs];
+
+    // まだピン留めがない場合は、新しい順で自動設定
+    if (recommendPosts.length === 0) {
+        recommendPosts = [...products.slice(0, 2), ...posts.slice(0, 3)];
+    }
 
     const scrollTo = (id: string) => {
         const el = document.getElementById(id);
@@ -282,16 +291,16 @@ export default function UserPage() {
                             <p style={user.headerImage ? { color: "#eee", textShadow: "0 1px 5px rgba(0,0,0,0.7)" } : undefined}>{user.bio || "学び、作り、考える。日々の記録。"}</p>
                         </div>
                     </div>
-                    {randPosts.length > 0 && (
+                    {recommendPosts.length > 0 && (
                         <>
                             <h2 className="section-title fade-item">おすすめ</h2>
                             <div className="recommend-row">
-                                {randPosts.map((p) => (
+                                {recommendPosts.map((p: any) => (
                                     <div key={p.id} className="card card-sm fade-item" style={{ padding: 18 }} onClick={() => openPost(p)}>
                                         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6, flexWrap: "wrap" }}>
                                             <h4 style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.5, margin: 0 }}>{p.title}</h4>
                                             <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                                                {(p.tags || []).filter(t => t !== "product").map((t) => <Tag key={t} label={t} />)}
+                                                {(p.tags || []).filter((t: any) => t !== "product").map((t: any) => <Tag key={t} label={t} />)}
                                             </div>
                                         </div>
                                         <p style={{ fontSize: 12, color: "var(--azuki-light)" }}>{fmtDate(p.date || p.createdAt)}</p>
