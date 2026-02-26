@@ -58,6 +58,7 @@ export default function SettingsPage() {
     };
 
     const addLink = () => {
+        if (links.length >= 5) return;
         setLinks([...links, { label: "", url: "" }]);
     };
 
@@ -188,9 +189,10 @@ export default function SettingsPage() {
                         type="button"
                         className="editor-btn editor-btn-secondary"
                         onClick={addLink}
+                        disabled={links.length >= 5}
                         style={{ width: "100%", marginTop: 4 }}
                     >
-                        ＋ リンクを追加
+                        {links.length >= 5 ? "最大5つまで" : `＋ リンクを追加 (${links.length}/5)`}
                     </button>
                 </section>
 

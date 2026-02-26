@@ -281,21 +281,54 @@ export default function EditorPage() {
 
                 {postType === "product" && (
                     <div style={{ marginBottom: 16 }}>
-                        <input
-                            type="url"
-                            className="editor-excerpt-input"
-                            placeholder="見出し画像のURL（https://...）"
-                            value={headerImage}
-                            onChange={(e) => setHeaderImage(e.target.value)}
-                        />
+                        <label
+                            className="editor-btn editor-btn-secondary"
+                            style={{ display: "block", textAlign: "center", cursor: "pointer", position: "relative" }}
+                        >
+                            {headerImage ? "🖼 画像を変更" : "🖼 見出し画像をアップロード"}
+                            <input
+                                type="file"
+                                accept="image/*"
+                                style={{ display: "none" }}
+                                onChange={async (e) => {
+                                    const file = e.target.files?.[0];
+                                    if (!file) return;
+                                    setMessage("画像をアップロード中...");
+                                    const formData = new FormData();
+                                    formData.append("file", file);
+                                    try {
+                                        const res = await fetch("/api/upload", { method: "POST", body: formData });
+                                        if (res.ok) {
+                                            const data = await res.json();
+                                            setHeaderImage(data.url);
+                                            setMessage("");
+                                        } else {
+                                            const err = await res.json();
+                                            setMessage("❌ " + (err.error || "アップロード失敗"));
+                                        }
+                                    } catch {
+                                        setMessage("❌ アップロードに失敗しました");
+                                    }
+                                }}
+                            />
+                        </label>
                         {headerImage && (
-                            <div style={{ marginTop: 8, borderRadius: 12, overflow: "hidden", border: "1px solid var(--border)" }}>
+                            <div style={{ marginTop: 8, borderRadius: 12, overflow: "hidden", border: "1px solid var(--border)", position: "relative" }}>
                                 <img
                                     src={headerImage}
                                     alt="プレビュー"
                                     style={{ width: "100%", height: 160, objectFit: "cover", display: "block" }}
-                                    onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
                                 />
+                                <button
+                                    type="button"
+                                    onClick={() => setHeaderImage("")}
+                                    style={{
+                                        position: "absolute", top: 8, right: 8,
+                                        background: "rgba(0,0,0,0.5)", color: "#fff",
+                                        border: "none", borderRadius: "50%", width: 28, height: 28,
+                                        cursor: "pointer", fontSize: 14,
+                                    }}
+                                >×</button>
                             </div>
                         )}
                     </div>
