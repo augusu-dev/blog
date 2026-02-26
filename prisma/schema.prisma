@@ -45,6 +45,7 @@ model User {
   email         String?   @unique
   emailVerified DateTime?
   image         String?
+  headerImage   String?
   password      String?
   bio           String?   @db.Text
   aboutMe       String?   @db.Text

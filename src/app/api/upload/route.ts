@@ -1,38 +1,39 @@
-import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
-import { put } from "@vercel/blob";
+import { handleUpload, type HandleUploadBody } from '@vercel/blob/client';
+import { NextResponse } from 'next/server';
+import { auth } from '@/lib/auth';
 
-export async function POST(request: NextRequest) {
-    const session = await auth();
-    if (!session?.user?.id) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+export async function POST(request: Request) {
+    const body = (await request.json()) as HandleUploadBody;
 
     try {
-        const formData = await request.formData();
-        const file = formData.get("file") as File | null;
+        const jsonResponse = await handleUpload({
+            body,
+            request,
+            onBeforeGenerateToken: async (pathname) => {
+                const session = await auth();
+                if (!session?.user?.id) {
+                    throw new Error('Unauthorized');
+                }
 
-        if (!file) {
-            return NextResponse.json({ error: "No file provided" }, { status: 400 });
-        }
-
-        // Validate file type
-        if (!file.type.startsWith("image/")) {
-            return NextResponse.json({ error: "Only image files are allowed" }, { status: 400 });
-        }
-
-        // Max 6MB
-        if (file.size > 6 * 1024 * 1024) {
-            return NextResponse.json({ error: "File size must be under 6MB" }, { status: 400 });
-        }
-
-        const blob = await put(`uploads/${session.user.id}/${Date.now()}-${file.name}`, file, {
-            access: "public",
+                return {
+                    allowedContentTypes: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
+                    maximumSizeInBytes: 6 * 1024 * 1024,
+                    tokenPayload: JSON.stringify({
+                        userId: session.user.id,
+                    }),
+                };
+            },
+            onUploadCompleted: async ({ blob, tokenPayload }) => {
+                // Upload completed
+                console.log("Upload completed", blob.url);
+            },
         });
 
-        return NextResponse.json({ url: blob.url });
+        return NextResponse.json(jsonResponse);
     } catch (error) {
-        console.error("Upload error:", error);
-        return NextResponse.json({ error: "Upload failed" }, { status: 500 });
+        return NextResponse.json(
+            { error: (error as Error).message },
+            { status: 400 }, // The webhook will retry 5 times waiting for a 200
+        );
     }
 }

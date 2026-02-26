@@ -16,6 +16,7 @@ export async function GET(
                 name: true,
                 email: true,
                 image: true,
+                headerImage: true,
                 bio: true,
                 aboutMe: true,
                 links: true,

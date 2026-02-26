@@ -29,6 +29,7 @@ interface UserProfile {
     name: string;
     email: string;
     image?: string | null;
+    headerImage?: string | null;
     bio: string;
     aboutMe: string;
     links: SocialLink[];
@@ -265,10 +266,10 @@ export default function UserPage() {
                 {/* ──── HOME ──── */}
                 <section className="section visible" id="home" ref={(el) => { if (el) sectionsRef.current[0] = el; }}>
                     <div className="hero">
-                        <div className="hero-bg" />
-                        <div className="hero-content">
-                            <h1>{displayName} Blog</h1>
-                            <p>{user.bio || "学び、作り、考える。日々の記録。"}</p>
+                        <div className="hero-bg" style={user.headerImage ? { backgroundImage: `url(${user.headerImage})`, backgroundSize: "cover", backgroundPosition: "center" } : undefined} />
+                        <div className="hero-content" style={user.headerImage ? { position: "relative", zIndex: 1 } : undefined}>
+                            <h1 style={user.headerImage ? { color: "#fff", textShadow: "0 2px 10px rgba(0,0,0,0.7)" } : undefined}>{displayName} Blog</h1>
+                            <p style={user.headerImage ? { color: "#eee", textShadow: "0 1px 5px rgba(0,0,0,0.7)" } : undefined}>{user.bio || "学び、作り、考える。日々の記録。"}</p>
                         </div>
                     </div>
                     {randPosts.length > 0 && (
@@ -368,7 +369,6 @@ export default function UserPage() {
                         </div>
                         <div>
                             <h3 className="about-name">{displayName}</h3>
-                            <p className="about-role">{user.email}</p>
                         </div>
                     </div>
                     {user.aboutMe && (

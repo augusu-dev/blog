@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { upload } from '@vercel/blob/client';
 
 interface SocialLink {
     label: string;
@@ -17,6 +18,7 @@ export default function SettingsPage() {
     const [name, setName] = useState("");
     const [email, setEmail] = useState("");
     const [image, setImage] = useState("");
+    const [headerImage, setHeaderImage] = useState("");
     const [bio, setBio] = useState("");
     const [aboutMe, setAboutMe] = useState("");
     const [links, setLinks] = useState<SocialLink[]>([]);
@@ -35,6 +37,7 @@ export default function SettingsPage() {
                 .then((data) => {
                     setName(data.name || "");
                     setImage(data.image || "");
+                    setHeaderImage(data.headerImage || "");
                     setBio(data.bio || "");
                     setAboutMe(data.aboutMe || "");
                     setLinks(data.links || []);
@@ -50,7 +53,7 @@ export default function SettingsPage() {
             const res = await fetch("/api/user/settings", {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ name, bio, aboutMe, links, image }),
+                body: JSON.stringify({ name, bio, aboutMe, links, image, headerImage }),
             });
             if (res.ok) setMessage("✅ 設定を保存しました。");
             else setMessage("❌ 保存に失敗しました。");
@@ -154,20 +157,52 @@ export default function SettingsPage() {
                                     const file = e.target.files?.[0];
                                     if (!file) return;
                                     setMessage("画像をアップロード中...");
-                                    const formData = new FormData();
-                                    formData.append("file", file);
                                     try {
-                                        const res = await fetch("/api/upload", { method: "POST", body: formData });
-                                        if (res.ok) {
-                                            const data = await res.json();
-                                            setImage(data.url);
-                                            setMessage("");
-                                        } else {
-                                            const err = await res.json();
-                                            setMessage("❌ " + (err.error || "アップロード失敗"));
-                                        }
-                                    } catch {
-                                        setMessage("❌ アップロードに失敗しました");
+                                        const newBlob = await upload(file.name, file, {
+                                            access: 'public',
+                                            handleUploadUrl: '/api/upload',
+                                        });
+                                        setImage(newBlob.url);
+                                        setMessage("");
+                                    } catch (err) {
+                                        setMessage("❌ " + ((err as Error).message || "アップロード失敗"));
+                                    } finally {
+                                        e.target.value = "";
+                                    }
+                                }}
+                            />
+                        </label>
+                    </div>
+
+                    <label className="settings-label">ヘッダー画像</label>
+                    <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 16 }}>
+                        <div style={{
+                            width: 120, height: 40, borderRadius: 8, background: "var(--bg-soft)",
+                            display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", border: "1px solid var(--border)"
+                        }}>
+                            {headerImage ? <img src={headerImage} alt="Header" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ color: "var(--text-soft)", fontSize: 12 }}>未設定</span>}
+                        </div>
+                        <label className="editor-btn editor-btn-secondary" style={{ cursor: "pointer", fontSize: 13, padding: "6px 14px" }}>
+                            画像を選択 (最大6MB)
+                            <input
+                                type="file"
+                                accept="image/*"
+                                style={{ display: "none" }}
+                                onChange={async (e) => {
+                                    const file = e.target.files?.[0];
+                                    if (!file) return;
+                                    setMessage("ヘッダー画像をアップロード中...");
+                                    try {
+                                        const newBlob = await upload(file.name, file, {
+                                            access: 'public',
+                                            handleUploadUrl: '/api/upload',
+                                        });
+                                        setHeaderImage(newBlob.url);
+                                        setMessage("");
+                                    } catch (err) {
+                                        setMessage("❌ " + ((err as Error).message || "アップロード失敗"));
+                                    } finally {
+                                        e.target.value = "";
                                     }
                                 }}
                             />
