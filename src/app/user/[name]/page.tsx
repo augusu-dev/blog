@@ -278,10 +278,12 @@ export default function UserPage() {
                             <div className="recommend-row">
                                 {randPosts.map((p) => (
                                     <div key={p.id} className="card card-sm fade-item" style={{ padding: 18 }} onClick={() => openPost(p)}>
-                                        <div style={{ display: "flex", gap: 4, marginBottom: 8, flexWrap: "wrap" }}>
-                                            {(p.tags || []).filter(t => t !== "product").map((t) => <Tag key={t} label={t} />)}
+                                        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6, flexWrap: "wrap" }}>
+                                            <h4 style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.5, margin: 0 }}>{p.title}</h4>
+                                            <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                                                {(p.tags || []).filter(t => t !== "product").map((t) => <Tag key={t} label={t} />)}
+                                            </div>
                                         </div>
-                                        <h4 style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.5, marginBottom: 6 }}>{p.title}</h4>
                                         <p style={{ fontSize: 12, color: "var(--azuki-light)" }}>{fmtDate(p.date || p.createdAt)}</p>
                                     </div>
                                 ))}
