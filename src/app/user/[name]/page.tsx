@@ -195,16 +195,24 @@ export default function UserPage() {
     /* ─── Computed ─── */
     const blogTotalPages = Math.ceil(posts.length / BLOG_PER_PAGE);
     const blogItems = posts.slice(blogPage * BLOG_PER_PAGE, (blogPage + 1) * BLOG_PER_PAGE);
-
     // おすすめの抽出
     const pinnedProducts = products.filter((p: any) => p.pinned).slice(0, 2);
     const pinnedBlogs = posts.filter((p: any) => p.pinned).slice(0, 3);
-    let recommendPosts = [...pinnedProducts, ...pinnedBlogs];
 
-    // まだピン留めがない場合は、新しい順で自動設定
-    if (recommendPosts.length === 0) {
-        recommendPosts = [...products.slice(0, 2), ...posts.slice(0, 3)];
+    // 足りない分は新しい順から補填する
+    let finalProducts = [...pinnedProducts];
+    if (finalProducts.length < 2) {
+        const unpinnedProducts = products.filter((p: any) => !p.pinned);
+        finalProducts = [...finalProducts, ...unpinnedProducts.slice(0, 2 - finalProducts.length)];
     }
+
+    let finalBlogs = [...pinnedBlogs];
+    if (finalBlogs.length < 3) {
+        const unpinnedBlogs = posts.filter((p: any) => !p.pinned);
+        finalBlogs = [...finalBlogs, ...unpinnedBlogs.slice(0, 3 - finalBlogs.length)];
+    }
+
+    const recommendPosts = [...finalProducts, ...finalBlogs];
 
     const scrollTo = (id: string) => {
         const el = document.getElementById(id);
