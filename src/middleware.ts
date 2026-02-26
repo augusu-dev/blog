@@ -1,16 +1,24 @@
-import { auth } from "@/lib/auth";
 import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 
-export default auth((req) => {
-    const isEditor = req.nextUrl.pathname.startsWith("/editor");
-    const isLoggedIn = !!req.auth;
+/**
+ * Edge Middleware — Prismaを使わずセッションCookieの有無だけで判定
+ * (Edge RuntimeではPrisma Clientが動作しないため)
+ */
+export function middleware(request: NextRequest) {
+    // NextAuth v5 のセッションCookie名を確認
+    const sessionToken =
+        request.cookies.get("authjs.session-token")?.value ||
+        request.cookies.get("__Secure-authjs.session-token")?.value;
 
-    if (isEditor && !isLoggedIn) {
-        return NextResponse.redirect(new URL("/login", req.url));
+    if (!sessionToken) {
+        const loginUrl = new URL("/login", request.url);
+        loginUrl.searchParams.set("callbackUrl", request.url);
+        return NextResponse.redirect(loginUrl);
     }
 
     return NextResponse.next();
-});
+}
 
 export const config = {
     matcher: ["/editor/:path*"],
