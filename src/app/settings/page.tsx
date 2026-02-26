@@ -310,6 +310,22 @@ export default function SettingsPage() {
                     {saving ? "保存中..." : "設定を保存"}
                 </button>
 
+                {/* データとバックアップ */}
+                <section style={{ borderTop: "1px solid var(--border)", paddingTop: 32, paddingBottom: 32 }}>
+                    <h2 className="settings-section-title">データとバックアップ</h2>
+                    <p style={{ fontSize: 13, color: "var(--text-soft)", marginBottom: 16 }}>
+                        あなたの設定、自己紹介、そしてこれまで投稿したすべての記事やプロダクトのデータをJSON形式でエクスポート（ダウンロード）できます。
+                    </p>
+                    <a
+                        href="/api/user/export"
+                        download
+                        className="editor-btn editor-btn-secondary"
+                        style={{ display: "inline-block", textAlign: "center", textDecoration: "none" }}
+                    >
+                        データをエクスポート
+                    </a>
+                </section>
+
                 {/* 危険ゾーン */}
                 <section style={{ borderTop: "1px solid var(--border)", paddingTop: 32 }}>
                     <h2 className="settings-section-title" style={{ color: "#c44" }}>危険な操作</h2>

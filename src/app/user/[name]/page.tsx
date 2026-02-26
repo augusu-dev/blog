@@ -55,7 +55,17 @@ function Tag({ label }: { label: string }) {
 
 function fmtDate(d: string) {
     if (!d) return "";
-    return d.substring(0, 10).replace(/-/g, ".");
+    try {
+        const date = new Date(d);
+        return new Intl.DateTimeFormat("ja-JP", {
+            timeZone: "Asia/Tokyo",
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+        }).format(date).replace(/\//g, ".");
+    } catch {
+        return d.substring(0, 10).replace(/-/g, ".");
+    }
 }
 
 function shuffle<T>(arr: T[]): T[] {
