@@ -1,6 +1,6 @@
 "use client";
 
-import { useSession, signOut } from "next-auth/react";
+import { useSession } from "next-auth/react";
 import Link from "next/link";
 
 export default function Navbar() {
@@ -14,8 +14,8 @@ export default function Navbar() {
     return (
         <nav className="navbar" id="navbar">
             <button className="nav-logo" onClick={() => scrollTo("home")}>
-                <img src="/images/a.png" alt="Augusu" className="nav-logo-img" />
-                Augusu
+                <img src="/images/a.png" alt="Next Blog" className="nav-logo-img" />
+                Next Blog
             </button>
             <div className="nav-links">
                 <button className="nav-link active" data-section="home" onClick={() => scrollTo("home")}>
@@ -32,19 +32,18 @@ export default function Navbar() {
                 </button>
                 <button className="nav-link" data-section="about" onClick={() => scrollTo("about")}>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
-                    About Me
+                    About
                 </button>
             </div>
             <div className="nav-auth">
                 {session ? (
                     <>
                         <Link href="/editor" className="nav-auth-btn nav-write-btn">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" /></svg>
-                            記事を書く
+                            ✏ 記事を書く
                         </Link>
-                        <button className="nav-auth-btn nav-user-btn" onClick={() => signOut()}>
-                            ログアウト
-                        </button>
+                        <Link href="/settings" className="nav-auth-btn nav-user-btn" style={{ textDecoration: "none" }}>
+                            ⚙
+                        </Link>
                     </>
                 ) : (
                     <Link href="/login" className="nav-auth-btn nav-login-btn">

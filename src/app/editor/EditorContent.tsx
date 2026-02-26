@@ -1,11 +1,12 @@
 // Editor content component - wrapped by page.tsx with Suspense
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import RichEditor from "@/components/RichEditor";
+import TagInput from "@/components/TagInput";
 
 interface Post {
     id: string;
@@ -23,15 +24,21 @@ export default function EditorPage() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const editId = searchParams.get("id");
+    const initialType = searchParams.get("type");
 
+    // Post type: "blog" or "product"
+    const [postType, setPostType] = useState<"blog" | "product">(
+        initialType === "product" ? "product" : "blog"
+    );
     const [title, setTitle] = useState("");
     const [content, setContent] = useState("");
     const [excerpt, setExcerpt] = useState("");
-    const [tagsInput, setTagsInput] = useState("");
+    const [tags, setTags] = useState<string[]>([]);
     const [published, setPublished] = useState(false);
     const [saving, setSaving] = useState(false);
     const [myPosts, setMyPosts] = useState<Post[]>([]);
     const [message, setMessage] = useState("");
+    const contentKeyRef = useRef(0);
 
     // Redirect to login if not authenticated
     useEffect(() => {
@@ -66,14 +73,20 @@ export default function EditorPage() {
                     setTitle(post.title || "");
                     setContent(post.content || "");
                     setExcerpt(post.excerpt || "");
-                    setTagsInput((post.tags || []).join(", "));
+                    setTags(post.tags || []);
                     setPublished(post.published || false);
+                    // Determine post type from tags
+                    if (post.tags?.includes("product")) {
+                        setPostType("product");
+                    }
+                    // Force re-render of RichEditor with new content
+                    contentKeyRef.current += 1;
                 })
                 .catch(console.error);
         }
     }, [editId, session]);
 
-    // Strip HTML for excerpt generation
+    // Strip HTML for excerpt
     const stripHtml = (html: string) => {
         const tmp = document.createElement("div");
         tmp.innerHTML = html;
@@ -89,10 +102,11 @@ export default function EditorPage() {
 
         setSaving(true);
         setMessage("");
-        const tags = tagsInput
-            .split(/[,、]/)
-            .map((t) => t.trim())
-            .filter(Boolean);
+
+        // Add post type as a tag if product
+        const finalTags = postType === "product" && !tags.includes("product")
+            ? [...tags, "product"]
+            : tags.filter(t => postType === "blog" ? t !== "product" : true);
 
         try {
             const url = editId ? `/api/posts/${editId}` : "/api/posts";
@@ -105,7 +119,7 @@ export default function EditorPage() {
                     title: title.trim(),
                     content,
                     excerpt: excerpt.trim() || stripHtml(content).substring(0, 100) + "...",
-                    tags,
+                    tags: finalTags,
                     published: pub,
                 }),
             });
@@ -139,11 +153,7 @@ export default function EditorPage() {
                 loadMyPosts();
                 if (editId === id) {
                     router.push("/editor");
-                    setTitle("");
-                    setContent("");
-                    setExcerpt("");
-                    setTagsInput("");
-                    setPublished(false);
+                    resetForm();
                 }
             }
         } catch {
@@ -151,15 +161,21 @@ export default function EditorPage() {
         }
     };
 
-    // New post
-    const newPost = () => {
-        router.push("/editor");
+    const resetForm = () => {
         setTitle("");
         setContent("");
         setExcerpt("");
-        setTagsInput("");
+        setTags([]);
         setPublished(false);
         setMessage("");
+        contentKeyRef.current += 1;
+    };
+
+    // New post
+    const newPost = (type?: "blog" | "product") => {
+        router.push("/editor");
+        if (type) setPostType(type);
+        resetForm();
     };
 
     if (status === "loading") {
@@ -176,25 +192,25 @@ export default function EditorPage() {
 
     return (
         <>
-            {/* Simple navbar for editor */}
             <nav className="navbar" style={{ justifyContent: "space-between" }}>
                 <Link href="/" className="nav-logo">
-                    <img src="/images/a.png" alt="Augusu" className="nav-logo-img" />
-                    Augusu
+                    <img src="/images/a.png" alt="Next Blog" className="nav-logo-img" />
+                    Next Blog
                 </Link>
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                     <span style={{ fontSize: 12, color: "var(--text-soft)" }}>
                         {session.user?.name || session.user?.email}
                     </span>
-                    <button className="nav-auth-btn nav-user-btn" onClick={newPost}>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-                        新規作成
+                    <Link href="/settings" className="nav-auth-btn nav-user-btn" style={{ textDecoration: "none" }}>
+                        ⚙
+                    </Link>
+                    <button className="nav-auth-btn nav-user-btn" onClick={() => newPost()}>
+                        ＋ 新規
                     </button>
                 </div>
             </nav>
 
             <div className="editor-container">
-                {/* Message */}
                 {message && (
                     <div
                         className={`login-message ${message.startsWith("❌") ? "login-error" : ""}`}
@@ -204,65 +220,95 @@ export default function EditorPage() {
                     </div>
                 )}
 
-                {/* Editor form */}
+                {/* Post type toggle */}
+                <div className="type-toggle" style={{ display: "flex", gap: 0, marginBottom: 20, borderRadius: 12, overflow: "hidden", border: "1px solid var(--border)" }}>
+                    <button
+                        type="button"
+                        className={`type-toggle-btn ${postType === "blog" ? "active" : ""}`}
+                        onClick={() => setPostType("blog")}
+                        style={{
+                            flex: 1, padding: "10px 0", border: "none", cursor: "pointer",
+                            background: postType === "blog" ? "var(--azuki)" : "var(--card)",
+                            color: postType === "blog" ? "var(--white)" : "var(--text-soft)",
+                            fontFamily: "var(--sans)", fontSize: 13, fontWeight: 500, transition: "all 0.2s",
+                        }}
+                    >
+                        📝 ブログ
+                    </button>
+                    <button
+                        type="button"
+                        className={`type-toggle-btn ${postType === "product" ? "active" : ""}`}
+                        onClick={() => setPostType("product")}
+                        style={{
+                            flex: 1, padding: "10px 0", border: "none", cursor: "pointer",
+                            background: postType === "product" ? "var(--azuki)" : "var(--card)",
+                            color: postType === "product" ? "var(--white)" : "var(--text-soft)",
+                            fontFamily: "var(--sans)", fontSize: 13, fontWeight: 500, transition: "all 0.2s",
+                        }}
+                    >
+                        🛠 プロダクト
+                    </button>
+                </div>
+
                 <input
                     type="text"
                     className="editor-title-input"
-                    placeholder="記事のタイトル"
+                    placeholder={postType === "blog" ? "記事のタイトル" : "プロダクト名"}
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
                 />
 
-                <div className="editor-meta">
-                    <input
-                        type="text"
-                        className="editor-tags-input"
-                        placeholder="タグ（カンマ区切り: AI, 思考, コード）"
-                        value={tagsInput}
-                        onChange={(e) => setTagsInput(e.target.value)}
-                    />
-                    <div className="editor-actions">
-                        <button
-                            className="editor-btn editor-btn-secondary"
-                            onClick={() => savePost(false)}
-                            disabled={saving}
-                        >
-                            {saving ? "保存中..." : "下書き保存"}
-                        </button>
-                        <button
-                            className="editor-btn editor-btn-primary"
-                            onClick={() => savePost(true)}
-                            disabled={saving}
-                        >
-                            {saving ? "保存中..." : "公開する"}
-                        </button>
-                    </div>
+                <div style={{ marginBottom: 16 }}>
+                    <TagInput tags={tags} onChange={setTags} placeholder="タグを入力 (Enterで追加)" />
+                </div>
+
+                <div style={{ display: "flex", gap: 8, marginBottom: 16, justifyContent: "flex-end" }}>
+                    <button
+                        className="editor-btn editor-btn-secondary"
+                        onClick={() => savePost(false)}
+                        disabled={saving}
+                    >
+                        {saving ? "保存中..." : "下書き保存"}
+                    </button>
+                    <button
+                        className="editor-btn editor-btn-primary"
+                        onClick={() => savePost(true)}
+                        disabled={saving}
+                    >
+                        {saving ? "保存中..." : "公開する"}
+                    </button>
                 </div>
 
                 <input
                     type="text"
                     className="editor-excerpt-input"
-                    placeholder="記事の概要（省略可）"
+                    placeholder={postType === "blog" ? "記事の概要（省略可）" : "プロダクトの説明（省略可）"}
                     value={excerpt}
                     onChange={(e) => setExcerpt(e.target.value)}
                 />
 
-                {/* Rich text editor */}
                 <RichEditor
+                    key={contentKeyRef.current}
                     value={content}
                     onChange={setContent}
-                    placeholder="ここに記事を書きましょう..."
+                    placeholder={postType === "blog"
+                        ? "ここに記事を書きましょう..."
+                        : "プロダクトの詳細を書きましょう..."
+                    }
                 />
 
                 {/* My posts list */}
                 {myPosts.length > 0 && (
                     <div style={{ marginTop: 48 }}>
-                        <h3 className="my-posts-title">自分の記事</h3>
+                        <h3 className="my-posts-title">自分の投稿</h3>
                         <div className="my-posts-list">
                             {myPosts.map((post) => (
                                 <div key={post.id} className="my-post-item">
                                     <div style={{ flex: 1 }}>
                                         <h4>
+                                            <span style={{ marginRight: 6, fontSize: 13 }}>
+                                                {post.tags?.includes("product") ? "🛠" : "📝"}
+                                            </span>
                                             {post.title}
                                             <span className={`post-status ${post.published ? "published" : "draft"}`} style={{ marginLeft: 8 }}>
                                                 {post.published ? "公開中" : "下書き"}
