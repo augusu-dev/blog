@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { upload } from '@vercel/blob/client';
 
 interface SocialLink {
     label: string;
@@ -156,16 +155,25 @@ export default function SettingsPage() {
                                 onChange={async (e) => {
                                     const file = e.target.files?.[0];
                                     if (!file) return;
+                                    if (file.size > 6 * 1024 * 1024) {
+                                        setMessage("❌ 6MB以下の画像を選択してください");
+                                        return;
+                                    }
                                     setMessage("画像をアップロード中...");
+                                    const formData = new FormData();
+                                    formData.append("file", file);
                                     try {
-                                        const newBlob = await upload(file.name, file, {
-                                            access: 'public',
-                                            handleUploadUrl: '/api/upload',
-                                        });
-                                        setImage(newBlob.url);
-                                        setMessage("");
+                                        const res = await fetch("/api/upload", { method: "POST", body: formData });
+                                        if (res.ok) {
+                                            const data = await res.json();
+                                            setImage(data.url);
+                                            setMessage("");
+                                        } else {
+                                            const err = await res.json();
+                                            setMessage("❌ " + (err.error || "アップロード失敗"));
+                                        }
                                     } catch (err) {
-                                        setMessage("❌ " + ((err as Error).message || "アップロード失敗"));
+                                        setMessage("❌ アップロードに失敗しました");
                                     } finally {
                                         e.target.value = "";
                                     }
@@ -191,16 +199,25 @@ export default function SettingsPage() {
                                 onChange={async (e) => {
                                     const file = e.target.files?.[0];
                                     if (!file) return;
+                                    if (file.size > 6 * 1024 * 1024) {
+                                        setMessage("❌ 6MB以下の画像を選択してください");
+                                        return;
+                                    }
                                     setMessage("ヘッダー画像をアップロード中...");
+                                    const formData = new FormData();
+                                    formData.append("file", file);
                                     try {
-                                        const newBlob = await upload(file.name, file, {
-                                            access: 'public',
-                                            handleUploadUrl: '/api/upload',
-                                        });
-                                        setHeaderImage(newBlob.url);
-                                        setMessage("");
+                                        const res = await fetch("/api/upload", { method: "POST", body: formData });
+                                        if (res.ok) {
+                                            const data = await res.json();
+                                            setHeaderImage(data.url);
+                                            setMessage("");
+                                        } else {
+                                            const err = await res.json();
+                                            setMessage("❌ " + (err.error || "アップロード失敗"));
+                                        }
                                     } catch (err) {
-                                        setMessage("❌ " + ((err as Error).message || "アップロード失敗"));
+                                        setMessage("❌ アップロードに失敗しました");
                                     } finally {
                                         e.target.value = "";
                                     }

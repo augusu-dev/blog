@@ -302,10 +302,12 @@ export default function UserPage() {
                             {blogItems.map((p, i) => (
                                 <div key={p.id} className="blog-item fade-item" style={{ transitionDelay: `${i * 60}ms` }} onClick={() => openPost(p)}>
                                     <div style={{ flex: 1 }}>
-                                        <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
-                                            {(p.tags || []).filter(t => t !== "product").map((t) => <Tag key={t} label={t} />)}
+                                        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 6, flexWrap: "wrap" }}>
+                                            <h3 style={{ margin: 0 }}>{p.title}</h3>
+                                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                                {(p.tags || []).filter(t => t !== "product").map((t) => <Tag key={t} label={t} />)}
+                                            </div>
                                         </div>
-                                        <h3>{p.title}</h3>
                                         <p>{p.excerpt}</p>
                                     </div>
                                     <div className="blog-date">{fmtDate(p.date || p.createdAt)}</div>
@@ -401,20 +403,18 @@ export default function UserPage() {
                                                 </div>
                                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--azuki-light)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" /></svg>
                                             </a>
-                                            {isEmail && (
-                                                <button
-                                                    onClick={(e) => {
-                                                        e.preventDefault();
-                                                        navigator.clipboard.writeText(displayUrl);
-                                                        alert("メールアドレスをコピーしました！");
-                                                    }}
-                                                    className="editor-btn editor-btn-secondary"
-                                                    style={{ height: "100%", padding: "0 12px", border: "1px solid var(--border)", background: "var(--bg-card)", cursor: "pointer", borderRadius: 12, display: "flex", alignItems: "center" }}
-                                                    title="アドレスをコピー"
-                                                >
-                                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--azuki)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
-                                                </button>
-                                            )}
+                                            <button
+                                                onClick={(e) => {
+                                                    e.preventDefault();
+                                                    navigator.clipboard.writeText(isEmail ? displayUrl : link.url);
+                                                    alert(`${link.label} のリンクをコピーしました！`);
+                                                }}
+                                                className="editor-btn editor-btn-secondary"
+                                                style={{ height: "100%", padding: "0 12px", border: "1px solid var(--border)", background: "var(--bg-card)", cursor: "pointer", borderRadius: 12, display: "flex", alignItems: "center" }}
+                                                title="リンクをコピー"
+                                            >
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--azuki)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
+                                            </button>
                                         </div>
                                     );
                                 })}

@@ -157,13 +157,15 @@ export default function HomePage() {
               {blogPosts.slice(0, 10).map((p) => (
                 <div key={p.id} className="blog-item" onClick={() => openPost(p)} style={{ cursor: "pointer" }}>
                   <div style={{ flex: 1 }}>
-                    <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
-                      {(p.tags || []).filter(t => t !== "product").map((t) => {
-                        const c = TAG_COLORS[t] || "#9b6b6b";
-                        return <span key={t} className="tag" style={{ color: c, background: c + "18", border: `1px solid ${c}30` }}>{t}</span>;
-                      })}
+                    <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 6, flexWrap: "wrap" }}>
+                      <h3 style={{ margin: 0 }}>{p.title}</h3>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        {(p.tags || []).filter(t => t !== "product").map((t) => {
+                          const c = TAG_COLORS[t] || "#9b6b6b";
+                          return <span key={t} className="tag" style={{ color: c, background: c + "18", border: `1px solid ${c}30` }}>{t}</span>;
+                        })}
+                      </div>
                     </div>
-                    <h3>{p.title}</h3>
                     <p>{p.excerpt}</p>
                     <div style={{ fontSize: 12, color: "var(--azuki-light)", marginTop: 8 }}>
                       by{" "}
