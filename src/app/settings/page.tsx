@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 interface SocialLink {
     label: string;
@@ -22,6 +23,7 @@ interface Post {
 export default function SettingsPage() {
     const { data: session, status } = useSession();
     const router = useRouter();
+    const { language, setLanguage, t } = useLanguage();
 
     const [name, setName] = useState("");
     const [email, setEmail] = useState("");
@@ -160,9 +162,37 @@ export default function SettingsPage() {
                     </div>
                 )}
 
+                {/* 言語設定 */}
+                <section style={{ marginBottom: 40 }}>
+                    <h2 className="settings-section-title">{t("言語設定")} / Language</h2>
+                    <div style={{ display: "flex", gap: "12px", marginBottom: "16px" }}>
+                        <button
+                            className={`editor-btn ${language === 'ja' ? 'editor-btn-primary' : 'editor-btn-secondary'}`}
+                            style={{ padding: "8px 16px" }}
+                            onClick={() => setLanguage('ja')}
+                        >
+                            日本語
+                        </button>
+                        <button
+                            className={`editor-btn ${language === 'en' ? 'editor-btn-primary' : 'editor-btn-secondary'}`}
+                            style={{ padding: "8px 16px" }}
+                            onClick={() => setLanguage('en')}
+                        >
+                            English
+                        </button>
+                        <button
+                            className={`editor-btn ${language === 'zh' ? 'editor-btn-primary' : 'editor-btn-secondary'}`}
+                            style={{ padding: "8px 16px" }}
+                            onClick={() => setLanguage('zh')}
+                        >
+                            中文
+                        </button>
+                    </div>
+                </section>
+
                 {/* プロフィール */}
                 <section style={{ marginBottom: 40 }}>
-                    <h2 className="settings-section-title">プロフィール</h2>
+                    <h2 className="settings-section-title">{t("プロフィール")}</h2>
 
                     <label className="settings-label">ユーザー名</label>
                     <input type="text" className="login-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="ユーザー名" style={{ marginBottom: 16 }} />
@@ -371,7 +401,7 @@ export default function SettingsPage() {
                     disabled={saving}
                     style={{ width: "100%", marginBottom: 48, padding: "12px 0" }}
                 >
-                    {saving ? "保存中..." : "設定を保存"}
+                    {saving ? t("保存中...") : t("設定を保存")}
                 </button>
 
                 {/* データとバックアップ */}

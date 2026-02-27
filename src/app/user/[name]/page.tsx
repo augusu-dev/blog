@@ -112,7 +112,7 @@ export default function UserPage() {
                     const allPosts = data.posts.map((p) => ({
                         ...p,
                         date: p.date || p.createdAt,
-                        excerpt: p.excerpt || (p.content ? p.content.replace(/<[^>]*>/g, "").substring(0, 100) + "..." : ""),
+                        excerpt: p.excerpt || "",
                     }));
                     setPosts(allPosts.filter((p) => !p.tags?.includes("product")));
                     setProducts(allPosts.filter((p) => p.tags?.includes("product")));

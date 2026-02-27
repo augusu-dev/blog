@@ -56,7 +56,7 @@ export default function HomePage() {
       .then((data) => {
         setPosts(data.map((p: Post) => ({
           ...p,
-          excerpt: p.excerpt || (p.content ? p.content.replace(/<[^>]*>/g, "").substring(0, 120) + "..." : ""),
+          excerpt: p.excerpt || "",
         })));
       })
       .catch(console.error);
