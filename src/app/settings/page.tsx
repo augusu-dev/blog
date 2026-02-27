@@ -154,7 +154,7 @@ export default function SettingsPage() {
             </nav>
 
             <div className="editor-container" style={{ maxWidth: 600 }}>
-                <h1 style={{ fontFamily: "var(--serif)", fontSize: 28, fontWeight: 400, marginBottom: 32 }}>設定</h1>
+                <h1 style={{ fontFamily: "var(--serif)", fontSize: 28, fontWeight: 400, marginBottom: 32 }}>{t("設定")}</h1>
 
                 {message && (
                     <div className={`login-message ${message.startsWith("❌") ? "login-error" : ""}`} style={{ marginBottom: 20 }}>
@@ -194,10 +194,10 @@ export default function SettingsPage() {
                 <section style={{ marginBottom: 40 }}>
                     <h2 className="settings-section-title">{t("プロフィール")}</h2>
 
-                    <label className="settings-label">ユーザー名</label>
-                    <input type="text" className="login-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="ユーザー名" style={{ marginBottom: 16 }} />
+                    <label className="settings-label">{t("ユーザー名")}</label>
+                    <input type="text" className="login-input" value={name} onChange={(e) => setName(e.target.value)} placeholder={t("ユーザー名")} style={{ marginBottom: 16 }} />
 
-                    <label className="settings-label">プロフィール画像</label>
+                    <label className="settings-label">{t("プロフィール画像")}</label>
                     <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 16 }}>
                         <div style={{
                             width: 60, height: 60, borderRadius: "50%", background: "var(--bg-soft)",
@@ -206,7 +206,7 @@ export default function SettingsPage() {
                             {image ? <img src={image} alt="Profile" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ color: "var(--text-soft)", fontSize: 24 }}>👤</span>}
                         </div>
                         <label className="editor-btn editor-btn-secondary" style={{ cursor: "pointer", fontSize: 13, padding: "6px 14px" }}>
-                            画像を選択 (最大4.5MB)
+                            {t("画像を選択 (最大4.5MB)")}
                             <input
                                 type="file"
                                 accept="image/*"
@@ -241,16 +241,16 @@ export default function SettingsPage() {
                         </label>
                     </div>
 
-                    <label className="settings-label">ヘッダー画像</label>
+                    <label className="settings-label">{t("ヘッダー画像")}</label>
                     <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 16 }}>
                         <div style={{
                             width: 120, height: 40, borderRadius: 8, background: "var(--bg-soft)",
                             display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", border: "1px solid var(--border)"
                         }}>
-                            {headerImage ? <img src={headerImage} alt="Header" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ color: "var(--text-soft)", fontSize: 12 }}>未設定</span>}
+                            {headerImage ? <img src={headerImage} alt="Header" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ color: "var(--text-soft)", fontSize: 12 }}>{t("未設定")}</span>}
                         </div>
                         <label className="editor-btn editor-btn-secondary" style={{ cursor: "pointer", fontSize: 13, padding: "6px 14px" }}>
-                            画像を選択 (最大4.5MB)
+                            {t("画像を選択 (最大4.5MB)")}
                             <input
                                 type="file"
                                 accept="image/*"
@@ -285,26 +285,26 @@ export default function SettingsPage() {
                         </label>
                     </div>
 
-                    <label className="settings-label">メールアドレス</label>
+                    <label className="settings-label">{t("メールアドレス")}</label>
                     <input type="email" className="login-input" value={email} disabled style={{ marginBottom: 4, opacity: 0.6 }} />
-                    <p style={{ fontSize: 11, color: "var(--azuki-light)", marginBottom: 16 }}>メールアドレスは変更できません</p>
+                    <p style={{ fontSize: 11, color: "var(--azuki-light)", marginBottom: 16 }}>{t("メールアドレスは変更できません")}</p>
 
-                    <label className="settings-label">自己紹介 (短め・ホーム用)</label>
+                    <label className="settings-label">{t("自己紹介 (短め・ホーム用)")}</label>
                     <textarea
                         className="login-input"
                         value={bio}
                         onChange={(e) => setBio(e.target.value)}
-                        placeholder="一行から二行程度の自己紹介..."
+                        placeholder={t("一行から二行程度の自己紹介...")}
                         rows={2}
                         style={{ marginBottom: 16, resize: "vertical", fontFamily: "var(--sans)" }}
                     />
 
-                    <label className="settings-label">About me (長めのプロフ・詳細用)</label>
+                    <label className="settings-label">{t("About me (長めのプロフ・詳細用)")}</label>
                     <textarea
                         className="login-input"
                         value={aboutMe}
                         onChange={(e) => setAboutMe(e.target.value)}
-                        placeholder="自分について詳しく紹介してください..."
+                        placeholder={t("自分について詳しく紹介してください...")}
                         rows={6}
                         style={{ marginBottom: 16, resize: "vertical", fontFamily: "var(--sans)" }}
                     />
@@ -312,9 +312,9 @@ export default function SettingsPage() {
 
                 {/* SNSリンク */}
                 <section style={{ marginBottom: 40 }}>
-                    <h2 className="settings-section-title">リンク / SNS</h2>
+                    <h2 className="settings-section-title">{t("リンク / SNS")}</h2>
                     <p style={{ fontSize: 12, color: "var(--text-soft)", marginBottom: 16 }}>
-                        URLを入力するとあなたのプロフィールに表示されます。クリックで新しいタブで開きます。
+                        {t("URLを入力するとあなたのプロフィールに表示されます。クリックで新しいタブで開きます。")}
                     </p>
 
                     {links.map((link, i) => (
@@ -324,7 +324,7 @@ export default function SettingsPage() {
                                 className="login-input"
                                 value={link.label}
                                 onChange={(e) => updateLink(i, "label", e.target.value)}
-                                placeholder="名前 (例: GitHub)"
+                                placeholder={t("名前 (例: GitHub)")}
                                 style={{ flex: "0 0 120px", marginBottom: 0 }}
                             />
                             <input
@@ -355,16 +355,16 @@ export default function SettingsPage() {
                         disabled={links.length >= 5}
                         style={{ width: "100%", marginTop: 4 }}
                     >
-                        {links.length >= 5 ? "最大5つまで" : `＋ リンクを追加 (${links.length}/5)`}
+                        {links.length >= 5 ? t("最大5つまで") : `${t("＋ リンクを追加")} (${links.length}/5)`}
                     </button>
                 </section>
 
                 {/* おすすめ設定 */}
                 <section style={{ marginBottom: 40 }}>
-                    <h2 className="settings-section-title">おすすめの表示設定</h2>
+                    <h2 className="settings-section-title">{t("おすすめの表示設定")}</h2>
                     <p style={{ fontSize: 13, color: "var(--text-soft)", marginBottom: 16 }}>
-                        あなたのプロフィールに「おすすめ」として表示されるコンテンツを選べます。<br />
-                        （最大5つまで）
+                        {t("あなたのプロフィールに「おすすめ」として表示されるコンテンツを選べます。")}<br />
+                        {t("（最大5つまで）")}
                     </p>
                     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                         {myPosts.filter((p: any) => !!p.published).map(p => {
@@ -378,7 +378,7 @@ export default function SettingsPage() {
                                         <span style={{ fontSize: 14, fontWeight: 500 }}>{p.title}</span>
                                     </div>
                                     <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
-                                        <span style={{ fontSize: 12, color: "var(--text-soft)" }}>おすすめ表示</span>
+                                        <span style={{ fontSize: 12, color: "var(--text-soft)" }}>{t("おすすめ表示")}</span>
                                         <input
                                             type="checkbox"
                                             checked={!!p.pinned}
@@ -389,7 +389,7 @@ export default function SettingsPage() {
                             );
                         })}
                         {myPosts.filter((p: any) => !!p.published).length === 0 && (
-                            <p style={{ fontSize: 13, color: "var(--text-soft)" }}>公開済みの記事やプロダクトがありません。</p>
+                            <p style={{ fontSize: 13, color: "var(--text-soft)" }}>{t("公開済みの記事やプロダクトがありません。")}</p>
                         )}
                     </div>
                 </section>
@@ -406,9 +406,9 @@ export default function SettingsPage() {
 
                 {/* データとバックアップ */}
                 <section style={{ borderTop: "1px solid var(--border)", paddingTop: 32, paddingBottom: 32 }}>
-                    <h2 className="settings-section-title">データとバックアップ</h2>
+                    <h2 className="settings-section-title">{t("データとバックアップ")}</h2>
                     <p style={{ fontSize: 13, color: "var(--text-soft)", marginBottom: 16 }}>
-                        あなたの設定、自己紹介、そしてこれまで投稿したすべての記事やプロダクトのデータをJSON形式でエクスポート（ダウンロード）できます。
+                        {t("あなたの設定、自己紹介、そしてこれまで投稿したすべての記事やプロダクトのデータをJSON形式でエクスポート（ダウンロード）できます。")}
                     </p>
                     <a
                         href="/api/user/export"
@@ -416,20 +416,20 @@ export default function SettingsPage() {
                         className="editor-btn editor-btn-secondary"
                         style={{ display: "inline-block", textAlign: "center", textDecoration: "none" }}
                     >
-                        データをエクスポート
+                        {t("データをエクスポート")}
                     </a>
                 </section>
 
                 {/* 危険ゾーン */}
                 <section style={{ borderTop: "1px solid var(--border)", paddingTop: 32 }}>
-                    <h2 className="settings-section-title" style={{ color: "#c44" }}>危険な操作</h2>
+                    <h2 className="settings-section-title" style={{ color: "#c44" }}>{t("危険な操作")}</h2>
 
                     <button
                         className="editor-btn editor-btn-secondary"
                         onClick={() => signOut({ callbackUrl: "/" })}
                         style={{ width: "100%", marginBottom: 12 }}
                     >
-                        ログアウト
+                        {t("ログアウト")}
                     </button>
 
                     <button
@@ -437,10 +437,10 @@ export default function SettingsPage() {
                         onClick={handleDeleteAccount}
                         style={{ width: "100%" }}
                     >
-                        アカウントを削除
+                        {t("アカウントを削除する")}
                     </button>
                     <p style={{ fontSize: 11, color: "#c44", marginTop: 8 }}>
-                        アカウントを削除すると、すべての投稿データも完全に削除されます。
+                        {t("アカウントを削除すると、すべての投稿データも完全に削除されます。")}
                     </p>
                 </section>
             </div>

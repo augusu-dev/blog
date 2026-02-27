@@ -198,10 +198,23 @@ export default function UserPage() {
             return;
         }
         setIsTranslating(true);
-        // Simulate translation API with timeout
-        await new Promise(r => setTimeout(r, 600));
-        const langName = language === 'en' ? 'English' : language === 'zh' ? '中文' : '日本語';
-        setTranslatedContent(`<div style="padding:10px; background:var(--bg-soft); margin-bottom:16px; border-radius:6px; font-size:12px; color:var(--text-soft)">[Translated to ${langName}]</div>` + overlayContent);
+        try {
+            const res = await fetch('/api/translate', {
+                method: 'POST',
+                body: JSON.stringify({ text: overlayContent, targetLang: language }),
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const data = await res.json();
+            if (data.translatedText) {
+                const langName = language === 'en' ? 'English' : language === 'zh' ? '中文' : '日本語';
+                setTranslatedContent(`<div style="padding:10px; background:var(--bg-soft); margin-bottom:16px; border-radius:6px; font-size:12px; color:var(--text-soft)">[Translated to ${langName}]</div>` + data.translatedText);
+            } else {
+                alert("翻訳に失敗しました");
+            }
+        } catch (e) {
+            alert("翻訳エラーが発生しました");
+            console.error(e);
+        }
         setIsTranslating(false);
     };
 
