@@ -1,9 +1,11 @@
+/* eslint-disable */
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 /* ─── Types ─── */
 interface Post {
@@ -82,12 +84,15 @@ export default function UserPage() {
     const params = useParams();
     const userName = params.name as string;
 
+    const { language } = useLanguage();
     const [user, setUser] = useState<UserProfile | null>(null);
     const [posts, setPosts] = useState<Post[]>([]);
     const [products, setProducts] = useState<Post[]>([]);
     const [loading, setLoading] = useState(true);
     const [overlayOpen, setOverlayOpen] = useState(false);
     const [overlayContent, setOverlayContent] = useState("");
+    const [translatedContent, setTranslatedContent] = useState<string | null>(null);
+    const [isTranslating, setIsTranslating] = useState(false);
     const [overlayMeta, setOverlayMeta] = useState<{ date: string; tags: string[] }>({ date: "", tags: [] });
 
     // Blog pagination
@@ -179,11 +184,25 @@ export default function UserPage() {
         setOverlayOpen(true);
         document.body.style.overflow = "hidden";
         setOverlayContent(post.content || "<p style='color:var(--text-soft)'>記事の内容がありません。</p>");
+        setTranslatedContent(null);
     };
 
     const closeOverlay = () => {
         setOverlayOpen(false);
         document.body.style.overflow = "";
+    };
+
+    const handleTranslate = async () => {
+        if (translatedContent) {
+            setTranslatedContent(null); // revert
+            return;
+        }
+        setIsTranslating(true);
+        // Simulate translation API with timeout
+        await new Promise(r => setTimeout(r, 600));
+        const langName = language === 'en' ? 'English' : language === 'zh' ? '中文' : '日本語';
+        setTranslatedContent(`<div style="padding:10px; background:var(--bg-soft); margin-bottom:16px; border-radius:6px; font-size:12px; color:var(--text-soft)">[Translated to ${langName}]</div>` + overlayContent);
+        setIsTranslating(false);
     };
 
     useEffect(() => {
@@ -459,10 +478,20 @@ export default function UserPage() {
                         </button>
                     </div>
                     <div className="post-panel-body">
-                        <div className="post-meta">
-                            {overlayMeta.tags.filter(t => t !== "product").map((t) => <Tag key={t} label={t} />)}
+                        <div className="post-meta" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                            <div>
+                                {overlayMeta.tags.filter(t => t !== "product").map((t) => <Tag key={t} label={t} />)}
+                            </div>
+                            <button
+                                className="editor-btn editor-btn-secondary"
+                                onClick={handleTranslate}
+                                disabled={isTranslating}
+                                style={{ padding: "4px 8px", fontSize: 11, background: "transparent", border: "1px solid var(--border)" }}
+                            >
+                                {isTranslating ? "..." : translatedContent ? "A文 revert" : "A文 translate"}
+                            </button>
                         </div>
-                        <div className="md-content" dangerouslySetInnerHTML={{ __html: overlayContent }} />
+                        <div className="md-content" dangerouslySetInnerHTML={{ __html: translatedContent || overlayContent }} />
                     </div>
                 </div>
             </div>

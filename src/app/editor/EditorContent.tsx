@@ -40,6 +40,8 @@ export default function EditorPage() {
     const [message, setMessage] = useState("");
     const contentKeyRef = useRef(0);
 
+    const [isLoaded, setIsLoaded] = useState(false);
+
     // Redirect to login if not authenticated
     useEffect(() => {
         if (status === "unauthenticated") {
@@ -66,7 +68,9 @@ export default function EditorPage() {
 
     // Load post for editing
     useEffect(() => {
-        if (editId && session) {
+        if (isLoaded || !session) return;
+
+        if (editId) {
             fetch(`/api/posts/${editId}`)
                 .then((res) => res.json())
                 .then((post) => {
@@ -77,6 +81,7 @@ export default function EditorPage() {
                     setPublished(post.published || false);
                     if (post.tags?.includes("product")) setPostType("product");
                     contentKeyRef.current += 1;
+                    setIsLoaded(true);
                 })
                 .catch(console.error);
         } else if (!editId) {
@@ -92,8 +97,9 @@ export default function EditorPage() {
                     if (data.postType) setPostType(data.postType);
                 } catch { }
             }
+            setIsLoaded(true);
         }
-    }, [editId, session]);
+    }, [editId, session, isLoaded]);
 
     // Auto-save to local storage on change
     useEffect(() => {
@@ -139,7 +145,7 @@ export default function EditorPage() {
                 body: JSON.stringify({
                     title: title.trim(),
                     content,
-                    excerpt: excerpt.trim() || stripHtml(content).substring(0, 100) + "...",
+                    excerpt: excerpt.trim(), // DO NOT auto-generate from body
                     tags: finalTags,
                     published: pub,
                 }),

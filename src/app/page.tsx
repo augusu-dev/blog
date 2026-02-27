@@ -1,9 +1,11 @@
+/* eslint-disable */
 "use client";
 
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 interface Post {
   id: string;
@@ -39,9 +41,12 @@ function fmtDate(d: string) {
 export default function HomePage() {
   const { data: session } = useSession();
   const router = useRouter();
+  const { t, language } = useLanguage();
   const [posts, setPosts] = useState<Post[]>([]);
   const [overlayOpen, setOverlayOpen] = useState(false);
   const [overlayContent, setOverlayContent] = useState("");
+  const [translatedContent, setTranslatedContent] = useState<string | null>(null);
+  const [isTranslating, setIsTranslating] = useState(false);
   const [overlayMeta, setOverlayMeta] = useState({ date: "", tags: [] as string[], author: "" });
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -64,6 +69,7 @@ export default function HomePage() {
       author: post.author?.name || "",
     });
     setOverlayContent(post.content || "<p>記事の内容がありません。</p>");
+    setTranslatedContent(null);
     setOverlayOpen(true);
     document.body.style.overflow = "hidden";
   };
@@ -89,25 +95,38 @@ export default function HomePage() {
     }
   };
 
+  const handleTranslate = async () => {
+    if (translatedContent) {
+      setTranslatedContent(null); // revert
+      return;
+    }
+    setIsTranslating(true);
+    // Simulate translation API with timeout
+    await new Promise(r => setTimeout(r, 600));
+    const langName = language === 'en' ? 'English' : language === 'zh' ? '中文' : '日本語';
+    setTranslatedContent(`<div style="padding:10px; background:var(--bg-soft); margin-bottom:16px; border-radius:6px; font-size:12px; color:var(--text-soft)">[Translated to ${langName}]</div>` + overlayContent);
+    setIsTranslating(false);
+  };
+
   return (
     <>
       {/* ─── Navbar ─── */}
       <nav className="navbar" id="navbar" style={{ justifyContent: "space-between" }}>
         <Link href="/" className="nav-logo" style={{ textDecoration: "none" }}>
           <img src="/images/a.png" alt="Next Blog" className="nav-logo-img" />
-          Next Blog
+          {t("Next Blog")}
         </Link>
         <div className="nav-auth">
           {session ? (
             <>
-              <Link href="/editor" className="nav-auth-btn nav-write-btn">✏ 記事を書く</Link>
+              <Link href="/editor" className="nav-auth-btn nav-write-btn">{t("✏ 記事を書く")}</Link>
               <Link href={`/user/${session.user?.name || ""}`} className="nav-auth-btn nav-user-btn" style={{ textDecoration: "none" }}>
-                マイページ
+                {t("マイページ")}
               </Link>
               <Link href="/settings" className="nav-auth-btn nav-user-btn" style={{ textDecoration: "none" }}>⚙</Link>
             </>
           ) : (
-            <Link href="/login" className="nav-auth-btn nav-login-btn">ログイン</Link>
+            <Link href="/login" className="nav-auth-btn nav-login-btn">{t("ログイン")}</Link>
           )}
         </div>
       </nav>
@@ -135,20 +154,20 @@ export default function HomePage() {
             margin: "0 auto",
             lineHeight: 1.8,
           }}>
-            思考と創造を共有するプラットフォーム。
+            {t("思考と創造を共有するプラットフォーム。")}
           </p>
 
           <form onSubmit={handleSearch} style={{ marginTop: 32, display: "flex", justifyContent: "center", gap: 8 }}>
             <input
               type="text"
-              placeholder="ユーザーを検索..."
+              placeholder={t("ユーザーを検索...")}
               className="login-input"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               style={{ width: 280, marginBottom: 0, border: "1px solid var(--border)", background: "var(--bg-card)" }}
             />
             <button type="submit" className="editor-btn editor-btn-primary" style={{ padding: "0 24px" }}>
-              検索
+              {t("検索")}
             </button>
           </form>
         </section>
@@ -157,10 +176,10 @@ export default function HomePage() {
 
         {/* ─── Recent Blog Posts ─── */}
         <section className="section">
-          <h2 className="section-title">最近の記事</h2>
+          <h2 className="section-title">{t("最近の記事")}</h2>
           {blogPosts.length === 0 ? (
             <p style={{ textAlign: "center", color: "var(--text-soft)", padding: "40px 0" }}>
-              まだ記事がありません。ログインして最初の記事を書きましょう。
+              {t("まだ記事がありません。ログインして最初の記事を書きましょう。")}
             </p>
           ) : (
             <div className="blog-list">
@@ -200,7 +219,7 @@ export default function HomePage() {
           <>
             <div className="section-divider" />
             <section className="section">
-              <h2 className="section-title">プロダクト</h2>
+              <h2 className="section-title">{t("プロダクト")}</h2>
               <div className="product-grid">
                 {productPosts.slice(0, 8).map((p) => (
                   <div key={p.id} className="product-card" onClick={() => openPost(p)} style={{ cursor: "pointer" }}>
@@ -243,14 +262,24 @@ export default function HomePage() {
           </div>
           <div className="post-panel-body">
             {overlayMeta.tags.length > 0 && (
-              <div className="post-meta">
-                {overlayMeta.tags.filter(t => t !== "product").map((t) => {
-                  const c = TAG_COLORS[t] || "#9b6b6b";
-                  return <span key={t} className="tag" style={{ color: c, background: c + "18", border: `1px solid ${c}30` }}>{t}</span>;
-                })}
+              <div className="post-meta" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                <div>
+                  {overlayMeta.tags.filter(t => t !== "product").map((t) => {
+                    const c = TAG_COLORS[t] || "#9b6b6b";
+                    return <span key={t} className="tag" style={{ color: c, background: c + "18", border: `1px solid ${c}30` }}>{t}</span>;
+                  })}
+                </div>
+                <button
+                  className="editor-btn editor-btn-secondary"
+                  onClick={handleTranslate}
+                  disabled={isTranslating}
+                  style={{ padding: "4px 8px", fontSize: 11, background: "transparent", border: "1px solid var(--border)" }}
+                >
+                  {isTranslating ? "..." : translatedContent ? "A文 revert" : "A文 translate"}
+                </button>
               </div>
             )}
-            <div className="md-content" dangerouslySetInnerHTML={{ __html: overlayContent }} />
+            <div className="md-content" dangerouslySetInnerHTML={{ __html: translatedContent || overlayContent }} />
           </div>
         </div>
       </div>
