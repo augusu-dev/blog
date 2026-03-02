@@ -128,7 +128,7 @@ export default function HomePage() {
       <nav className="navbar" id="navbar" style={{ justifyContent: "space-between" }}>
         <Link href="/" className="nav-logo" style={{ textDecoration: "none" }}>
           <img src="/images/a.png" alt="Next Blog" className="nav-logo-img" />
-          {t("Next Blog")}
+          {t("Next Blog")} <span className="beta-badge">β</span>
         </Link>
         <div className="nav-auth">
           {session ? (

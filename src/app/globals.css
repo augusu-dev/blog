@@ -89,6 +89,17 @@ body {
   object-fit: cover;
 }
 
+.beta-badge {
+  font-size: 10px;
+  background: var(--azuki);
+  color: white;
+  padding: 2px 4px;
+  border-radius: 4px;
+  vertical-align: super;
+  margin-left: -2px;
+  font-family: var(--sans);
+}
+
 .nav-links {
   display: flex;
   gap: 4px;
@@ -259,7 +270,8 @@ body {
   background: url('/images/b.png') center 40% / cover no-repeat;
   filter: brightness(0.6) saturate(1.1);
   z-index: 0;
-  transform: scale(1.05); /* Slight scale to allow zooming */
+  transform: scale(1.05);
+  /* Slight scale to allow zooming */
 }
 
 /* Gradient overlay to add modern aesthetics */

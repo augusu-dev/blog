@@ -39,8 +39,8 @@ export default function EditorPage() {
     const [myPosts, setMyPosts] = useState<Post[]>([]);
     const [message, setMessage] = useState("");
     const contentKeyRef = useRef(0);
-
     const [isLoaded, setIsLoaded] = useState(false);
+    const [lastFetchedId, setLastFetchedId] = useState<string | null>(null);
 
     // Redirect to login if not authenticated
     useEffect(() => {
@@ -68,9 +68,9 @@ export default function EditorPage() {
 
     // Load post for editing
     useEffect(() => {
-        if (isLoaded || !session) return;
+        if (!session) return;
 
-        if (editId) {
+        if (editId && editId !== lastFetchedId) {
             fetch(`/api/posts/${editId}`)
                 .then((res) => res.json())
                 .then((post) => {
@@ -80,10 +80,11 @@ export default function EditorPage() {
                     setTags(post.tags || []);
                     if (post.tags?.includes("product")) setPostType("product");
                     contentKeyRef.current += 1;
+                    setLastFetchedId(editId);
                     setIsLoaded(true);
                 })
                 .catch(console.error);
-        } else if (!editId) {
+        } else if (!editId && !isLoaded) {
             // Load autosave from local storage for new posts
             const saved = localStorage.getItem("draft-post");
             if (saved) {
@@ -98,7 +99,7 @@ export default function EditorPage() {
             }
             setIsLoaded(true);
         }
-    }, [editId, session, isLoaded]);
+    }, [editId, session, isLoaded, lastFetchedId]);
 
     // Auto-save to local storage on change
     useEffect(() => {
@@ -214,9 +215,9 @@ export default function EditorPage() {
             <nav className="navbar" style={{ justifyContent: "space-between" }}>
                 <Link href="/" className="nav-logo">
                     <img src="/images/a.png" alt="Next Blog" className="nav-logo-img" />
-                    Next Blog
+                    Next Blog <span className="beta-badge">β</span>
                 </Link>
-                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <div className="nav-auth" style={{ display: "flex", gap: 8, alignItems: "center" }}>
                     <span style={{ fontSize: 12, color: "var(--text-soft)" }}>
                         {session.user?.name || session.user?.email}
                     </span>

@@ -149,7 +149,7 @@ export default function SettingsPage() {
             <nav className="navbar" style={{ justifyContent: "center" }}>
                 <Link href="/" className="nav-logo" style={{ textDecoration: "none" }}>
                     <img src="/images/a.png" alt="Next Blog" className="nav-logo-img" />
-                    Next Blog
+                    Next Blog <span className="beta-badge">β</span>
                 </Link>
             </nav>
 

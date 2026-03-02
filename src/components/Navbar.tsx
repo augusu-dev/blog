@@ -16,7 +16,7 @@ export default function Navbar() {
         <nav className="navbar" id="navbar">
             <button className="nav-logo" onClick={() => scrollTo("home")}>
                 <img src="/images/a.png" alt="Next Blog" className="nav-logo-img" />
-                Next Blog
+                Next Blog <span className="beta-badge">β</span>
             </button>
             <div className="nav-links">
                 <button className="nav-link active" data-section="home" onClick={() => scrollTo("home")}>

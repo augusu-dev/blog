@@ -272,7 +272,7 @@ export default function UserPage() {
             <nav className="navbar" id="navbar">
                 <Link href="/" className="nav-logo" style={{ textDecoration: "none" }}>
                     <img src="/images/a.png" alt="Next Blog" className="nav-logo-img" />
-                    Next Blog
+                    Next Blog <span className="beta-badge">β</span>
                 </Link>
                 <div className="nav-links">
                     <button className="nav-link active" data-section="home" onClick={() => scrollTo("home")}>
