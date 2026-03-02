@@ -70,10 +70,10 @@ export default function SettingsPage() {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ name, bio, aboutMe, links, image, headerImage }),
             });
-            if (res.ok) setMessage("✅ 設定を保存しました。");
-            else setMessage("❌ 保存に失敗しました。");
+            if (res.ok) setMessage("✅ " + t("設定を保存しました。"));
+            else setMessage("❌ " + t("保存に失敗しました。"));
         } catch {
-            setMessage("❌ エラーが発生しました。");
+            setMessage("❌ " + t("エラーが発生しました。"));
         } finally {
             setSaving(false);
         }
@@ -95,9 +95,9 @@ export default function SettingsPage() {
     };
 
     const handleDeleteAccount = async () => {
-        const confirm1 = confirm("本当にアカウントを削除しますか？この操作は取り消せません。");
+        const confirm1 = confirm(t("本当にアカウントを削除しますか？\n※この操作は取り消せません。"));
         if (!confirm1) return;
-        const confirm2 = confirm("すべての投稿データも削除されます。本当に削除しますか？");
+        const confirm2 = confirm(t("すべての投稿データも削除されます。本当に削除しますか？"));
         if (!confirm2) return;
 
         try {
@@ -105,10 +105,10 @@ export default function SettingsPage() {
             if (res.ok) {
                 await signOut({ callbackUrl: "/" });
             } else {
-                setMessage("❌ アカウント削除に失敗しました。");
+                setMessage("❌ " + t("アカウント削除に失敗しました。"));
             }
         } catch {
-            setMessage("❌ エラーが発生しました。");
+            setMessage("❌ " + t("エラーが発生しました。"));
         }
     };
 
@@ -117,7 +117,7 @@ export default function SettingsPage() {
         if (isPinned) {
             const currentlyPinned = myPosts.filter((p: any) => !!p.pinned && !!p.published);
             if (currentlyPinned.length >= 5) {
-                setMessage("❌ おすすめは最大5つまでです");
+                setMessage("❌ " + t("おすすめは最大5つまでです"));
                 return;
             }
         }
@@ -136,7 +136,7 @@ export default function SettingsPage() {
         return (
             <div className="login-container">
                 <div className="login-card" style={{ textAlign: "center" }}>
-                    <p style={{ color: "var(--text-soft)" }}>読み込み中...</p>
+                    <p style={{ color: "var(--text-soft)" }}>{t("読み込み中...")}</p>
                 </div>
             </div>
         );
@@ -215,10 +215,10 @@ export default function SettingsPage() {
                                     const file = e.target.files?.[0];
                                     if (!file) return;
                                     if (file.size > 4.5 * 1024 * 1024) {
-                                        setMessage("❌ 4.5MB以下の画像を選択してください");
+                                        setMessage("❌ " + t("4.5MB以下の画像を選択してください"));
                                         return;
                                     }
-                                    setMessage("画像をアップロード中...");
+                                    setMessage(t("画像をアップロード中..."));
                                     const formData = new FormData();
                                     formData.append("file", file);
                                     try {
@@ -229,10 +229,10 @@ export default function SettingsPage() {
                                             setMessage("");
                                         } else {
                                             const err = await res.json();
-                                            setMessage("❌ " + (err.error || "アップロード失敗"));
+                                            setMessage("❌ " + (err.error || t("アップロード失敗")));
                                         }
                                     } catch (err) {
-                                        setMessage("❌ 予期せぬエラーが発生しました");
+                                        setMessage("❌ " + t("予期せぬエラーが発生しました"));
                                     } finally {
                                         e.target.value = "";
                                     }
@@ -259,10 +259,10 @@ export default function SettingsPage() {
                                     const file = e.target.files?.[0];
                                     if (!file) return;
                                     if (file.size > 4.5 * 1024 * 1024) {
-                                        setMessage("❌ 4.5MB以下の画像を選択してください");
+                                        setMessage("❌ " + t("4.5MB以下の画像を選択してください"));
                                         return;
                                     }
-                                    setMessage("ヘッダー画像をアップロード中...");
+                                    setMessage(t("ヘッダー画像をアップロード中..."));
                                     const formData = new FormData();
                                     formData.append("file", file);
                                     try {
@@ -273,10 +273,10 @@ export default function SettingsPage() {
                                             setMessage("");
                                         } else {
                                             const err = await res.json();
-                                            setMessage("❌ " + (err.error || "アップロード失敗"));
+                                            setMessage("❌ " + (err.error || t("アップロード失敗")));
                                         }
                                     } catch (err) {
-                                        setMessage("❌ 予期せぬエラーが発生しました");
+                                        setMessage("❌ " + t("予期せぬエラーが発生しました"));
                                     } finally {
                                         e.target.value = "";
                                     }

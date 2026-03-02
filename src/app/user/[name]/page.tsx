@@ -84,7 +84,7 @@ export default function UserPage() {
     const params = useParams();
     const userName = params.name as string;
 
-    const { language } = useLanguage();
+    const { language, t } = useLanguage();
     const [user, setUser] = useState<UserProfile | null>(null);
     const [posts, setPosts] = useState<Post[]>([]);
     const [products, setProducts] = useState<Post[]>([]);
@@ -93,6 +93,7 @@ export default function UserPage() {
     const [overlayContent, setOverlayContent] = useState("");
     const [translatedContent, setTranslatedContent] = useState<string | null>(null);
     const [isTranslating, setIsTranslating] = useState(false);
+    const [translateTarget, setTranslateTarget] = useState<string>(language === 'ja' ? 'en' : 'ja');
     const [overlayMeta, setOverlayMeta] = useState<{ date: string; tags: string[] }>({ date: "", tags: [] });
 
     // Blog pagination
@@ -201,18 +202,18 @@ export default function UserPage() {
         try {
             const res = await fetch('/api/translate', {
                 method: 'POST',
-                body: JSON.stringify({ text: overlayContent, targetLang: language }),
+                body: JSON.stringify({ text: overlayContent, targetLang: translateTarget }),
                 headers: { 'Content-Type': 'application/json' }
             });
             const data = await res.json();
             if (data.translatedText) {
-                const langName = language === 'en' ? 'English' : language === 'zh' ? '中文' : '日本語';
+                const langName = translateTarget === 'en' ? 'English' : translateTarget === 'zh' ? '中文' : '日本語';
                 setTranslatedContent(`<div style="padding:10px; background:var(--bg-soft); margin-bottom:16px; border-radius:6px; font-size:12px; color:var(--text-soft)">[Translated to ${langName}]</div>` + data.translatedText);
             } else {
-                alert("翻訳に失敗しました");
+                alert(t("翻訳に失敗しました"));
             }
         } catch (e) {
-            alert("翻訳エラーが発生しました");
+            alert(t("翻訳エラーが発生しました"));
             console.error(e);
         }
         setIsTranslating(false);
@@ -459,7 +460,7 @@ export default function UserPage() {
                                                 onClick={(e) => {
                                                     e.preventDefault();
                                                     navigator.clipboard.writeText(isEmail ? displayUrl : link.url);
-                                                    alert(`${link.label} のリンクをコピーしました！`);
+                                                    alert(t("リンクをコピーしました"));
                                                 }}
                                                 className="editor-btn editor-btn-secondary"
                                                 style={{ height: "100%", padding: "0 12px", border: "1px solid var(--border)", background: "var(--bg-card)", cursor: "pointer", borderRadius: 12, display: "flex", alignItems: "center" }}
@@ -495,14 +496,25 @@ export default function UserPage() {
                             <div>
                                 {overlayMeta.tags.filter(t => t !== "product").map((t) => <Tag key={t} label={t} />)}
                             </div>
-                            <button
-                                className="editor-btn editor-btn-secondary"
-                                onClick={handleTranslate}
-                                disabled={isTranslating}
-                                style={{ padding: "4px 8px", fontSize: 11, background: "transparent", border: "1px solid var(--border)" }}
-                            >
-                                {isTranslating ? "..." : translatedContent ? "A文 revert" : "A文 translate"}
-                            </button>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                <select
+                                    value={translateTarget}
+                                    onChange={(e) => setTranslateTarget(e.target.value)}
+                                    style={{ background: "transparent", border: "1px solid var(--border)", color: "var(--text-soft)", fontSize: 11, padding: "2px 4px", borderRadius: 4 }}
+                                >
+                                    <option value="ja">日本語</option>
+                                    <option value="en">English</option>
+                                    <option value="zh">中文</option>
+                                </select>
+                                <button
+                                    className="editor-btn editor-btn-secondary"
+                                    onClick={handleTranslate}
+                                    disabled={isTranslating}
+                                    style={{ padding: "4px 8px", fontSize: 11, background: "transparent", border: "1px solid var(--border)" }}
+                                >
+                                    {isTranslating ? "..." : translatedContent ? "A文 revert" : "A文 translate"}
+                                </button>
+                            </div>
                         </div>
                         <div className="md-content" dangerouslySetInnerHTML={{ __html: translatedContent || overlayContent }} />
                     </div>

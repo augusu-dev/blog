@@ -1,4 +1,5 @@
 // Editor content component - wrapped by page.tsx with Suspense
+/* eslint-disable @next/next/no-img-element */
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
@@ -34,7 +35,6 @@ export default function EditorPage() {
     const [content, setContent] = useState("");
     const [excerpt, setExcerpt] = useState("");
     const [tags, setTags] = useState<string[]>([]);
-    const [published, setPublished] = useState(false);
     const [saving, setSaving] = useState(false);
     const [myPosts, setMyPosts] = useState<Post[]>([]);
     const [message, setMessage] = useState("");
@@ -78,7 +78,6 @@ export default function EditorPage() {
                     setContent(post.content || "");
                     setExcerpt(post.excerpt || "");
                     setTags(post.tags || []);
-                    setPublished(post.published || false);
                     if (post.tags?.includes("product")) setPostType("product");
                     contentKeyRef.current += 1;
                     setIsLoaded(true);
@@ -112,13 +111,6 @@ export default function EditorPage() {
             return () => clearTimeout(timer);
         }
     }, [title, content, excerpt, tags, postType, editId]);
-
-    // Strip HTML for excerpt
-    const stripHtml = (html: string) => {
-        const tmp = document.createElement("div");
-        tmp.innerHTML = html;
-        return tmp.textContent || tmp.innerText || "";
-    };
 
     // Save post
     const savePost = async (pub: boolean) => {
@@ -194,7 +186,6 @@ export default function EditorPage() {
         setContent("");
         setExcerpt("");
         setTags([]);
-        setPublished(false);
         setMessage("");
         contentKeyRef.current += 1;
     };

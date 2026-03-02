@@ -24,17 +24,17 @@ body {
 }
 
 :root {
-  --bg: #faf5f3;
-  --bg-soft: #f3ebe7;
-  --card: #ffffff;
-  --azuki: #9b6b6b;
-  --azuki-light: #c4a0a0;
-  --azuki-pale: #e8d5d0;
-  --azuki-deep: #7a4f4f;
-  --text: #4a3535;
-  --text-soft: #8a7070;
-  --accent: #d4877a;
-  --border: #e8d5d0;
+  --bg: #fdfaf8;
+  --bg-soft: #f4efed;
+  --card: rgba(255, 255, 255, 0.85);
+  --azuki: #925c5c;
+  --azuki-light: #c29999;
+  --azuki-pale: #eed8d3;
+  --azuki-deep: #683e3e;
+  --text: #3c2a2a;
+  --text-soft: #846a6a;
+  --accent: #cd7768;
+  --border: rgba(238, 216, 211, 0.6);
   --white: #ffffff;
   --serif: 'Cormorant Garamond', serif;
   --sans: 'Zen Kaku Gothic New', sans-serif;
@@ -53,11 +53,12 @@ body {
   align-items: center;
   justify-content: center;
   padding: 14px 32px;
-  background: rgba(250, 245, 243, 0.92);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border-bottom: 1px solid var(--border);
-  transition: box-shadow 0.3s ease;
+  background: rgba(253, 250, 248, 0.7);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.03);
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .navbar.scrolled {
@@ -256,8 +257,21 @@ body {
   right: 0;
   bottom: 0;
   background: url('/images/b.png') center 40% / cover no-repeat;
-  filter: brightness(0.45) saturate(0.8);
+  filter: brightness(0.6) saturate(1.1);
   z-index: 0;
+  transform: scale(1.05); /* Slight scale to allow zooming */
+}
+
+/* Gradient overlay to add modern aesthetics */
+.hero-bg::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, rgba(146, 92, 92, 0.4) 0%, rgba(205, 119, 104, 0.2) 100%);
+  mix-blend-mode: overlay;
 }
 
 .hero-content {
@@ -288,9 +302,12 @@ body {
    ======================================== */
 .card {
   background: var(--card);
-  border-radius: 14px;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-radius: 16px;
   border: 1px solid var(--border);
-  transition: transform 0.25s ease, box-shadow 0.25s ease;
+  box-shadow: 0 4px 20px rgba(146, 92, 92, 0.04);
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
   cursor: pointer;
 }
 
@@ -342,15 +359,18 @@ body {
 
 .blog-item {
   background: var(--card);
-  border-radius: 14px;
-  padding: 22px 26px;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-radius: 16px;
+  padding: 24px 28px;
   border: 1px solid var(--border);
+  box-shadow: 0 4px 16px rgba(146, 92, 92, 0.03);
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   gap: 20px;
   cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .blog-item:hover {
@@ -433,11 +453,14 @@ body {
 
 .product-card {
   background: var(--card);
-  border-radius: 14px;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-radius: 16px;
   border: 1px solid var(--border);
+  box-shadow: 0 4px 16px rgba(146, 92, 92, 0.03);
   overflow: hidden;
   cursor: pointer;
-  transition: transform 0.25s ease, box-shadow 0.25s ease;
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .product-card:hover {

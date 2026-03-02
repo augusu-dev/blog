@@ -47,6 +47,7 @@ export default function HomePage() {
   const [overlayContent, setOverlayContent] = useState("");
   const [translatedContent, setTranslatedContent] = useState<string | null>(null);
   const [isTranslating, setIsTranslating] = useState(false);
+  const [translateTarget, setTranslateTarget] = useState<string>(language === 'ja' ? 'en' : 'ja');
   const [overlayMeta, setOverlayMeta] = useState({ date: "", tags: [] as string[], author: "" });
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -104,12 +105,12 @@ export default function HomePage() {
     try {
       const res = await fetch('/api/translate', {
         method: 'POST',
-        body: JSON.stringify({ text: overlayContent, targetLang: language }),
+        body: JSON.stringify({ text: overlayContent, targetLang: translateTarget }),
         headers: { 'Content-Type': 'application/json' }
       });
       const data = await res.json();
       if (data.translatedText) {
-        const langName = language === 'en' ? 'English' : language === 'zh' ? '中文' : '日本語';
+        const langName = translateTarget === 'en' ? 'English' : translateTarget === 'zh' ? '中文' : '日本語';
         setTranslatedContent(`<div style="padding:10px; background:var(--bg-soft); margin-bottom:16px; border-radius:6px; font-size:12px; color:var(--text-soft)">[Translated to ${langName}]</div>` + data.translatedText);
       } else {
         alert(t("翻訳に失敗しました"));
@@ -146,43 +147,42 @@ export default function HomePage() {
 
       {/* ─── Hero ─── */}
       <div className="main-content">
-        <section style={{
-          textAlign: "center",
-          padding: "100px 20px 60px",
-        }}>
-          <h1 style={{
-            fontFamily: "var(--serif)",
-            fontSize: "clamp(32px, 5vw, 48px)",
-            fontWeight: 300,
-            color: "var(--azuki-deep)",
-            marginBottom: 12,
-            letterSpacing: "0.06em",
-          }}>
-            Next Blog
-          </h1>
-          <p style={{
-            fontSize: 15,
-            color: "var(--text-soft)",
-            maxWidth: 420,
-            margin: "0 auto",
-            lineHeight: 1.8,
-          }}>
-            {t("思考と創造を共有するプラットフォーム。")}
-          </p>
+        <section className="hero">
+          <div className="hero-content">
+            <h1 style={{
+              fontFamily: "var(--serif)",
+              fontSize: "clamp(32px, 5vw, 48px)",
+              fontWeight: 300,
+              color: "var(--azuki-deep)",
+              marginBottom: 12,
+              letterSpacing: "0.06em",
+            }}>
+              Next Blog
+            </h1>
+            <p style={{
+              fontSize: 15,
+              color: "var(--text-soft)",
+              maxWidth: 420,
+              margin: "0 auto",
+              lineHeight: 1.8,
+            }}>
+              {t("思考と創造を共有するプラットフォーム。")}
+            </p>
 
-          <form onSubmit={handleSearch} style={{ marginTop: 32, display: "flex", justifyContent: "center", gap: 8 }}>
-            <input
-              type="text"
-              placeholder={t("ユーザーを検索...")}
-              className="login-input"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              style={{ width: 280, marginBottom: 0, border: "1px solid var(--border)", background: "var(--bg-card)" }}
-            />
-            <button type="submit" className="editor-btn editor-btn-primary" style={{ padding: "0 24px" }}>
-              {t("検索")}
-            </button>
-          </form>
+            <form onSubmit={handleSearch} style={{ marginTop: 32, display: "flex", justifyContent: "center", gap: 8 }}>
+              <input
+                type="text"
+                placeholder={t("ユーザーを検索...")}
+                className="login-input"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={{ width: 280, marginBottom: 0, border: "1px solid var(--border)", background: "var(--bg-card)" }}
+              />
+              <button type="submit" className="editor-btn editor-btn-primary" style={{ padding: "0 24px" }}>
+                {t("検索")}
+              </button>
+            </form>
+          </div>
         </section>
 
         <div className="section-divider" />
@@ -282,14 +282,25 @@ export default function HomePage() {
                     return <span key={t} className="tag" style={{ color: c, background: c + "18", border: `1px solid ${c}30` }}>{t}</span>;
                   })}
                 </div>
-                <button
-                  className="editor-btn editor-btn-secondary"
-                  onClick={handleTranslate}
-                  disabled={isTranslating}
-                  style={{ padding: "4px 8px", fontSize: 11, background: "transparent", border: "1px solid var(--border)" }}
-                >
-                  {isTranslating ? "..." : translatedContent ? "A文 revert" : "A文 translate"}
-                </button>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <select
+                    value={translateTarget}
+                    onChange={(e) => setTranslateTarget(e.target.value)}
+                    style={{ background: "transparent", border: "1px solid var(--border)", color: "var(--text-soft)", fontSize: 11, padding: "2px 4px", borderRadius: 4 }}
+                  >
+                    <option value="ja">日本語</option>
+                    <option value="en">English</option>
+                    <option value="zh">中文</option>
+                  </select>
+                  <button
+                    className="editor-btn editor-btn-secondary"
+                    onClick={handleTranslate}
+                    disabled={isTranslating}
+                    style={{ padding: "4px 8px", fontSize: 11, background: "transparent", border: "1px solid var(--border)" }}
+                  >
+                    {isTranslating ? "..." : translatedContent ? "A文 revert" : "A文 translate"}
+                  </button>
+                </div>
               </div>
             )}
             <div className="md-content" dangerouslySetInnerHTML={{ __html: translatedContent || overlayContent }} />

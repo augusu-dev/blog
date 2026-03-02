@@ -12,8 +12,8 @@ export async function POST(req: Request) {
         const tl = targetLang === 'zh' ? 'zh-CN' : targetLang;
 
         // The free Google Translate API has a soft limit of around 5000 chars per request.
-        let safeText = text.substring(0, 4900);
-        let suffix = text.length > 4900 ? `<br/><br/><em style="color:var(--text-soft);font-size:12px;">[Note: Text truncated due to translation length limits]</em>` : '';
+        const safeText = text.substring(0, 4900);
+        const suffix = text.length > 4900 ? `<br/><br/><em style="color:var(--text-soft);font-size:12px;">[Note: Text truncated due to translation length limits]</em>` : '';
 
         const q = 'q=' + encodeURIComponent(safeText);
 
@@ -30,11 +30,13 @@ export async function POST(req: Request) {
         }
 
         const data = await res.json();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const translatedText = data[0].map((item: any) => item[0]).join('');
 
         return NextResponse.json({ translatedText: translatedText + suffix });
-    } catch (e: any) {
+    } catch (e: unknown) {
         console.error("Translation api error", e);
-        return NextResponse.json({ error: e.message || 'Translation failed' }, { status: 500 });
+        const errorMessage = e instanceof Error ? e.message : 'Translation failed';
+        return NextResponse.json({ error: errorMessage }, { status: 500 });
     }
 }
