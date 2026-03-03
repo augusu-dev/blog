@@ -225,17 +225,32 @@ export default function UserPage() {
         return () => document.removeEventListener("keydown", handler);
     }, []);
 
+    useEffect(() => {
+        if (overlayOpen) {
+            const timer = setTimeout(() => {
+                const links = document.querySelectorAll('.post-overlay .md-content a');
+                links.forEach(link => {
+                    link.setAttribute('target', '_blank');
+                    link.setAttribute('rel', 'noopener noreferrer');
+                });
+            }, 50);
+            return () => clearTimeout(timer);
+        }
+    }, [overlayOpen, translatedContent, overlayContent]);
+
     /* ─── Computed ─── */
     const blogTotalPages = Math.ceil(posts.length / BLOG_PER_PAGE);
     const blogItems = posts.slice(blogPage * BLOG_PER_PAGE, (blogPage + 1) * BLOG_PER_PAGE);
     // おすすめの抽出
-    const pinnedPosts = posts.filter((p: any) => p.pinned);
+    const recommendProducts = products.slice(0, 2);
 
-    // 足りない分は新しい順から補填する
-    let recommendPosts = [...pinnedPosts];
-    if (recommendPosts.length < 5) {
-        const unpinnedPosts = posts.filter((p: any) => !p.pinned);
-        recommendPosts = [...recommendPosts, ...unpinnedPosts.slice(0, 5 - recommendPosts.length)];
+    const pinnedBlogs = posts.filter((p: any) => p.pinned);
+    let recommendBlogs = [...pinnedBlogs];
+    if (recommendBlogs.length < 3) {
+        const unpinnedBlogs = posts.filter((p: any) => !p.pinned);
+        recommendBlogs = [...recommendBlogs, ...unpinnedBlogs.slice(0, 3 - recommendBlogs.length)];
+    } else {
+        recommendBlogs = recommendBlogs.slice(0, 3);
     }
 
     const scrollTo = (id: string) => {
@@ -323,22 +338,45 @@ export default function UserPage() {
                             <p style={user.headerImage ? { color: "#eee", textShadow: "0 1px 5px rgba(0,0,0,0.7)" } : undefined}>{user.bio || "学び、作り、考える。日々の記録。"}</p>
                         </div>
                     </div>
-                    {recommendPosts.length > 0 && (
+                    {(recommendProducts.length > 0 || recommendBlogs.length > 0) && (
                         <>
                             <h2 className="section-title fade-item">おすすめ</h2>
-                            <div className="recommend-row">
-                                {recommendPosts.map((p: any) => (
-                                    <div key={p.id} className="card card-sm fade-item" style={{ padding: 18 }} onClick={() => openPost(p)}>
-                                        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6, flexWrap: "wrap" }}>
-                                            <h4 style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.5, margin: 0 }}>{p.title}</h4>
-                                            <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                                                {(p.tags || []).filter((t: any) => t !== "product").map((t: any) => <Tag key={t} label={t} />)}
+
+                            {recommendProducts.length > 0 && (
+                                <div className="recommend-grid">
+                                    {recommendProducts.map((p: any) => (
+                                        <div key={p.id} className="product-card fade-item" onClick={() => openPost(p)}>
+                                            {p.headerImage ? (
+                                                <img src={p.headerImage} alt={p.title} style={{ width: "100%", height: 120, objectFit: "cover", borderRadius: 10, marginBottom: 8 }} />
+                                            ) : (
+                                                <div className="product-thumb" style={{ height: 120, background: "linear-gradient(135deg,#e8d5d0,#e8d5d088)" }}>
+                                                    <div className="product-thumb-inner" />
+                                                </div>
+                                            )}
+                                            <div className="product-info">
+                                                <h3 style={{ fontSize: 16 }}>{p.title}</h3>
+                                                <p style={{ fontSize: 13 }}>{p.excerpt || "詳細がありません。"}</p>
                                             </div>
                                         </div>
-                                        <p style={{ fontSize: 12, color: "var(--azuki-light)" }}>{fmtDate(p.date || p.createdAt)}</p>
-                                    </div>
-                                ))}
-                            </div>
+                                    ))}
+                                </div>
+                            )}
+
+                            {recommendBlogs.length > 0 && (
+                                <div className="recommend-row">
+                                    {recommendBlogs.map((p: any) => (
+                                        <div key={p.id} className="card card-sm fade-item" style={{ padding: 18 }} onClick={() => openPost(p)}>
+                                            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6, flexWrap: "wrap" }}>
+                                                <h4 style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.5, margin: 0 }}>{p.title}</h4>
+                                                <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                                                    {(p.tags || []).filter((t: any) => t !== "product").map((t: any) => <Tag key={t} label={t} />)}
+                                                </div>
+                                            </div>
+                                            <p style={{ fontSize: 12, color: "var(--azuki-light)" }}>{fmtDate(p.date || p.createdAt)}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </>
                     )}
                 </section>

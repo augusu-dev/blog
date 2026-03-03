@@ -86,6 +86,19 @@ export default function HomePage() {
     return () => document.removeEventListener("keydown", handler);
   }, []);
 
+  useEffect(() => {
+    if (overlayOpen) {
+      const timer = setTimeout(() => {
+        const links = document.querySelectorAll('.post-overlay .md-content a');
+        links.forEach(link => {
+          link.setAttribute('target', '_blank');
+          link.setAttribute('rel', 'noopener noreferrer');
+        });
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [overlayOpen, translatedContent, overlayContent]);
+
   const blogPosts = posts.filter((p) => !p.tags?.includes("product"));
   const productPosts = posts.filter((p) => p.tags?.includes("product"));
 
