@@ -87,17 +87,32 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
-    if (overlayOpen) {
-      const timer = setTimeout(() => {
-        const links = document.querySelectorAll('.post-overlay .md-content a');
-        links.forEach(link => {
-          link.setAttribute('target', '_blank');
-          link.setAttribute('rel', 'noopener noreferrer');
-        });
-      }, 50);
-      return () => clearTimeout(timer);
+    const handleClick = (e: MouseEvent | Event) => {
+      const target = e.target as HTMLElement;
+      // Traverse up to find an anchor tag in case we clicked an element inside the link
+      let anchor: HTMLAnchorElement | null = null;
+      if (target.tagName === 'A') {
+        anchor = target as HTMLAnchorElement;
+      } else {
+        anchor = target.closest('a');
+      }
+
+      if (anchor) {
+        const url = anchor.getAttribute('href');
+        if (url && (url.startsWith('http') || url.startsWith('//'))) {
+          anchor.setAttribute('target', '_blank');
+          anchor.setAttribute('rel', 'noopener noreferrer');
+        }
+      }
+    };
+
+    // Attach listener to the content container
+    const container = document.querySelector('.post-overlay');
+    if (container) {
+      container.addEventListener('click', handleClick);
+      return () => container.removeEventListener('click', handleClick);
     }
-  }, [overlayOpen, translatedContent, overlayContent]);
+  }, [overlayOpen]);
 
   const blogPosts = posts.filter((p) => !p.tags?.includes("product"));
   const productPosts = posts.filter((p) => p.tags?.includes("product"));

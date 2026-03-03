@@ -226,17 +226,30 @@ export default function UserPage() {
     }, []);
 
     useEffect(() => {
-        if (overlayOpen) {
-            const timer = setTimeout(() => {
-                const links = document.querySelectorAll('.post-overlay .md-content a');
-                links.forEach(link => {
-                    link.setAttribute('target', '_blank');
-                    link.setAttribute('rel', 'noopener noreferrer');
-                });
-            }, 50);
-            return () => clearTimeout(timer);
+        const handleClick = (e: MouseEvent | Event) => {
+            const target = e.target as HTMLElement;
+            let anchor: HTMLAnchorElement | null = null;
+            if (target.tagName === 'A') {
+                anchor = target as HTMLAnchorElement;
+            } else {
+                anchor = target.closest('a');
+            }
+
+            if (anchor) {
+                const url = anchor.getAttribute('href');
+                if (url && (url.startsWith('http') || url.startsWith('//'))) {
+                    anchor.setAttribute('target', '_blank');
+                    anchor.setAttribute('rel', 'noopener noreferrer');
+                }
+            }
+        };
+
+        const container = document.querySelector('.post-overlay');
+        if (container) {
+            container.addEventListener('click', handleClick);
+            return () => container.removeEventListener('click', handleClick);
         }
-    }, [overlayOpen, translatedContent, overlayContent]);
+    }, [overlayOpen]);
 
     /* ─── Computed ─── */
     const blogTotalPages = Math.ceil(posts.length / BLOG_PER_PAGE);
