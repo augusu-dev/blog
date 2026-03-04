@@ -9,6 +9,8 @@ import Link from "next/link";
 import RichEditor from "@/components/RichEditor";
 import TagInput from "@/components/TagInput";
 
+const AI_TAG = "ai-generated";
+
 interface Post {
     id: string;
     title: string;
@@ -35,7 +37,9 @@ export default function EditorPage() {
     const [content, setContent] = useState("");
     const [excerpt, setExcerpt] = useState("");
     const [tags, setTags] = useState<string[]>([]);
+    const [aiGenerated, setAiGenerated] = useState(false);
     const [saving, setSaving] = useState(false);
+    const [requesting, setRequesting] = useState(false);
     const [myPosts, setMyPosts] = useState<Post[]>([]);
     const [message, setMessage] = useState("");
     const contentKeyRef = useRef(0);
@@ -78,6 +82,7 @@ export default function EditorPage() {
                     setContent(post.content || "");
                     setExcerpt(post.excerpt || "");
                     setTags(post.tags || []);
+                    setAiGenerated((post.tags || []).includes(AI_TAG));
                     if (post.tags?.includes("product")) setPostType("product");
                     contentKeyRef.current += 1;
                     setLastFetchedId(editId);
@@ -94,6 +99,7 @@ export default function EditorPage() {
                     if (data.content) { setContent(data.content); contentKeyRef.current += 1; }
                     if (data.excerpt) setExcerpt(data.excerpt);
                     if (data.tags) setTags(data.tags);
+                    if (typeof data.aiGenerated === "boolean") setAiGenerated(data.aiGenerated);
                     if (data.postType) setPostType(data.postType);
                 } catch { }
             }
@@ -106,12 +112,20 @@ export default function EditorPage() {
         if (!editId) {
             const timer = setTimeout(() => {
                 if (title || content) {
-                    localStorage.setItem("draft-post", JSON.stringify({ title, content, excerpt, tags, postType }));
+                    localStorage.setItem("draft-post", JSON.stringify({ title, content, excerpt, tags, postType, aiGenerated }));
                 }
             }, 1000);
             return () => clearTimeout(timer);
         }
-    }, [title, content, excerpt, tags, postType, editId]);
+    }, [title, content, excerpt, tags, postType, aiGenerated, editId]);
+
+    const buildFinalTags = () => {
+        const baseTags = postType === "product" && !tags.includes("product")
+            ? [...tags, "product"]
+            : tags.filter((t) => (postType === "blog" ? t !== "product" : true));
+        const withoutAiTag = baseTags.filter((tag) => tag !== AI_TAG);
+        return aiGenerated ? [...withoutAiTag, AI_TAG] : withoutAiTag;
+    };
 
     // Save post
     const savePost = async (pub: boolean) => {
@@ -123,10 +137,7 @@ export default function EditorPage() {
         setSaving(true);
         setMessage("");
 
-        // Add post type as a tag if product
-        const finalTags = postType === "product" && !tags.includes("product")
-            ? [...tags, "product"]
-            : tags.filter(t => postType === "blog" ? t !== "product" : true);
+        const finalTags = buildFinalTags();
 
         try {
             const url = editId ? `/api/posts/${editId}` : "/api/posts";
@@ -163,6 +174,51 @@ export default function EditorPage() {
         }
     };
 
+    const requestArticle = async () => {
+        if (!title.trim() || !content.trim()) {
+            setMessage("タイトルと本文を入力してください。");
+            return;
+        }
+
+        const recipientQuery = prompt("依頼先のユーザーIDまたは名前を入力してください");
+        if (!recipientQuery || !recipientQuery.trim()) return;
+
+        const dmMessage = prompt("DMメッセージ（任意）")?.trim() || "";
+        if (dmMessage.length > 10000) {
+            setMessage("❌ DMメッセージは10000文字以内で入力してください。");
+            return;
+        }
+
+        setRequesting(true);
+        setMessage("");
+        try {
+            const res = await fetch("/api/pull-requests", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    recipientQuery: recipientQuery.trim(),
+                    title: title.trim(),
+                    excerpt: excerpt.trim(),
+                    content,
+                    tags: buildFinalTags(),
+                    dmMessage,
+                }),
+            });
+
+            const payload = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                setMessage(`❌ ${payload.error || "依頼の送信に失敗しました。"}`);
+                return;
+            }
+
+            setMessage("✅ 依頼を送信しました。");
+        } catch {
+            setMessage("❌ 依頼の送信に失敗しました。");
+        } finally {
+            setRequesting(false);
+        }
+    };
+
     // Delete post
     const deletePost = async (id: string) => {
         if (!confirm("この記事を削除しますか？")) return;
@@ -187,6 +243,7 @@ export default function EditorPage() {
         setContent("");
         setExcerpt("");
         setTags([]);
+        setAiGenerated(false);
         setMessage("");
         contentKeyRef.current += 1;
     };
@@ -225,7 +282,7 @@ export default function EditorPage() {
                         ⚙
                     </Link>
                     <Link
-                        href="/settings/collab#incoming-dm"
+                        href="/messages"
                         className="nav-auth-btn nav-user-btn"
                         style={{ textDecoration: "none" }}
                         title="DM"
@@ -301,9 +358,16 @@ export default function EditorPage() {
                     <button
                         className="editor-btn editor-btn-primary"
                         onClick={() => savePost(true)}
-                        disabled={saving}
+                        disabled={saving || requesting}
                     >
                         {saving ? "保存中..." : "公開する"}
+                    </button>
+                    <button
+                        className="editor-btn editor-btn-secondary"
+                        onClick={requestArticle}
+                        disabled={saving || requesting}
+                    >
+                        {requesting ? "送信中..." : "依頼する"}
                     </button>
                 </div>
 
@@ -320,6 +384,8 @@ export default function EditorPage() {
                     key={contentKeyRef.current}
                     value={content}
                     onChange={setContent}
+                    aiGenerated={aiGenerated}
+                    onAiGeneratedChange={setAiGenerated}
                     placeholder={postType === "blog"
                         ? "ここに記事を書きましょう..."
                         : "プロダクトの詳細を書きましょう..."

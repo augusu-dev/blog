@@ -15,7 +15,7 @@ interface Post {
   excerpt?: string;
   tags: string[];
   createdAt: string;
-  author?: { name: string | null; email: string | null };
+  author?: { id: string; name: string | null; email: string | null; image?: string | null };
 }
 
 const TAG_COLORS: Record<string, string> = {
@@ -50,7 +50,11 @@ export default function HomePage() {
   const [translatedContent, setTranslatedContent] = useState<string | null>(null);
   const [isTranslating, setIsTranslating] = useState(false);
   const [translateTarget, setTranslateTarget] = useState<string>(language === 'ja' ? 'en' : 'ja');
-  const [overlayMeta, setOverlayMeta] = useState({ date: "", tags: [] as string[], author: "" });
+  const [overlayMeta, setOverlayMeta] = useState({
+    date: "",
+    tags: [] as string[],
+    author: null as Post["author"] | null,
+  });
   const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
@@ -69,7 +73,7 @@ export default function HomePage() {
     setOverlayMeta({
       date: fmtDate(post.createdAt),
       tags: post.tags || [],
-      author: post.author?.name || "",
+      author: post.author || null,
     });
     setOverlayPostId(post.id);
     setOverlayContent(post.content || "<p>記事の内容がありません。</p>");
@@ -103,7 +107,7 @@ export default function HomePage() {
 
       if (anchor) {
         const url = anchor.getAttribute('href');
-        if (url && (url.startsWith('http') || url.startsWith('//'))) {
+        if (url && !url.startsWith("#") && !url.toLowerCase().startsWith("javascript:")) {
           anchor.setAttribute('target', '_blank');
           anchor.setAttribute('rel', 'noopener noreferrer');
         }
@@ -154,8 +158,8 @@ export default function HomePage() {
     setIsTranslating(false);
   };
 
-  const myPageHref = session?.user?.name
-    ? `/user/${encodeURIComponent(session.user.name)}`
+  const myPageHref = session?.user?.id
+    ? `/user/${encodeURIComponent(session.user.id)}`
     : "/settings";
   const currentUserId = (session?.user as { id?: string } | undefined)?.id ?? null;
 
@@ -176,7 +180,7 @@ export default function HomePage() {
               </Link>
               <Link href="/settings" className="nav-auth-btn nav-user-btn" style={{ textDecoration: "none" }}>⚙</Link>
               <Link
-                href="/settings/collab#incoming-dm"
+                href="/messages"
                 className="nav-auth-btn nav-user-btn"
                 style={{ textDecoration: "none" }}
                 title="DM"
@@ -257,7 +261,7 @@ export default function HomePage() {
                     <div style={{ fontSize: 12, color: "var(--azuki-light)", marginTop: 8 }}>
                       by{" "}
                       <Link
-                        href={`/user/${p.author?.name || ""}`}
+                        href={p.author?.id ? `/user/${encodeURIComponent(p.author.id)}` : "#"}
                         style={{ color: "var(--azuki)", textDecoration: "none" }}
                         onClick={(e) => e.stopPropagation()}
                       >
@@ -277,7 +281,7 @@ export default function HomePage() {
           <>
             <div className="section-divider" />
             <section className="section">
-              <h2 className="section-title">{t("プロダクト")}</h2>
+              <h2 className="section-title">{t("最近のプロダクト")}</h2>
               <div className="product-grid">
                 {productPosts.slice(0, 8).map((p) => (
                   <div key={p.id} className="product-card" onClick={() => openPost(p)} style={{ cursor: "pointer" }}>
@@ -309,9 +313,45 @@ export default function HomePage() {
         <div className="post-panel" onClick={(e) => e.stopPropagation()}>
           <div className="post-panel-header">
             <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+              {overlayMeta.author?.id && (
+                <Link
+                  href={`/user/${encodeURIComponent(overlayMeta.author.id)}`}
+                  style={{ textDecoration: "none" }}
+                  title={overlayMeta.author.name || overlayMeta.author.email || "Profile"}
+                >
+                  <div
+                    style={{
+                      width: 24,
+                      height: 24,
+                      borderRadius: "50%",
+                      border: "1px solid var(--border)",
+                      background: "var(--bg-soft)",
+                      color: "var(--azuki)",
+                      overflow: "hidden",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 11,
+                      fontWeight: 600,
+                    }}
+                  >
+                    {overlayMeta.author.image ? (
+                      <img
+                        src={overlayMeta.author.image}
+                        alt={overlayMeta.author.name || "author"}
+                        style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                      />
+                    ) : (
+                      (overlayMeta.author.name || overlayMeta.author.email || "A").charAt(0).toUpperCase()
+                    )}
+                  </div>
+                </Link>
+              )}
               <span style={{ fontSize: 13, color: "var(--text-soft)" }}>{overlayMeta.date}</span>
               {overlayMeta.author && (
-                <span style={{ fontSize: 12, color: "var(--azuki-light)" }}>by {overlayMeta.author}</span>
+                <span style={{ fontSize: 12, color: "var(--azuki-light)" }}>
+                  by {overlayMeta.author.name || overlayMeta.author.email || "Anonymous"}
+                </span>
               )}
             </div>
             <button className="post-close-btn" onClick={closeOverlay}>

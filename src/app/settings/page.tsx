@@ -163,6 +163,13 @@ export default function SettingsPage() {
                     >
                         PR / DM 設定
                     </Link>
+                    <Link
+                        href="/messages"
+                        className="editor-btn editor-btn-secondary"
+                        style={{ textDecoration: "none", display: "inline-block", marginLeft: 8 }}
+                    >
+                        DM履歴
+                    </Link>
                 </div>
 
                 {message && (

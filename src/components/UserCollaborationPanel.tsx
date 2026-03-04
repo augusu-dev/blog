@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
@@ -12,7 +12,7 @@ interface UserCollaborationPanelProps {
     isSignedIn: boolean;
 }
 
-const DM_LIMIT = 1000;
+const DM_LIMIT = 10000;
 
 function parseTags(input: string): string[] {
     const unique = new Set<string>();
@@ -38,21 +38,16 @@ export default function UserCollaborationPanel({
     const [prSubmitting, setPrSubmitting] = useState(false);
     const [prStatus, setPrStatus] = useState("");
 
-    const [dmContent, setDmContent] = useState("");
-    const [dmSubmitting, setDmSubmitting] = useState(false);
-    const [dmStatus, setDmStatus] = useState("");
-
     const canCreatePullRequest = dmSetting !== "CLOSED";
-    const canSendGeneralDm = dmSetting === "OPEN";
 
     const dmSettingLabel = useMemo(() => {
         if (dmSetting === "PR_ONLY") {
-            return "Direct message: only allowed when sending a pull request.";
+            return "DMは記事依頼に添付するメッセージとしてのみ送信できます。";
         }
         if (dmSetting === "CLOSED") {
-            return "Direct message and pull request are both closed.";
+            return "DMと記事依頼はどちらも受け付けていません。";
         }
-        return "Direct message: open to everyone.";
+        return "記事依頼（DM付き）を受け付けています。";
     }, [dmSetting]);
 
     const submitPullRequest = async () => {
@@ -69,7 +64,7 @@ export default function UserCollaborationPanel({
         }
 
         if (dmMessage.length > DM_LIMIT) {
-            setPrStatus("DM message must be 1000 chars or fewer.");
+            setPrStatus("DMメッセージは10000文字以内で入力してください。");
             return;
         }
 
@@ -94,53 +89,16 @@ export default function UserCollaborationPanel({
                 return;
             }
 
-            setPrStatus("Pull request proposal sent.");
+            setPrStatus("依頼を送信しました。");
             setPrTitle("");
             setPrExcerpt("");
             setPrContent("");
             setPrTagsText("");
             setPrDmMessage("");
         } catch {
-            setPrStatus("Failed to send pull request");
+            setPrStatus("依頼の送信に失敗しました。");
         } finally {
             setPrSubmitting(false);
-        }
-    };
-
-    const submitDirectMessage = async () => {
-        setDmStatus("");
-        const content = dmContent.trim();
-
-        if (!content) {
-            setDmStatus("Message is required.");
-            return;
-        }
-
-        if (content.length > DM_LIMIT) {
-            setDmStatus("Message must be 1000 chars or fewer.");
-            return;
-        }
-
-        setDmSubmitting(true);
-        try {
-            const res = await fetch("/api/direct-messages", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ recipientId, content }),
-            });
-
-            const payload = await res.json().catch(() => ({}));
-            if (!res.ok) {
-                setDmStatus(payload.error || "Failed to send direct message");
-                return;
-            }
-
-            setDmStatus("Direct message sent.");
-            setDmContent("");
-        } catch {
-            setDmStatus("Failed to send direct message");
-        } finally {
-            setDmSubmitting(false);
         }
     };
 
@@ -153,27 +111,27 @@ export default function UserCollaborationPanel({
 
             {!isSignedIn ? (
                 <p style={{ fontSize: 13, color: "var(--text-soft)" }}>
-                    Please <Link href="/login" style={{ color: "var(--azuki)", textDecoration: "none" }}>log in</Link> to send a pull request or direct message.
+                    <Link href="/login" style={{ color: "var(--azuki)", textDecoration: "none" }}>ログイン</Link>すると記事依頼を送信できます。
                 </p>
             ) : (
                 <>
                     {!canCreatePullRequest ? (
                         <div className="login-message" style={{ marginBottom: 16 }}>
-                            This user does not accept pull requests right now.
+                            このユーザーは現在、依頼を受け付けていません。
                         </div>
                     ) : (
                         <div style={{ border: "1px solid var(--border)", borderRadius: 14, padding: 18, background: "var(--card)", marginBottom: 18 }}>
                             <h3 style={{ fontFamily: "var(--serif)", fontSize: 22, fontWeight: 400, marginBottom: 10 }}>
-                                Propose a Finished Article
+                                記事を依頼する
                             </h3>
                             <p style={{ fontSize: 12, color: "var(--text-soft)", marginBottom: 12 }}>
-                                Send a complete article proposal to {recipientName}.
+                                {recipientName} に完成記事を提案できます。
                             </p>
 
                             <input
                                 type="text"
                                 className="login-input"
-                                placeholder="Article title"
+                                placeholder="記事タイトル"
                                 value={prTitle}
                                 onChange={(e) => setPrTitle(e.target.value)}
                                 style={{ marginBottom: 10 }}
@@ -181,7 +139,7 @@ export default function UserCollaborationPanel({
                             <input
                                 type="text"
                                 className="login-input"
-                                placeholder="Short excerpt (optional)"
+                                placeholder="概要（任意）"
                                 value={prExcerpt}
                                 onChange={(e) => setPrExcerpt(e.target.value)}
                                 style={{ marginBottom: 10 }}
@@ -189,14 +147,14 @@ export default function UserCollaborationPanel({
                             <input
                                 type="text"
                                 className="login-input"
-                                placeholder="Tags (comma separated, optional)"
+                                placeholder="タグ（カンマ区切り・任意）"
                                 value={prTagsText}
                                 onChange={(e) => setPrTagsText(e.target.value)}
                                 style={{ marginBottom: 10 }}
                             />
                             <textarea
                                 className="login-input"
-                                placeholder="Finished article content"
+                                placeholder="記事本文"
                                 value={prContent}
                                 onChange={(e) => setPrContent(e.target.value)}
                                 rows={8}
@@ -204,7 +162,7 @@ export default function UserCollaborationPanel({
                             />
                             <textarea
                                 className="login-input"
-                                placeholder={dmSetting === "PR_ONLY" ? "Message for this pull request (optional)" : "Attach a DM to this pull request (optional)"}
+                                placeholder="依頼メッセージ（任意）"
                                 value={prDmMessage}
                                 maxLength={DM_LIMIT}
                                 onChange={(e) => setPrDmMessage(e.target.value)}
@@ -221,52 +179,15 @@ export default function UserCollaborationPanel({
                                     disabled={prSubmitting || !prTitle.trim() || !prContent.trim()}
                                     onClick={submitPullRequest}
                                 >
-                                    {prSubmitting ? "Sending..." : "Send pull request"}
+                                    {prSubmitting ? "送信中..." : "依頼を送信"}
                                 </button>
                             </div>
                             {prStatus && (
-                                <p style={{ marginTop: 10, fontSize: 12, color: prStatus.includes("sent") ? "#4f7f52" : "#8b3535" }}>
+                                <p style={{ marginTop: 10, fontSize: 12, color: prStatus.includes("送信") ? "#4f7f52" : "#8b3535" }}>
                                     {prStatus}
                                 </p>
                             )}
                         </div>
-                    )}
-
-                    {canSendGeneralDm ? (
-                        <div style={{ border: "1px solid var(--border)", borderRadius: 14, padding: 18, background: "var(--card)" }}>
-                            <h3 style={{ fontFamily: "var(--serif)", fontSize: 22, fontWeight: 400, marginBottom: 10 }}>Direct Message</h3>
-                            <textarea
-                                className="login-input"
-                                value={dmContent}
-                                maxLength={DM_LIMIT}
-                                onChange={(e) => setDmContent(e.target.value)}
-                                placeholder={`Send a direct message to ${recipientName}`}
-                                rows={4}
-                                style={{ marginBottom: 8, resize: "vertical", fontFamily: "var(--sans)" }}
-                            />
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                                <span style={{ fontSize: 11, color: "var(--text-soft)" }}>
-                                    {dmContent.length}/{DM_LIMIT}
-                                </span>
-                                <button
-                                    type="button"
-                                    className="editor-btn editor-btn-secondary"
-                                    disabled={dmSubmitting || !dmContent.trim()}
-                                    onClick={submitDirectMessage}
-                                >
-                                    {dmSubmitting ? "Sending..." : "Send DM"}
-                                </button>
-                            </div>
-                            {dmStatus && (
-                                <p style={{ marginTop: 10, fontSize: 12, color: dmStatus.includes("sent") ? "#4f7f52" : "#8b3535" }}>
-                                    {dmStatus}
-                                </p>
-                            )}
-                        </div>
-                    ) : (
-                        <p style={{ fontSize: 12, color: "var(--text-soft)" }}>
-                            General DM is unavailable with this user setting.
-                        </p>
                     )}
                 </>
             )}

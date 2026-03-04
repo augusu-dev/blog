@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState } from "react";
 import { signIn, useSession } from "next-auth/react";
@@ -19,20 +19,20 @@ export default function LoginPage() {
     const [error, setError] = useState("");
     const [googleEnabled, setGoogleEnabled] = useState(false);
 
-    const buildMyPageHref = (rawName?: string | null) => {
-        const name = typeof rawName === "string" ? rawName.trim() : "";
-        return name ? `/user/${encodeURIComponent(name)}` : "/settings";
+    const buildMyPageHref = (rawUserId?: string | null) => {
+        const userId = typeof rawUserId === "string" ? rawUserId.trim() : "";
+        return userId ? `/user/${encodeURIComponent(userId)}` : "/settings";
     };
 
     const resolveMyPageHref = async () => {
-        if (session?.user?.name) {
-            return buildMyPageHref(session.user.name);
+        if (session?.user?.id) {
+            return buildMyPageHref(session.user.id);
         }
         try {
             const res = await fetch("/api/auth/session", { cache: "no-store" });
             if (res.ok) {
-                const payload = (await res.json()) as { user?: { name?: string | null } };
-                return buildMyPageHref(payload.user?.name);
+                const payload = (await res.json()) as { user?: { id?: string | null } };
+                return buildMyPageHref(payload.user?.id);
             }
         } catch {
             // noop
@@ -42,8 +42,8 @@ export default function LoginPage() {
 
     useEffect(() => {
         if (status !== "authenticated") return;
-        router.replace(buildMyPageHref(session?.user?.name));
-    }, [router, session?.user?.name, status]);
+        router.replace(buildMyPageHref(session?.user?.id));
+    }, [router, session?.user?.id, status]);
 
     useEffect(() => {
         let active = true;

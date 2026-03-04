@@ -141,7 +141,7 @@ model ArticlePullRequest {
 
 model DirectMessage {
   id        String   @id @default(cuid())
-  content   String   @db.VarChar(1000)
+  content   String   @db.VarChar(10000)
   context   DirectMessageContext @default(GENERAL)
   createdAt DateTime @default(now())
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { DirectMessageContext } from "@prisma/client";
+import { ensureDirectMessageCapacity } from "@/lib/directMessages";
 
 type DmSetting = "OPEN" | "PR_ONLY" | "CLOSED";
 const DEFAULT_DM_SETTING: DmSetting = "OPEN";
@@ -40,9 +41,86 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const mode = request.nextUrl.searchParams.get("mode") === "sent" ? "sent" : "inbox";
+    const modeParam = request.nextUrl.searchParams.get("mode");
+    const mode =
+        modeParam === "sent"
+            ? "sent"
+            : modeParam === "thread"
+              ? "thread"
+              : modeParam === "threads"
+                ? "threads"
+                : "inbox";
+    const targetUserId = normalizeString(request.nextUrl.searchParams.get("userId"));
 
     try {
+        if (mode === "thread") {
+            if (!targetUserId) {
+                return NextResponse.json({ error: "userId is required for thread mode" }, { status: 400 });
+            }
+
+            const messages = await prisma.directMessage.findMany({
+                where: {
+                    OR: [
+                        { senderId: userId, recipientId: targetUserId },
+                        { senderId: targetUserId, recipientId: userId },
+                    ],
+                },
+                orderBy: { createdAt: "asc" },
+                include: {
+                    sender: { select: { id: true, name: true, email: true, image: true } },
+                    recipient: { select: { id: true, name: true, email: true, image: true } },
+                },
+            });
+
+            return NextResponse.json({ mode, userId: targetUserId, messages });
+        }
+
+        if (mode === "threads") {
+            const messages = await prisma.directMessage.findMany({
+                where: {
+                    OR: [{ senderId: userId }, { recipientId: userId }],
+                },
+                orderBy: { createdAt: "desc" },
+                include: {
+                    sender: { select: { id: true, name: true, email: true, image: true } },
+                    recipient: { select: { id: true, name: true, email: true, image: true } },
+                },
+            });
+
+            const threadMap = new Map<
+                string,
+                {
+                    id: string;
+                    user: { id: string; name: string | null; email: string | null; image: string | null };
+                    lastMessage: {
+                        id: string;
+                        content: string;
+                        createdAt: Date;
+                        senderId: string;
+                        recipientId: string;
+                    };
+                }
+            >();
+
+            for (const message of messages) {
+                const otherUser = message.senderId === userId ? message.recipient : message.sender;
+                if (!otherUser || threadMap.has(otherUser.id)) continue;
+                threadMap.set(otherUser.id, {
+                    id: otherUser.id,
+                    user: otherUser,
+                    lastMessage: {
+                        id: message.id,
+                        content: message.content,
+                        createdAt: message.createdAt,
+                        senderId: message.senderId,
+                        recipientId: message.recipientId,
+                    },
+                });
+            }
+
+            return NextResponse.json({ mode, threads: Array.from(threadMap.values()) });
+        }
+
         if (mode === "sent") {
             const messages = await prisma.directMessage.findMany({
                 where: {
@@ -51,7 +129,7 @@ export async function GET(request: NextRequest) {
                 },
                 orderBy: { createdAt: "desc" },
                 include: {
-                    recipient: { select: { id: true, name: true, email: true } },
+                    recipient: { select: { id: true, name: true, email: true, image: true } },
                 },
             });
             return NextResponse.json({ mode, messages });
@@ -64,7 +142,7 @@ export async function GET(request: NextRequest) {
             },
             orderBy: { createdAt: "desc" },
             include: {
-                sender: { select: { id: true, name: true, email: true } },
+                sender: { select: { id: true, name: true, email: true, image: true } },
             },
         });
 
@@ -95,11 +173,15 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: "Cannot send a message to yourself" }, { status: 400 });
         }
 
-        if (!content || content.length > 1000) {
+        if (!content || content.length > 10000) {
             return NextResponse.json(
-                { error: "Message must be 1-1000 characters." },
+                { error: "Message must be 1-10000 characters." },
                 { status: 400 }
             );
+        }
+
+        if (content.length > 1000) {
+            await ensureDirectMessageCapacity();
         }
 
         const recipient = await prisma.user.findUnique({
@@ -127,7 +209,8 @@ export async function POST(request: NextRequest) {
                 context: DirectMessageContext.GENERAL,
             },
             include: {
-                recipient: { select: { id: true, name: true, email: true } },
+                sender: { select: { id: true, name: true, email: true, image: true } },
+                recipient: { select: { id: true, name: true, email: true, image: true } },
             },
         });
 

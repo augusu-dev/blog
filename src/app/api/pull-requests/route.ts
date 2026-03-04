@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { DirectMessageContext, PullRequestStatus } from "@prisma/client";
+import { ensureDirectMessageCapacity } from "@/lib/directMessages";
 
 type DmSetting = "OPEN" | "PR_ONLY" | "CLOSED";
 const DEFAULT_DM_SETTING: DmSetting = "OPEN";
@@ -109,19 +110,17 @@ export async function POST(request: NextRequest) {
 
     try {
         const body = await request.json();
-        const recipientId = normalizeString(body.recipientId);
+        const recipientIdInput = normalizeString(body.recipientId);
+        const recipientQuery = normalizeString(body.recipientQuery || body.recipientName);
+        const recipientLookup = recipientIdInput || recipientQuery;
         const title = normalizeString(body.title);
         const excerpt = normalizeString(body.excerpt);
         const content = normalizeString(body.content);
         const tags = normalizeTags(body.tags);
         const dmMessage = normalizeString(body.dmMessage);
 
-        if (!recipientId) {
-            return NextResponse.json({ error: "recipientId is required" }, { status: 400 });
-        }
-
-        if (recipientId === userId) {
-            return NextResponse.json({ error: "Cannot create a pull request to yourself" }, { status: 400 });
+        if (!recipientLookup) {
+            return NextResponse.json({ error: "recipientId or recipientQuery is required" }, { status: 400 });
         }
 
         if (!title || !content) {
@@ -140,17 +139,28 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: "content is too long" }, { status: 400 });
         }
 
-        if (dmMessage.length > 1000) {
-            return NextResponse.json({ error: "dmMessage must be 1000 characters or fewer" }, { status: 400 });
+        if (dmMessage.length > 10000) {
+            return NextResponse.json({ error: "dmMessage must be 10000 characters or fewer" }, { status: 400 });
         }
 
-        const recipient = await prisma.user.findUnique({
-            where: { id: recipientId },
+        const recipient = await prisma.user.findFirst({
+            where: {
+                OR: [
+                    { id: recipientLookup },
+                    { name: { equals: recipientLookup, mode: "insensitive" } },
+                ],
+            },
             select: { id: true, links: true },
         });
 
         if (!recipient) {
             return NextResponse.json({ error: "Recipient not found" }, { status: 404 });
+        }
+
+        const recipientId = recipient.id;
+
+        if (recipientId === userId) {
+            return NextResponse.json({ error: "Cannot create a pull request to yourself" }, { status: 400 });
         }
 
         const recipientDmSetting = unpackDmSettingFromLinks(recipient.links);
@@ -159,6 +169,10 @@ export async function POST(request: NextRequest) {
                 { error: "This user is not accepting pull requests or direct messages." },
                 { status: 403 }
             );
+        }
+
+        if (dmMessage.length > 1000) {
+            await ensureDirectMessageCapacity();
         }
 
         const result = await prisma.$transaction(async (tx) => {

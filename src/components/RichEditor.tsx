@@ -6,9 +6,17 @@ interface RichEditorProps {
     value: string;
     onChange: (html: string) => void;
     placeholder?: string;
+    aiGenerated?: boolean;
+    onAiGeneratedChange?: (checked: boolean) => void;
 }
 
-export default function RichEditor({ value, onChange, placeholder }: RichEditorProps) {
+export default function RichEditor({
+    value,
+    onChange,
+    placeholder,
+    aiGenerated = false,
+    onAiGeneratedChange,
+}: RichEditorProps) {
     const editorRef = useRef<HTMLDivElement>(null);
     const isInitialized = useRef(false);
 
@@ -78,17 +86,12 @@ export default function RichEditor({ value, onChange, placeholder }: RichEditorP
                 { cmd: "formatBlock", val: "blockquote", label: "❝", title: "引用" },
             ]
         },
-        {
-            group: "other", items: [
-                { cmd: "createLink", label: "🔗", title: "リンク", prompt: true },
-                { cmd: "removeFormat", label: "✕", title: "書式クリア" },
-            ]
-        },
     ];
 
     return (
         <div className="rich-editor-wrapper">
-            <div className="rich-toolbar">
+            <div className="rich-toolbar" style={{ justifyContent: "space-between" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                 {tools.map((group, gi) => (
                     <div key={gi} style={{ display: "flex", gap: 2, alignItems: "center" }}>
                         {gi > 0 && <div className="rich-toolbar-divider" />}
@@ -100,12 +103,7 @@ export default function RichEditor({ value, onChange, placeholder }: RichEditorP
                                 title={tool.title}
                                 onMouseDown={(e) => {
                                     e.preventDefault();
-                                    if (tool.prompt) {
-                                        const url = prompt("URLを入力:");
-                                        if (url) exec(tool.cmd, url);
-                                    } else {
-                                        exec(tool.cmd, tool.val);
-                                    }
+                                    exec(tool.cmd, tool.val);
                                 }}
                             >
                                 {tool.label}
@@ -113,6 +111,28 @@ export default function RichEditor({ value, onChange, placeholder }: RichEditorP
                         ))}
                     </div>
                 ))}
+                </div>
+                {onAiGeneratedChange && (
+                    <label
+                        style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 5,
+                            fontSize: 11,
+                            color: "var(--text-soft)",
+                            userSelect: "none",
+                            marginLeft: 8,
+                        }}
+                    >
+                        <input
+                            type="checkbox"
+                            checked={aiGenerated}
+                            onChange={(e) => onAiGeneratedChange(e.target.checked)}
+                            style={{ margin: 0 }}
+                        />
+                        AIで作成した
+                    </label>
+                )}
             </div>
             <div
                 ref={editorRef}

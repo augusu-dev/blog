@@ -98,7 +98,11 @@ export default function UserPage() {
     const [translatedContent, setTranslatedContent] = useState<string | null>(null);
     const [isTranslating, setIsTranslating] = useState(false);
     const [translateTarget, setTranslateTarget] = useState<string>(language === 'ja' ? 'en' : 'ja');
-    const [overlayMeta, setOverlayMeta] = useState<{ date: string; tags: string[] }>({ date: "", tags: [] });
+    const [overlayMeta, setOverlayMeta] = useState<{
+        date: string;
+        tags: string[];
+        author: { id: string; name: string | null; email: string | null; image: string | null } | null;
+    }>({ date: "", tags: [], author: null });
 
     // Blog pagination
     const BLOG_PER_PAGE = 7;
@@ -185,7 +189,18 @@ export default function UserPage() {
 
     /* ─── Overlay ─── */
     const openPost = (post: Post) => {
-        setOverlayMeta({ date: fmtDate(post.date || post.createdAt), tags: post.tags || [] });
+        setOverlayMeta({
+            date: fmtDate(post.date || post.createdAt),
+            tags: post.tags || [],
+            author: user
+                ? {
+                      id: user.id,
+                      name: user.name || null,
+                      email: user.email || null,
+                      image: user.image || null,
+                  }
+                : null,
+        });
         setOverlayPostId(post.id);
         setOverlayOpen(true);
         document.body.style.overflow = "hidden";
@@ -243,7 +258,7 @@ export default function UserPage() {
 
             if (anchor) {
                 const url = anchor.getAttribute('href');
-                if (url && (url.startsWith('http') || url.startsWith('//'))) {
+                if (url && !url.startsWith("#") && !url.toLowerCase().startsWith("javascript:")) {
                     anchor.setAttribute('target', '_blank');
                     anchor.setAttribute('rel', 'noopener noreferrer');
                 }
@@ -301,6 +316,7 @@ export default function UserPage() {
     const displayName = user.name || userName;
     const isOwnProfile = !!session?.user && (session.user as { id?: string }).id === user.id;
     const currentUserId = (session?.user as { id?: string } | undefined)?.id ?? null;
+    const canShowAboutDmButton = !isOwnProfile && (user.dmSetting || "OPEN") === "OPEN";
 
     return (
         <>
@@ -334,7 +350,7 @@ export default function UserPage() {
                             <Link href="/editor" className="nav-auth-btn nav-write-btn">✏ 記事を書く</Link>
                             <Link href="/settings" className="nav-auth-btn nav-user-btn" style={{ textDecoration: "none" }}>⚙</Link>
                             <Link
-                                href="/settings/collab#incoming-dm"
+                                href="/messages"
                                 className="nav-auth-btn nav-user-btn"
                                 style={{ textDecoration: "none" }}
                                 title="DM"
@@ -480,7 +496,19 @@ export default function UserPage() {
 
                 {/* ──── ABOUT ──── */}
                 <section className="section" id="about" ref={(el) => { if (el) sectionsRef.current[3] = el; }}>
-                    <h2 className="section-title">About me</h2>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
+                        <h2 className="section-title" style={{ marginBottom: 0 }}>About me</h2>
+                        {canShowAboutDmButton && (
+                            <Link
+                                href={`/messages?to=${encodeURIComponent(user.id)}`}
+                                className="nav-auth-btn nav-user-btn"
+                                style={{ textDecoration: "none", fontSize: 12, padding: "4px 10px" }}
+                                title="DM"
+                            >
+                                ✉
+                            </Link>
+                        )}
+                    </div>
                     <div className="about-header">
                         <div className="about-avatar" style={{ width: 72, height: 72, borderRadius: "50%", background: "var(--bg-soft)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, color: "var(--azuki)", overflow: "hidden", border: "1px solid var(--border)" }}>
                             {user.image ? (
@@ -562,7 +590,43 @@ export default function UserPage() {
             <div className={`post-overlay ${overlayOpen ? "open" : ""}`} onClick={closeOverlay}>
                 <div className="post-panel" onClick={(e) => e.stopPropagation()}>
                     <div className="post-panel-header">
-                        <span style={{ fontSize: 13, color: "var(--text-soft)" }}>{overlayMeta.date}</span>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            {overlayMeta.author?.id && (
+                                <Link
+                                    href={`/user/${encodeURIComponent(overlayMeta.author.id)}`}
+                                    style={{ textDecoration: "none" }}
+                                    title={overlayMeta.author.name || overlayMeta.author.email || "Profile"}
+                                >
+                                    <div
+                                        style={{
+                                            width: 24,
+                                            height: 24,
+                                            borderRadius: "50%",
+                                            border: "1px solid var(--border)",
+                                            background: "var(--bg-soft)",
+                                            color: "var(--azuki)",
+                                            overflow: "hidden",
+                                            display: "flex",
+                                            alignItems: "center",
+                                            justifyContent: "center",
+                                            fontSize: 11,
+                                            fontWeight: 600,
+                                        }}
+                                    >
+                                        {overlayMeta.author.image ? (
+                                            <img
+                                                src={overlayMeta.author.image}
+                                                alt={overlayMeta.author.name || "author"}
+                                                style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                                            />
+                                        ) : (
+                                            (overlayMeta.author.name || overlayMeta.author.email || "A").charAt(0).toUpperCase()
+                                        )}
+                                    </div>
+                                </Link>
+                            )}
+                            <span style={{ fontSize: 13, color: "var(--text-soft)" }}>{overlayMeta.date}</span>
+                        </div>
                         <button className="post-close-btn" onClick={closeOverlay}>
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
                         </button>
