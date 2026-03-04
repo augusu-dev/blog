@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { signIn } from "next-auth/react";
@@ -142,7 +142,16 @@ export default function LoginPage() {
                                 style={{ marginBottom: 12 }}
                             />
                             <p style={{ fontSize: 11, color: "var(--text-soft)", margin: "0 0 10px", lineHeight: 1.5 }}>
-                                メールアドレスはsute.jpでも使用できます。
+                                メールアドレスは
+                                <a
+                                    href="https://sute.jp"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    style={{ color: "var(--azuki)", textDecoration: "none", margin: "0 4px" }}
+                                >
+                                    sute.jp
+                                </a>
+                                でも使用できます。
                             </p>
                         </>
                     )}
@@ -175,11 +184,7 @@ export default function LoginPage() {
                         className="login-submit"
                         disabled={loading || googleLoading || !email || !password}
                     >
-                        {loading
-                            ? "処理中..."
-                            : isSignup
-                              ? "アカウントを作成"
-                              : "ログイン"}
+                        {loading ? "処理中..." : isSignup ? "アカウントを作成" : "ログイン"}
                     </button>
                 </form>
 

@@ -1273,12 +1273,25 @@ body {
    ======================================== */
 @media (max-width: 640px) {
   .navbar {
-    padding: 12px 16px;
-    justify-content: space-between;
+    padding: 10px 12px;
+    justify-content: center;
   }
 
   .nav-logo {
     position: static;
+    font-size: 16px;
+    gap: 6px;
+  }
+
+  .nav-logo-img {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+  }
+
+  .beta-badge {
+    font-size: 9px;
+    padding: 1px 4px;
   }
 
   .nav-links {
@@ -1286,8 +1299,8 @@ body {
   }
 
   .nav-link {
-    padding: 6px 10px;
-    font-size: 12px;
+    padding: 5px 8px;
+    font-size: 11px;
   }
 
   .nav-link svg {
@@ -1303,6 +1316,20 @@ body {
     font-size: 11px;
   }
 
+  .nav-write-btn {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    font-size: 0;
+    justify-content: center;
+    line-height: 1;
+  }
+
+  .nav-write-btn::before {
+    content: "✏";
+    font-size: 14px;
+  }
+
   .main-content {
     padding: 82px 16px 0;
   }
@@ -1316,20 +1343,20 @@ body {
   }
 
   .recommend-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .recommend-row {
     grid-template-columns: 1fr 1fr;
   }
 
+  .recommend-row {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
   .product-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr 1fr;
   }
 
   .blog-item {
-    flex-direction: column;
-    gap: 8px;
+    flex-direction: row;
+    gap: 20px;
   }
 
   .about-header {
