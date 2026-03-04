@@ -59,6 +59,11 @@ export default function MessagesPage() {
     }, []);
 
     useEffect(() => {
+        if (!presetTarget) return;
+        setSelectedUserId(presetTarget);
+    }, [presetTarget]);
+
+    useEffect(() => {
         if (status === "unauthenticated") {
             router.push("/login");
         }

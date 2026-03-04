@@ -7,7 +7,6 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useLanguage } from "@/contexts/LanguageContext";
 import PostComments from "@/components/PostComments";
-import UserCollaborationPanel from "@/components/UserCollaborationPanel";
 
 /* ─── Types ─── */
 interface Post {
@@ -245,32 +244,6 @@ export default function UserPage() {
         document.addEventListener("keydown", handler);
         return () => document.removeEventListener("keydown", handler);
     }, []);
-
-    useEffect(() => {
-        const handleClick = (e: MouseEvent | Event) => {
-            const target = e.target as HTMLElement;
-            let anchor: HTMLAnchorElement | null = null;
-            if (target.tagName === 'A') {
-                anchor = target as HTMLAnchorElement;
-            } else {
-                anchor = target.closest('a');
-            }
-
-            if (anchor) {
-                const url = anchor.getAttribute('href');
-                if (url && !url.startsWith("#") && !url.toLowerCase().startsWith("javascript:")) {
-                    anchor.setAttribute('target', '_blank');
-                    anchor.setAttribute('rel', 'noopener noreferrer');
-                }
-            }
-        };
-
-        const container = document.querySelector('.post-overlay');
-        if (container) {
-            container.addEventListener('click', handleClick);
-            return () => container.removeEventListener('click', handleClick);
-        }
-    }, [overlayOpen]);
 
     /* ─── Computed ─── */
     const blogTotalPages = Math.ceil(posts.length / BLOG_PER_PAGE);
@@ -570,14 +543,6 @@ export default function UserPage() {
                         </div>
                     )}
 
-                    {!isOwnProfile && (
-                        <UserCollaborationPanel
-                            recipientId={user.id}
-                            recipientName={displayName}
-                            dmSetting={user.dmSetting || "OPEN"}
-                            isSignedIn={!!session?.user}
-                        />
-                    )}
                 </section>
             </div>
 
@@ -595,7 +560,7 @@ export default function UserPage() {
                                 <Link
                                     href={`/user/${encodeURIComponent(overlayMeta.author.id)}`}
                                     style={{ textDecoration: "none" }}
-                                    title={overlayMeta.author.name || overlayMeta.author.email || "Profile"}
+                                    title="ページに飛ぶ"
                                 >
                                     <div
                                         style={{

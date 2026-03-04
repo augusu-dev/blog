@@ -94,34 +94,6 @@ export default function HomePage() {
     return () => document.removeEventListener("keydown", handler);
   }, []);
 
-  useEffect(() => {
-    const handleClick = (e: MouseEvent | Event) => {
-      const target = e.target as HTMLElement;
-      // Traverse up to find an anchor tag in case we clicked an element inside the link
-      let anchor: HTMLAnchorElement | null = null;
-      if (target.tagName === 'A') {
-        anchor = target as HTMLAnchorElement;
-      } else {
-        anchor = target.closest('a');
-      }
-
-      if (anchor) {
-        const url = anchor.getAttribute('href');
-        if (url && !url.startsWith("#") && !url.toLowerCase().startsWith("javascript:")) {
-          anchor.setAttribute('target', '_blank');
-          anchor.setAttribute('rel', 'noopener noreferrer');
-        }
-      }
-    };
-
-    // Attach listener to the content container
-    const container = document.querySelector('.post-overlay');
-    if (container) {
-      container.addEventListener('click', handleClick);
-      return () => container.removeEventListener('click', handleClick);
-    }
-  }, [overlayOpen]);
-
   const blogPosts = posts.filter((p) => !p.tags?.includes("product"));
   const productPosts = posts.filter((p) => p.tags?.includes("product"));
 
@@ -317,7 +289,7 @@ export default function HomePage() {
                 <Link
                   href={`/user/${encodeURIComponent(overlayMeta.author.id)}`}
                   style={{ textDecoration: "none" }}
-                  title={overlayMeta.author.name || overlayMeta.author.email || "Profile"}
+                  title="ページに飛ぶ"
                 >
                   <div
                     style={{
