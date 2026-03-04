@@ -157,6 +157,7 @@ export default function HomePage() {
   const myPageHref = session?.user?.name
     ? `/user/${encodeURIComponent(session.user.name)}`
     : "/settings";
+  const currentUserId = (session?.user as { id?: string } | undefined)?.id ?? null;
 
   return (
     <>
@@ -340,7 +341,11 @@ export default function HomePage() {
               </div>
             )}
             <div className="md-content" dangerouslySetInnerHTML={{ __html: translatedContent || overlayContent }} />
-            <PostComments postId={overlayPostId} isSignedIn={!!session?.user} />
+            <PostComments
+              postId={overlayPostId}
+              isSignedIn={!!session?.user}
+              currentUserId={currentUserId}
+            />
           </div>
         </div>
       </div>
