@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -9,8 +6,6 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
-
-// ── NextAuth.js 認証用テーブル ──
 
 model Account {
   id                String  @id @default(cuid())
@@ -40,19 +35,26 @@ model Session {
 }
 
 model User {
-  id            String    @id @default(cuid())
+  id            String   @id @default(cuid())
   name          String?
-  email         String?   @unique
+  email         String?  @unique
   emailVerified DateTime?
   image         String?
   headerImage   String?
   password      String?
-  bio           String?   @db.Text
-  aboutMe       String?   @db.Text
-  links         String?   @db.Text
-  accounts      Account[]
-  sessions      Session[]
-  posts         Post[]
+  bio           String?  @db.Text
+  aboutMe       String?  @db.Text
+  links         String?  @db.Text
+  dmSetting     DirectMessageSetting @default(OPEN)
+
+  accounts             Account[]
+  sessions             Session[]
+  posts                Post[]
+  comments             PostComment[]
+  sentPullRequests     ArticlePullRequest[] @relation("PullRequestSender")
+  receivedPullRequests ArticlePullRequest[] @relation("PullRequestRecipient")
+  sentMessages         DirectMessage[]      @relation("DirectMessageSender")
+  receivedMessages     DirectMessage[]      @relation("DirectMessageRecipient")
 }
 
 model VerificationToken {
@@ -62,8 +64,6 @@ model VerificationToken {
 
   @@unique([identifier, token])
 }
-
-// ── ブログ記事テーブル ──
 
 model Post {
   id          String   @id @default(cuid())
@@ -78,13 +78,83 @@ model Post {
   updatedAt   DateTime @updatedAt
   author      User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
   authorId    String
+  comments    PostComment[]
 }
 
-// ── プロダクトテーブル ──
-
 model Product {
-  id    String  @id @default(cuid())
+  id    String @id @default(cuid())
   name  String
   desc  String
-  color String  @default("#e8d5d0")
+  color String @default("#e8d5d0")
+}
+
+enum DirectMessageSetting {
+  OPEN
+  PR_ONLY
+  CLOSED
+}
+
+enum PullRequestStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+enum DirectMessageContext {
+  GENERAL
+  PULL_REQUEST
+}
+
+model PostComment {
+  id        String   @id @default(cuid())
+  content   String   @db.VarChar(1000)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  post     Post   @relation(fields: [postId], references: [id], onDelete: Cascade)
+  postId   String
+  author   User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  authorId String
+
+  @@index([postId, authorId, createdAt])
+}
+
+model ArticlePullRequest {
+  id        String   @id @default(cuid())
+  title     String
+  excerpt   String?  @db.Text
+  content   String   @db.Text
+  tags      String[]
+  status    PullRequestStatus @default(PENDING)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  proposer   User   @relation("PullRequestSender", fields: [proposerId], references: [id], onDelete: Cascade)
+  proposerId String
+  recipient  User   @relation("PullRequestRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  recipientId String
+
+  messages DirectMessage[]
+
+  @@index([recipientId, createdAt])
+  @@index([proposerId, createdAt])
+}
+
+model DirectMessage {
+  id        String   @id @default(cuid())
+  content   String   @db.VarChar(1000)
+  context   DirectMessageContext @default(GENERAL)
+  createdAt DateTime @default(now())
+
+  sender    User   @relation("DirectMessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  senderId  String
+  recipient User   @relation("DirectMessageRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  recipientId String
+
+  pullRequest   ArticlePullRequest? @relation(fields: [pullRequestId], references: [id], onDelete: SetNull)
+  pullRequestId String?
+
+  @@index([recipientId, createdAt])
+  @@index([senderId, createdAt])
+  @@index([pullRequestId])
 }

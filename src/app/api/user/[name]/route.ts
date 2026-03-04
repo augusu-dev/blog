@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 
-// GET: 特定ユーザーの公開記事を取得
+// GET: Fetch public profile by user name
 export async function GET(
     request: NextRequest,
     { params }: { params: Promise<{ name: string }> }
@@ -20,6 +20,7 @@ export async function GET(
                 bio: true,
                 aboutMe: true,
                 links: true,
+                dmSetting: true,
                 posts: {
                     where: { published: true },
                     orderBy: { createdAt: "desc" },

@@ -29,12 +29,12 @@ export default function LoginPage() {
             });
 
             if (result?.error) {
-                setError("メールアドレスまたはパスワードが間違っています。");
+                setError("Invalid email or password.");
             } else {
                 router.push("/editor");
             }
         } catch {
-            setError("ログインに失敗しました。");
+            setError("Failed to log in.");
         } finally {
             setLoading(false);
         }
@@ -54,14 +54,13 @@ export default function LoginPage() {
                 body: JSON.stringify({ name, email, password }),
             });
 
-            const data = await res.json();
+            const data = await res.json().catch(() => ({}));
 
             if (!res.ok) {
-                setError(data.error || "アカウント作成に失敗しました。");
+                setError(data.error || "Failed to create account.");
                 return;
             }
 
-            // サインアップ後に自動ログイン
             const result = await signIn("credentials", {
                 email,
                 password,
@@ -69,13 +68,13 @@ export default function LoginPage() {
             });
 
             if (result?.error) {
-                setError("アカウントは作成されましたが、ログインに失敗しました。ログインし直してください。");
+                setError("Account created, but automatic login failed. Please log in.");
                 setIsSignup(false);
             } else {
                 router.push("/editor");
             }
         } catch {
-            setError("エラーが発生しました。");
+            setError("Failed to create account.");
         } finally {
             setLoading(false);
         }
@@ -84,33 +83,32 @@ export default function LoginPage() {
     return (
         <div className="login-container">
             <div className="login-card">
-                <h1 className="login-title">{isSignup ? "サインアップ" : "ログイン"}</h1>
+                <h1 className="login-title">{isSignup ? "Sign up" : "Log in"}</h1>
                 <p className="login-desc">
                     {isSignup
-                        ? "アカウントを作成して記事を書きましょう。"
-                        : "メールアドレスとパスワードでログイン。"}
+                        ? "Create your account and start writing."
+                        : "Log in with your email and password."}
                 </p>
 
-                {error && (
-                    <div className="login-message login-error">{error}</div>
-                )}
+                {error && <div className="login-message login-error">{error}</div>}
 
                 <form onSubmit={isSignup ? handleSignup : handleLogin}>
                     {isSignup && (
                         <input
                             type="text"
                             className="login-input"
-                            placeholder="ユーザー名（任意）"
+                            placeholder="User name (optional)"
                             value={name}
                             onChange={(e) => setName(e.target.value)}
                             disabled={loading}
                             style={{ marginBottom: 12 }}
                         />
                     )}
+
                     <input
                         type="email"
                         className="login-input"
-                        placeholder="メールアドレス"
+                        placeholder="Email"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         required
@@ -118,31 +116,47 @@ export default function LoginPage() {
                         disabled={loading}
                         style={{ marginBottom: 12 }}
                     />
+
+                    {isSignup && (
+                        <p style={{ fontSize: 11, color: "var(--text-soft)", margin: "0 0 10px", lineHeight: 1.5 }}>
+                            捨てメールアドレスは
+                            <a
+                                href="https://sute.jp"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{ color: "var(--azuki)", textDecoration: "none", margin: "0 4px" }}
+                            >
+                                sute.jp
+                            </a>
+                            も選択できます。
+                        </p>
+                    )}
+
                     <input
                         type="password"
                         className="login-input"
-                        placeholder={isSignup ? "パスワード（6文字以上）" : "パスワード"}
+                        placeholder={isSignup ? "Password (min 6 chars)" : "Password"}
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         required
                         minLength={isSignup ? 6 : undefined}
                         disabled={loading}
                     />
+
                     <button
                         type="submit"
                         className="login-submit"
                         disabled={loading || !email || !password}
                     >
-                        {loading
-                            ? "処理中..."
-                            : isSignup
-                                ? "アカウントを作成"
-                                : "ログイン"}
+                        {loading ? "Working..." : isSignup ? "Create account" : "Log in"}
                     </button>
                 </form>
 
                 <button
-                    onClick={() => { setIsSignup(!isSignup); setError(""); }}
+                    onClick={() => {
+                        setIsSignup(!isSignup);
+                        setError("");
+                    }}
                     style={{
                         display: "block",
                         width: "100%",
@@ -156,13 +170,11 @@ export default function LoginPage() {
                         fontFamily: "var(--sans)",
                     }}
                 >
-                    {isSignup
-                        ? "すでにアカウントをお持ちの方はこちら"
-                        : "アカウントをお持ちでない方はこちら"}
+                    {isSignup ? "Already have an account? Log in" : "No account yet? Sign up"}
                 </button>
 
                 <Link href="/" className="login-back">
-                    ← ブログに戻る
+                    Back to home
                 </Link>
             </div>
         </div>
