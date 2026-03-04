@@ -29,12 +29,12 @@ export default function LoginPage() {
             });
 
             if (result?.error) {
-                setError("Invalid email or password.");
+                setError("メールアドレスまたはパスワードが間違っています。");
             } else {
                 router.push("/editor");
             }
         } catch {
-            setError("Failed to log in.");
+            setError("ログインに失敗しました。");
         } finally {
             setLoading(false);
         }
@@ -57,10 +57,11 @@ export default function LoginPage() {
             const data = await res.json().catch(() => ({}));
 
             if (!res.ok) {
-                setError(data.error || "Failed to create account.");
+                setError(data.error || "アカウント作成に失敗しました。");
                 return;
             }
 
+            // サインアップ後に自動ログイン
             const result = await signIn("credentials", {
                 email,
                 password,
@@ -68,13 +69,13 @@ export default function LoginPage() {
             });
 
             if (result?.error) {
-                setError("Account created, but automatic login failed. Please log in.");
+                setError("アカウントは作成されましたが、ログインに失敗しました。ログインし直してください。");
                 setIsSignup(false);
             } else {
                 router.push("/editor");
             }
         } catch {
-            setError("Failed to create account.");
+            setError("エラーが発生しました。");
         } finally {
             setLoading(false);
         }
@@ -83,32 +84,33 @@ export default function LoginPage() {
     return (
         <div className="login-container">
             <div className="login-card">
-                <h1 className="login-title">{isSignup ? "Sign up" : "Log in"}</h1>
+                <h1 className="login-title">{isSignup ? "サインアップ" : "ログイン"}</h1>
                 <p className="login-desc">
                     {isSignup
-                        ? "Create your account and start writing."
-                        : "Log in with your email and password."}
+                        ? "アカウントを作成して記事を書きましょう。"
+                        : "メールアドレスとパスワードでログイン。"}
                 </p>
 
-                {error && <div className="login-message login-error">{error}</div>}
+                {error && (
+                    <div className="login-message login-error">{error}</div>
+                )}
 
                 <form onSubmit={isSignup ? handleSignup : handleLogin}>
                     {isSignup && (
                         <input
                             type="text"
                             className="login-input"
-                            placeholder="User name (optional)"
+                            placeholder="ユーザー名（任意）"
                             value={name}
                             onChange={(e) => setName(e.target.value)}
                             disabled={loading}
                             style={{ marginBottom: 12 }}
                         />
                     )}
-
                     <input
                         type="email"
                         className="login-input"
-                        placeholder="Email"
+                        placeholder="メールアドレス"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         required
@@ -116,7 +118,6 @@ export default function LoginPage() {
                         disabled={loading}
                         style={{ marginBottom: 12 }}
                     />
-
                     {isSignup && (
                         <p style={{ fontSize: 11, color: "var(--text-soft)", margin: "0 0 10px", lineHeight: 1.5 }}>
                             捨てメールアドレスは
@@ -131,32 +132,31 @@ export default function LoginPage() {
                             も選択できます。
                         </p>
                     )}
-
                     <input
                         type="password"
                         className="login-input"
-                        placeholder={isSignup ? "Password (min 6 chars)" : "Password"}
+                        placeholder={isSignup ? "パスワード（6文字以上）" : "パスワード"}
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         required
                         minLength={isSignup ? 6 : undefined}
                         disabled={loading}
                     />
-
                     <button
                         type="submit"
                         className="login-submit"
                         disabled={loading || !email || !password}
                     >
-                        {loading ? "Working..." : isSignup ? "Create account" : "Log in"}
+                        {loading
+                            ? "処理中..."
+                            : isSignup
+                                ? "アカウントを作成"
+                                : "ログイン"}
                     </button>
                 </form>
 
                 <button
-                    onClick={() => {
-                        setIsSignup(!isSignup);
-                        setError("");
-                    }}
+                    onClick={() => { setIsSignup(!isSignup); setError(""); }}
                     style={{
                         display: "block",
                         width: "100%",
@@ -170,11 +170,13 @@ export default function LoginPage() {
                         fontFamily: "var(--sans)",
                     }}
                 >
-                    {isSignup ? "Already have an account? Log in" : "No account yet? Sign up"}
+                    {isSignup
+                        ? "すでにアカウントをお持ちの方はこちら"
+                        : "アカウントをお持ちでない方はこちら"}
                 </button>
 
                 <Link href="/" className="login-back">
-                    Back to home
+                    ← ブログに戻る
                 </Link>
             </div>
         </div>

@@ -132,7 +132,7 @@ export default function CollaborationSettingsPage() {
             <nav className="navbar" style={{ justifyContent: "space-between" }}>
                 <Link href="/" className="nav-logo" style={{ textDecoration: "none" }}>
                     <img src="/images/a.png" alt="Next Blog" className="nav-logo-img" />
-                    Next Blog <span className="beta-badge">{"\uFF8E\uFF72"}</span>
+                    Next Blog <span className="beta-badge">β</span>
                 </Link>
                 <div className="nav-auth">
                     <Link href="/settings" className="nav-auth-btn nav-user-btn" style={{ textDecoration: "none" }}>

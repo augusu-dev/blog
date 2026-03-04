@@ -29,7 +29,7 @@ export default function PostComments({ postId, isSignedIn }: PostCommentsProps) 
     const [error, setError] = useState("");
 
     useEffect(() => {
-        if (!postId || !isSignedIn) {
+        if (!postId) {
             setComments([]);
             setNewComment("");
             setError("");
@@ -66,7 +66,7 @@ export default function PostComments({ postId, isSignedIn }: PostCommentsProps) 
         return () => {
             active = false;
         };
-    }, [postId, isSignedIn]);
+    }, [postId]);
 
     const submitComment = async () => {
         const content = newComment.trim();
@@ -105,22 +105,18 @@ export default function PostComments({ postId, isSignedIn }: PostCommentsProps) 
         <section style={{ marginTop: 40, borderTop: "1px solid var(--border)", paddingTop: 24 }}>
             <h3 style={{ fontFamily: "var(--serif)", fontSize: 22, fontWeight: 400, marginBottom: 10 }}>Comments</h3>
 
-            {!isSignedIn ? (
-                <p style={{ fontSize: 13, color: "var(--text-soft)" }}>
-                    コメントの閲覧・投稿はログイン後に利用できます。
-                </p>
-            ) : (
-                <>
+            {isSignedIn ? (
+                <div style={{ marginBottom: 16 }}>
                     <textarea
                         className="login-input"
                         value={newComment}
                         onChange={(e) => setNewComment(e.target.value)}
-                        placeholder="コメントを書く"
+                        placeholder="コメントを書いてください"
                         rows={4}
                         style={{ resize: "vertical", marginBottom: 10, fontFamily: "var(--sans)" }}
                     />
 
-                    <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
+                    <div style={{ display: "flex", justifyContent: "flex-end" }}>
                         <button
                             type="button"
                             className="editor-btn editor-btn-primary"
@@ -128,41 +124,46 @@ export default function PostComments({ postId, isSignedIn }: PostCommentsProps) 
                             onClick={submitComment}
                             style={{ padding: "8px 16px", fontSize: 12 }}
                         >
-                            {submitting ? "投稿中..." : "コメント投稿"}
+                            {submitting ? "投稿中..." : "コメントを投稿"}
                         </button>
                     </div>
+                </div>
+            ) : (
+                <p style={{ fontSize: 13, color: "var(--text-soft)", marginBottom: 12 }}>
+                    コメント投稿はログイン後に利用できます。
+                </p>
+            )}
 
-                    {error && (
-                        <div className="login-message login-error" style={{ marginBottom: 12 }}>
-                            {error}
-                        </div>
-                    )}
+            {error && (
+                <div className="login-message login-error" style={{ marginBottom: 12 }}>
+                    {error}
+                </div>
+            )}
 
-                    {loading ? (
-                        <p style={{ fontSize: 13, color: "var(--text-soft)" }}>読み込み中...</p>
-                    ) : comments.length === 0 ? (
-                        <p style={{ fontSize: 13, color: "var(--text-soft)" }}>まだコメントはありません。</p>
-                    ) : (
-                        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                            {comments.map((comment) => (
-                                <article
-                                    key={comment.id}
-                                    style={{
-                                        padding: "12px 14px",
-                                        border: "1px solid var(--border)",
-                                        borderRadius: 10,
-                                        background: "var(--card)",
-                                    }}
-                                >
-                                    <p style={{ fontSize: 12, color: "var(--text-soft)", marginBottom: 6 }}>
-                                        {comment.author?.name || comment.author?.email || "Anonymous"} ・ {new Date(comment.createdAt).toLocaleString("ja-JP")}
-                                    </p>
-                                    <p style={{ whiteSpace: "pre-wrap", fontSize: 14, lineHeight: 1.7 }}>{comment.content}</p>
-                                </article>
-                            ))}
-                        </div>
-                    )}
-                </>
+            {loading ? (
+                <p style={{ fontSize: 13, color: "var(--text-soft)" }}>読み込み中...</p>
+            ) : comments.length === 0 ? (
+                <p style={{ fontSize: 13, color: "var(--text-soft)" }}>まだコメントはありません。</p>
+            ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    {comments.map((comment) => (
+                        <article
+                            key={comment.id}
+                            style={{
+                                padding: "12px 14px",
+                                border: "1px solid var(--border)",
+                                borderRadius: 10,
+                                background: "var(--card)",
+                            }}
+                        >
+                            <p style={{ fontSize: 12, color: "var(--text-soft)", marginBottom: 6 }}>
+                                {comment.author?.name || comment.author?.email || "Anonymous"} ・{" "}
+                                {new Date(comment.createdAt).toLocaleString("ja-JP")}
+                            </p>
+                            <p style={{ whiteSpace: "pre-wrap", fontSize: 14, lineHeight: 1.7 }}>{comment.content}</p>
+                        </article>
+                    ))}
+                </div>
             )}
         </section>
     );
