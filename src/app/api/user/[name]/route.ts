@@ -1,5 +1,44 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+
+type DmSetting = "OPEN" | "PR_ONLY" | "CLOSED";
+const DEFAULT_DM_SETTING: DmSetting = "OPEN";
+
+function parseDmSetting(value: unknown): DmSetting | undefined {
+    if (value === "OPEN" || value === "PR_ONLY" || value === "CLOSED") {
+        return value;
+    }
+    return undefined;
+}
+
+function unpackLinks(raw: string | null | undefined): { links: unknown[]; dmSetting: DmSetting } {
+    if (!raw) {
+        return { links: [], dmSetting: DEFAULT_DM_SETTING };
+    }
+
+    try {
+        const parsed = JSON.parse(raw);
+
+        if (Array.isArray(parsed)) {
+            return { links: parsed, dmSetting: DEFAULT_DM_SETTING };
+        }
+
+        if (parsed && typeof parsed === "object") {
+            const candidate = parsed as { items?: unknown; links?: unknown; dmSetting?: unknown };
+            const links = Array.isArray(candidate.items)
+                ? candidate.items
+                : Array.isArray(candidate.links)
+                  ? candidate.links
+                  : [];
+            const dmSetting = parseDmSetting(candidate.dmSetting) || DEFAULT_DM_SETTING;
+            return { links, dmSetting };
+        }
+    } catch {
+        return { links: [], dmSetting: DEFAULT_DM_SETTING };
+    }
+
+    return { links: [], dmSetting: DEFAULT_DM_SETTING };
+}
 
 // GET: Fetch public profile by user name
 export async function GET(
@@ -20,7 +59,6 @@ export async function GET(
                 bio: true,
                 aboutMe: true,
                 links: true,
-                dmSetting: true,
                 posts: {
                     where: { published: true },
                     orderBy: { createdAt: "desc" },
@@ -32,9 +70,12 @@ export async function GET(
             return NextResponse.json({ error: "User not found" }, { status: 404 });
         }
 
+        const unpacked = unpackLinks(user.links);
+
         return NextResponse.json({
             ...user,
-            links: user.links ? JSON.parse(user.links) : [],
+            links: unpacked.links,
+            dmSetting: unpacked.dmSetting,
         });
     } catch (error) {
         console.error("Failed to fetch user:", error);

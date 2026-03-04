@@ -154,13 +154,16 @@ export default function HomePage() {
 
     const blogPosts = posts.filter((p) => !p.tags?.includes("product"));
     const productPosts = posts.filter((p) => p.tags?.includes("product"));
+    const myPageHref = session?.user?.name
+        ? `/user/${encodeURIComponent(session.user.name)}`
+        : "/settings";
 
     return (
         <>
             <nav className="navbar" id="navbar" style={{ justifyContent: "space-between" }}>
                 <Link href="/" className="nav-logo" style={{ textDecoration: "none" }}>
                     <img src="/images/a.png" alt="Next Blog" className="nav-logo-img" />
-                    Next Blog <span className="beta-badge">ﾎｲ</span>
+                    Next Blog <span className="beta-badge">{"\uFF8E\uFF72"}</span>
                 </Link>
                 <div className="nav-auth">
                     {session ? (
@@ -169,7 +172,7 @@ export default function HomePage() {
                                 Write
                             </Link>
                             <Link
-                                href={`/user/${session.user?.name || ""}`}
+                                href={myPageHref}
                                 className="nav-auth-btn nav-user-btn"
                                 style={{ textDecoration: "none" }}
                             >
@@ -304,7 +307,7 @@ export default function HomePage() {
             </div>
 
             <footer className="footer">
-                <span className="footer-copy">ﾂｩ 2026 Next Blog</span>
+                <span className="footer-copy">© 2026 Next Blog</span>
             </footer>
 
             <div className={`post-overlay ${overlayOpen ? "open" : ""}`} onClick={closeOverlay}>

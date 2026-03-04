@@ -134,12 +134,10 @@ export default function SettingsPage() {
             <nav className="navbar" style={{ justifyContent: "space-between" }}>
                 <Link href="/" className="nav-logo" style={{ textDecoration: "none" }}>
                     <img src="/images/a.png" alt="Next Blog" className="nav-logo-img" />
-                    Next Blog <span className="beta-badge">β</span>
+                    Next Blog <span className="beta-badge">{"\uFF8E\uFF72"}</span>
                 </Link>
                 <div className="nav-auth">
-                    <Link href="/settings/collab" className="nav-auth-btn nav-user-btn" style={{ textDecoration: "none" }}>
-                        記事提案 / DM設定
-                    </Link>
+                    <Link href="/settings/collab" className="nav-auth-btn nav-user-btn" style={{ textDecoration: "none" }}>PR / DM settings</Link>
                 </div>
             </nav>
 
@@ -161,8 +159,7 @@ export default function SettingsPage() {
                             className={`editor-btn ${language === "ja" ? "editor-btn-primary" : "editor-btn-secondary"}`}
                             onClick={() => setLanguage("ja")}
                         >
-                            日本語
-                        </button>
+                            譌･譛ｬ隱・                        </button>
                         <button
                             className={`editor-btn ${language === "en" ? "editor-btn-primary" : "editor-btn-secondary"}`}
                             onClick={() => setLanguage("en")}
@@ -173,8 +170,7 @@ export default function SettingsPage() {
                             className={`editor-btn ${language === "zh" ? "editor-btn-primary" : "editor-btn-secondary"}`}
                             onClick={() => setLanguage("zh")}
                         >
-                            中文
-                        </button>
+                            荳ｭ譁・                        </button>
                     </div>
                 </section>
 

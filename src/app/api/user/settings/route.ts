@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { DirectMessageSetting } from "@prisma/client";
+
+type DmSetting = "OPEN" | "PR_ONLY" | "CLOSED";
+const DEFAULT_DM_SETTING: DmSetting = "OPEN";
 
 const USER_SETTINGS_SELECT = {
     id: true,
@@ -12,15 +14,50 @@ const USER_SETTINGS_SELECT = {
     bio: true,
     aboutMe: true,
     links: true,
-    dmSetting: true,
 } as const;
 
-function parseDmSetting(value: unknown): DirectMessageSetting | undefined {
+function parseDmSetting(value: unknown): DmSetting | undefined {
     if (value === undefined) return undefined;
     if (value === "OPEN" || value === "PR_ONLY" || value === "CLOSED") {
         return value;
     }
     return undefined;
+}
+
+function unpackLinks(raw: string | null | undefined): { links: unknown[]; dmSetting: DmSetting } {
+    if (!raw) {
+        return { links: [], dmSetting: DEFAULT_DM_SETTING };
+    }
+
+    try {
+        const parsed = JSON.parse(raw);
+
+        if (Array.isArray(parsed)) {
+            return { links: parsed, dmSetting: DEFAULT_DM_SETTING };
+        }
+
+        if (parsed && typeof parsed === "object") {
+            const candidate = parsed as { items?: unknown; links?: unknown; dmSetting?: unknown };
+            const links = Array.isArray(candidate.items)
+                ? candidate.items
+                : Array.isArray(candidate.links)
+                  ? candidate.links
+                  : [];
+            const dmSetting = parseDmSetting(candidate.dmSetting) || DEFAULT_DM_SETTING;
+            return { links, dmSetting };
+        }
+    } catch {
+        return { links: [], dmSetting: DEFAULT_DM_SETTING };
+    }
+
+    return { links: [], dmSetting: DEFAULT_DM_SETTING };
+}
+
+function packLinks(links: unknown[], dmSetting: DmSetting): string {
+    if (dmSetting === DEFAULT_DM_SETTING) {
+        return JSON.stringify(links);
+    }
+    return JSON.stringify({ items: links, dmSetting });
 }
 
 export async function GET() {
@@ -35,9 +72,12 @@ export async function GET() {
         select: USER_SETTINGS_SELECT,
     });
 
+    const unpacked = unpackLinks(user?.links);
+
     return NextResponse.json({
         ...user,
-        links: user?.links ? JSON.parse(user.links) : [],
+        links: unpacked.links,
+        dmSetting: unpacked.dmSetting,
     });
 }
 
@@ -58,6 +98,15 @@ export async function PUT(request: NextRequest) {
         );
     }
 
+    const current = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { links: true },
+    });
+
+    const currentUnpacked = unpackLinks(current?.links);
+    const nextLinks = Array.isArray(links) ? links : currentUnpacked.links;
+    const nextDmSetting = parsedDmSetting || currentUnpacked.dmSetting;
+
     const user = await prisma.user.update({
         where: { id: userId },
         data: {
@@ -66,15 +115,17 @@ export async function PUT(request: NextRequest) {
             ...(aboutMe !== undefined && { aboutMe }),
             ...(image !== undefined && { image }),
             ...(headerImage !== undefined && { headerImage }),
-            ...(links !== undefined && { links: JSON.stringify(links) }),
-            ...(parsedDmSetting !== undefined && { dmSetting: parsedDmSetting }),
+            links: packLinks(nextLinks, nextDmSetting),
         },
         select: USER_SETTINGS_SELECT,
     });
 
+    const unpacked = unpackLinks(user.links);
+
     return NextResponse.json({
         ...user,
-        links: user.links ? JSON.parse(user.links) : [],
+        links: unpacked.links,
+        dmSetting: unpacked.dmSetting,
     });
 }
 

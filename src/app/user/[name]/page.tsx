@@ -201,7 +201,7 @@ export default function UserPage() {
             <nav className="navbar" id="navbar" style={{ justifyContent: "space-between" }}>
                 <Link href="/" className="nav-logo" style={{ textDecoration: "none" }}>
                     <img src="/images/a.png" alt="Next Blog" className="nav-logo-img" />
-                    Next Blog <span className="beta-badge">ﾎｲ</span>
+                    Next Blog <span className="beta-badge">{"\uFF8E\uFF72"}</span>
                 </Link>
                 <div className="nav-auth">
                     {session ? (
@@ -374,7 +374,7 @@ export default function UserPage() {
             </div>
 
             <footer className="footer">
-                <span className="footer-copy">ﾂｩ 2026 Next Blog</span>
+                <span className="footer-copy">© 2026 Next Blog</span>
             </footer>
 
             <div className={`post-overlay ${overlayOpen ? "open" : ""}`} onClick={closeOverlay}>

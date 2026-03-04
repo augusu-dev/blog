@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { DirectMessageContext, DirectMessageSetting, PullRequestStatus } from "@prisma/client";
+import { DirectMessageContext, PullRequestStatus } from "@prisma/client";
+
+type DmSetting = "OPEN" | "PR_ONLY" | "CLOSED";
+const DEFAULT_DM_SETTING: DmSetting = "OPEN";
 
 function normalizeString(value: unknown): string {
     return typeof value === "string" ? value.trim() : "";
@@ -14,6 +17,29 @@ function normalizeTags(value: unknown): string[] {
         .map((tag) => tag.trim())
         .filter((tag) => tag.length > 0)
         .slice(0, 20);
+}
+
+function parseDmSetting(value: unknown): DmSetting | undefined {
+    if (value === "OPEN" || value === "PR_ONLY" || value === "CLOSED") {
+        return value;
+    }
+    return undefined;
+}
+
+function unpackDmSettingFromLinks(raw: string | null | undefined): DmSetting {
+    if (!raw) return DEFAULT_DM_SETTING;
+
+    try {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+            const candidate = parsed as { dmSetting?: unknown };
+            return parseDmSetting(candidate.dmSetting) || DEFAULT_DM_SETTING;
+        }
+    } catch {
+        return DEFAULT_DM_SETTING;
+    }
+
+    return DEFAULT_DM_SETTING;
 }
 
 export async function GET() {
@@ -120,14 +146,15 @@ export async function POST(request: NextRequest) {
 
         const recipient = await prisma.user.findUnique({
             where: { id: recipientId },
-            select: { id: true, dmSetting: true },
+            select: { id: true, links: true },
         });
 
         if (!recipient) {
             return NextResponse.json({ error: "Recipient not found" }, { status: 404 });
         }
 
-        if (recipient.dmSetting === DirectMessageSetting.CLOSED) {
+        const recipientDmSetting = unpackDmSettingFromLinks(recipient.links);
+        if (recipientDmSetting === "CLOSED") {
             return NextResponse.json(
                 { error: "This user is not accepting pull requests or direct messages." },
                 { status: 403 }

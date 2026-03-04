@@ -45,7 +45,6 @@ model User {
   bio           String?  @db.Text
   aboutMe       String?  @db.Text
   links         String?  @db.Text
-  dmSetting     DirectMessageSetting @default(OPEN)
 
   accounts             Account[]
   sessions             Session[]

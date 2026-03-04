@@ -132,7 +132,7 @@ export default function CollaborationSettingsPage() {
             <nav className="navbar" style={{ justifyContent: "space-between" }}>
                 <Link href="/" className="nav-logo" style={{ textDecoration: "none" }}>
                     <img src="/images/a.png" alt="Next Blog" className="nav-logo-img" />
-                    Next Blog <span className="beta-badge">β</span>
+                    Next Blog <span className="beta-badge">{"\uFF8E\uFF72"}</span>
                 </Link>
                 <div className="nav-auth">
                     <Link href="/settings" className="nav-auth-btn nav-user-btn" style={{ textDecoration: "none" }}>
@@ -207,7 +207,7 @@ export default function CollaborationSettingsPage() {
                                 <article key={pr.id} style={{ border: "1px solid var(--border)", borderRadius: 12, background: "var(--card)", padding: 14 }}>
                                     <h3 style={{ fontSize: 16, marginBottom: 6 }}>{pr.title}</h3>
                                     <p style={{ fontSize: 12, color: "var(--text-soft)", marginBottom: 6 }}>
-                                        from {pr.proposer?.name || pr.proposer?.email || "Unknown"} · {new Date(pr.createdAt).toLocaleString("ja-JP")}
+                                        from {pr.proposer?.name || pr.proposer?.email || "Unknown"} ﾂｷ {new Date(pr.createdAt).toLocaleString("ja-JP")}
                                     </p>
                                     {pr.excerpt && <p style={{ fontSize: 13, marginBottom: 8 }}>{pr.excerpt}</p>}
                                     {pr.messages && pr.messages[0] && (
@@ -236,7 +236,7 @@ export default function CollaborationSettingsPage() {
                             {inboxMessages.map((dm) => (
                                 <article key={dm.id} style={{ border: "1px solid var(--border)", borderRadius: 12, background: "var(--card)", padding: 14 }}>
                                     <p style={{ fontSize: 12, color: "var(--text-soft)", marginBottom: 6 }}>
-                                        from {dm.sender?.name || dm.sender?.email || "Unknown"} · {new Date(dm.createdAt).toLocaleString("ja-JP")}
+                                        from {dm.sender?.name || dm.sender?.email || "Unknown"} ﾂｷ {new Date(dm.createdAt).toLocaleString("ja-JP")}
                                     </p>
                                     <p style={{ whiteSpace: "pre-wrap", fontSize: 14, lineHeight: 1.7 }}>{dm.content}</p>
                                 </article>
@@ -257,7 +257,7 @@ export default function CollaborationSettingsPage() {
                                 <article key={pr.id} style={{ border: "1px solid var(--border)", borderRadius: 12, background: "var(--card)", padding: 14 }}>
                                     <h3 style={{ fontSize: 16, marginBottom: 6 }}>{pr.title}</h3>
                                     <p style={{ fontSize: 12, color: "var(--text-soft)" }}>
-                                        to {pr.recipient?.name || pr.recipient?.email || "Unknown"} · {new Date(pr.createdAt).toLocaleString("ja-JP")}
+                                        to {pr.recipient?.name || pr.recipient?.email || "Unknown"} ﾂｷ {new Date(pr.createdAt).toLocaleString("ja-JP")}
                                     </p>
                                 </article>
                             ))}
