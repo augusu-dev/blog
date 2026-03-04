@@ -175,6 +175,14 @@ export default function HomePage() {
                 {t("マイページ")}
               </Link>
               <Link href="/settings" className="nav-auth-btn nav-user-btn" style={{ textDecoration: "none" }}>⚙</Link>
+              <Link
+                href="/settings/collab#incoming-dm"
+                className="nav-auth-btn nav-user-btn"
+                style={{ textDecoration: "none" }}
+                title="DM"
+              >
+                ✉
+              </Link>
             </>
           ) : (
             <Link href="/login" className="nav-auth-btn nav-login-btn">{t("ログイン")}</Link>

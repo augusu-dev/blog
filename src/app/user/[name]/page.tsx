@@ -333,6 +333,14 @@ export default function UserPage() {
                         <>
                             <Link href="/editor" className="nav-auth-btn nav-write-btn">✏ 記事を書く</Link>
                             <Link href="/settings" className="nav-auth-btn nav-user-btn" style={{ textDecoration: "none" }}>⚙</Link>
+                            <Link
+                                href="/settings/collab#incoming-dm"
+                                className="nav-auth-btn nav-user-btn"
+                                style={{ textDecoration: "none" }}
+                                title="DM"
+                            >
+                                ✉
+                            </Link>
                         </>
                     ) : (
                         <Link href="/login" className="nav-auth-btn nav-login-btn">ログイン</Link>

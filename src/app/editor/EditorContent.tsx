@@ -224,6 +224,14 @@ export default function EditorPage() {
                     <Link href="/settings" className="nav-auth-btn nav-user-btn" style={{ textDecoration: "none" }}>
                         ⚙
                     </Link>
+                    <Link
+                        href="/settings/collab#incoming-dm"
+                        className="nav-auth-btn nav-user-btn"
+                        style={{ textDecoration: "none" }}
+                        title="DM"
+                    >
+                        ✉
+                    </Link>
                     <button className="nav-auth-btn nav-user-btn" onClick={() => newPost()}>
                         ＋ 新規
                     </button>

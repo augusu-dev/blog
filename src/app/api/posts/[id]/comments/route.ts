@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { COMMENT_AUTHOR_SELECT, withPostCommentTable } from "@/lib/postComments";
 
 function validateContent(content: unknown): string | null {
     if (typeof content !== "string") return null;
@@ -17,7 +18,8 @@ export async function GET(
     const { id: postId } = await params;
 
     try {
-        const comments = await prisma.postComment.findMany({
+        const comments = await withPostCommentTable(() =>
+            prisma.postComment.findMany({
             where: { postId },
             orderBy: { createdAt: "desc" },
             select: {
@@ -26,14 +28,11 @@ export async function GET(
                 createdAt: true,
                 updatedAt: true,
                 author: {
-                    select: {
-                        id: true,
-                        name: true,
-                        email: true,
-                    },
+                    select: COMMENT_AUTHOR_SELECT,
                 },
             },
-        });
+            })
+        );
 
         return NextResponse.json(comments);
     } catch (error) {
@@ -71,7 +70,8 @@ export async function POST(
             return NextResponse.json({ error: "Post not found" }, { status: 404 });
         }
 
-        const comment = await prisma.postComment.create({
+        const comment = await withPostCommentTable(() =>
+            prisma.postComment.create({
             data: {
                 content: normalized,
                 postId,
@@ -83,14 +83,11 @@ export async function POST(
                 createdAt: true,
                 updatedAt: true,
                 author: {
-                    select: {
-                        id: true,
-                        name: true,
-                        email: true,
-                    },
+                    select: COMMENT_AUTHOR_SELECT,
                 },
             },
-        });
+            })
+        );
 
         return NextResponse.json(comment, { status: 201 });
     } catch (error) {

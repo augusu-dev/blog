@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { COMMENT_AUTHOR_SELECT, withPostCommentTable } from "@/lib/postComments";
 
 function validateContent(content: unknown): string | null {
     if (typeof content !== "string") return null;
@@ -30,14 +31,16 @@ export async function PATCH(
             return NextResponse.json({ error: "Invalid comment content" }, { status: 400 });
         }
 
-        const existing = await prisma.postComment.findUnique({
+        const existing = await withPostCommentTable(() =>
+            prisma.postComment.findUnique({
             where: { id: commentId },
             select: {
                 id: true,
                 postId: true,
                 authorId: true,
             },
-        });
+            })
+        );
 
         if (!existing || existing.postId !== postId) {
             return NextResponse.json({ error: "Comment not found" }, { status: 404 });
@@ -47,7 +50,8 @@ export async function PATCH(
             return NextResponse.json({ error: "Forbidden" }, { status: 403 });
         }
 
-        const updated = await prisma.postComment.update({
+        const updated = await withPostCommentTable(() =>
+            prisma.postComment.update({
             where: { id: commentId },
             data: { content: normalized },
             select: {
@@ -56,14 +60,11 @@ export async function PATCH(
                 createdAt: true,
                 updatedAt: true,
                 author: {
-                    select: {
-                        id: true,
-                        name: true,
-                        email: true,
-                    },
+                    select: COMMENT_AUTHOR_SELECT,
                 },
             },
-        });
+            })
+        );
 
         return NextResponse.json(updated);
     } catch (error) {
@@ -85,14 +86,16 @@ export async function DELETE(
     const { id: postId, commentId } = await params;
 
     try {
-        const existing = await prisma.postComment.findUnique({
+        const existing = await withPostCommentTable(() =>
+            prisma.postComment.findUnique({
             where: { id: commentId },
             select: {
                 id: true,
                 postId: true,
                 authorId: true,
             },
-        });
+            })
+        );
 
         if (!existing || existing.postId !== postId) {
             return NextResponse.json({ error: "Comment not found" }, { status: 404 });
@@ -102,7 +105,7 @@ export async function DELETE(
             return NextResponse.json({ error: "Forbidden" }, { status: 403 });
         }
 
-        await prisma.postComment.delete({ where: { id: commentId } });
+        await withPostCommentTable(() => prisma.postComment.delete({ where: { id: commentId } }));
 
         return NextResponse.json({ ok: true, id: commentId });
     } catch (error) {

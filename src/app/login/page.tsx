@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import { useEffect, useState } from "react";
-import { signIn } from "next-auth/react";
+import { signIn, useSession } from "next-auth/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -9,6 +9,7 @@ type ProvidersResponse = Record<string, { id: string; name: string }>;
 
 export default function LoginPage() {
     const router = useRouter();
+    const { data: session, status } = useSession();
     const [isSignup, setIsSignup] = useState(false);
     const [name, setName] = useState("");
     const [email, setEmail] = useState("");
@@ -17,6 +18,32 @@ export default function LoginPage() {
     const [googleLoading, setGoogleLoading] = useState(false);
     const [error, setError] = useState("");
     const [googleEnabled, setGoogleEnabled] = useState(false);
+
+    const buildMyPageHref = (rawName?: string | null) => {
+        const name = typeof rawName === "string" ? rawName.trim() : "";
+        return name ? `/user/${encodeURIComponent(name)}` : "/settings";
+    };
+
+    const resolveMyPageHref = async () => {
+        if (session?.user?.name) {
+            return buildMyPageHref(session.user.name);
+        }
+        try {
+            const res = await fetch("/api/auth/session", { cache: "no-store" });
+            if (res.ok) {
+                const payload = (await res.json()) as { user?: { name?: string | null } };
+                return buildMyPageHref(payload.user?.name);
+            }
+        } catch {
+            // noop
+        }
+        return "/settings";
+    };
+
+    useEffect(() => {
+        if (status !== "authenticated") return;
+        router.replace(buildMyPageHref(session?.user?.name));
+    }, [router, session?.user?.name, status]);
 
     useEffect(() => {
         let active = true;
@@ -57,7 +84,8 @@ export default function LoginPage() {
             if (result?.error) {
                 setError("メールアドレスまたはパスワードが間違っています。");
             } else {
-                router.push("/editor");
+                const destination = await resolveMyPageHref();
+                router.push(destination);
             }
         } catch {
             setError("ログインに失敗しました。");
@@ -97,7 +125,8 @@ export default function LoginPage() {
                 setError("アカウントは作成されましたが、ログインに失敗しました。ログインし直してください。");
                 setIsSignup(false);
             } else {
-                router.push("/editor");
+                const destination = await resolveMyPageHref();
+                router.push(destination);
             }
         } catch {
             setError("エラーが発生しました。");
@@ -110,7 +139,7 @@ export default function LoginPage() {
         setGoogleLoading(true);
         setError("");
         try {
-            await signIn("google", { callbackUrl: "/editor" });
+            await signIn("google", { callbackUrl: "/login" });
         } catch {
             setError("Google認証に失敗しました。");
             setGoogleLoading(false);

@@ -311,7 +311,7 @@ export default function CollaborationSettingsPage() {
                     </button>
                 </section>
 
-                <section style={{ marginBottom: 32 }}>
+                <section id="incoming-dm" style={{ marginBottom: 32 }}>
                     <h2 className="settings-section-title">{text.incomingPrTitle}</h2>
                     {loadingData ? (
                         <p style={{ fontSize: 13, color: "var(--text-soft)" }}>{text.loading}</p>

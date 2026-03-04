@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-img-element */
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -12,6 +13,7 @@ interface PostComment {
         id: string;
         name: string | null;
         email: string | null;
+        image: string | null;
     };
 }
 
@@ -329,6 +331,8 @@ export default function PostComments({ postId, isSignedIn, currentUserId = null 
                         const isEditing = editingId === comment.id;
                         const isSavingThis = savingEditId === comment.id;
                         const isDeletingThis = deletingId === comment.id;
+                        const authorName = comment.author?.name || comment.author?.email || "Anonymous";
+                        const avatarFallback = authorName.charAt(0).toUpperCase();
 
                         return (
                             <article
@@ -349,10 +353,47 @@ export default function PostComments({ postId, isSignedIn, currentUserId = null 
                                         marginBottom: 6,
                                     }}
                                 >
-                                    <p style={{ fontSize: 12, color: "var(--text-soft)", margin: 0 }}>
-                                        {comment.author?.name || comment.author?.email || "Anonymous"} ・{" "}
-                                        {new Date(comment.createdAt).toLocaleString("ja-JP")}
-                                    </p>
+                                    <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                                        <div
+                                            style={{
+                                                width: 24,
+                                                height: 24,
+                                                borderRadius: "50%",
+                                                border: "1px solid var(--border)",
+                                                background: "var(--bg-soft)",
+                                                color: "var(--azuki)",
+                                                overflow: "hidden",
+                                                display: "flex",
+                                                alignItems: "center",
+                                                justifyContent: "center",
+                                                flexShrink: 0,
+                                                fontSize: 11,
+                                                fontWeight: 600,
+                                            }}
+                                        >
+                                            {comment.author?.image ? (
+                                                <img
+                                                    src={comment.author.image}
+                                                    alt={authorName}
+                                                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                                                />
+                                            ) : (
+                                                avatarFallback
+                                            )}
+                                        </div>
+                                        <p
+                                            style={{
+                                                fontSize: 12,
+                                                color: "var(--text-soft)",
+                                                margin: 0,
+                                                whiteSpace: "nowrap",
+                                                overflow: "hidden",
+                                                textOverflow: "ellipsis",
+                                            }}
+                                        >
+                                            {authorName} ・ {new Date(comment.createdAt).toLocaleString("ja-JP")}
+                                        </p>
+                                    </div>
                                     {canManage && !isEditing && (
                                         <div style={{ display: "flex", gap: 6 }}>
                                             <button
