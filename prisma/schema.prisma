@@ -51,6 +51,7 @@ model User {
   sessions             Session[]
   posts                Post[]
   comments             PostComment[]
+  reactions            PostReaction[]
   sentPullRequests     ArticlePullRequest[] @relation("PullRequestSender")
   receivedPullRequests ArticlePullRequest[] @relation("PullRequestRecipient")
   sentMessages         DirectMessage[]      @relation("DirectMessageSender")
@@ -79,6 +80,7 @@ model Post {
   author      User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
   authorId    String
   comments    PostComment[]
+  reactions   PostReaction[]
 }
 
 model Product {
@@ -117,6 +119,20 @@ model PostComment {
   authorId String
 
   @@index([postId, authorId, createdAt])
+}
+
+model PostReaction {
+  id        String   @id @default(cuid())
+  reaction  String   @db.VarChar(24)
+  createdAt DateTime @default(now())
+
+  post     Post   @relation(fields: [postId], references: [id], onDelete: Cascade)
+  postId   String
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId   String
+
+  @@unique([postId, userId, reaction])
+  @@index([postId, createdAt])
 }
 
 model ArticlePullRequest {

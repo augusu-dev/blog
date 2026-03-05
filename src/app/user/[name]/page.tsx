@@ -253,6 +253,18 @@ export default function UserPage() {
         };
     }, []);
 
+    useEffect(() => {
+        if (!overlayOpen) return;
+        const anchors = document.querySelectorAll<HTMLAnchorElement>(".post-overlay.open .md-content a[href]");
+        anchors.forEach((anchor) => {
+            const href = anchor.getAttribute("href") || "";
+            if (!href.startsWith("#") && !href.toLowerCase().startsWith("javascript:")) {
+                anchor.setAttribute("target", "_blank");
+                anchor.setAttribute("rel", "noopener noreferrer");
+            }
+        });
+    }, [overlayOpen, overlayContent, translatedContent]);
+
     /* ─── Computed ─── */
     const blogTotalPages = Math.ceil(posts.length / BLOG_PER_PAGE);
     const blogItems = posts.slice(blogPage * BLOG_PER_PAGE, (blogPage + 1) * BLOG_PER_PAGE);

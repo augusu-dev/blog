@@ -8,7 +8,7 @@ import Link from "next/link";
 
 type ThreadUser = {
     id: string;
-    userId: string | null;
+    userId?: string | null;
     name: string | null;
     email: string | null;
     image: string | null;

@@ -23,7 +23,26 @@ interface PostCommentsProps {
     currentUserId?: string | null;
 }
 
+type ReactionType = "GOOD" | "SURPRISED" | "SMIRK" | "FIRE" | "ROCKET";
+type ReactionCounts = Record<ReactionType, number>;
+
 const COMMENT_LIMIT = 1000;
+
+const REACTIONS: Array<{ key: ReactionType; icon: string; label: string }> = [
+    { key: "GOOD", icon: "👍", label: "グッド" },
+    { key: "SURPRISED", icon: "😮", label: "驚き" },
+    { key: "SMIRK", icon: "😏", label: "どや顔" },
+    { key: "FIRE", icon: "🔥", label: "ファイヤー" },
+    { key: "ROCKET", icon: "🚀", label: "ロケット" },
+];
+
+const EMPTY_REACTION_COUNTS: ReactionCounts = {
+    GOOD: 0,
+    SURPRISED: 0,
+    SMIRK: 0,
+    FIRE: 0,
+    ROCKET: 0,
+};
 
 type LocaleText = {
     title: string;
@@ -44,6 +63,7 @@ type LocaleText = {
     cancel: string;
     delete: string;
     deleteConfirm: string;
+    reactionFailed: string;
 };
 
 const TEXT: Record<"ja" | "en" | "zh", LocaleText> = {
@@ -66,6 +86,7 @@ const TEXT: Record<"ja" | "en" | "zh", LocaleText> = {
         cancel: "キャンセル",
         delete: "削除",
         deleteConfirm: "このコメントを削除しますか？",
+        reactionFailed: "リアクションの送信に失敗しました。",
     },
     en: {
         title: "Comments",
@@ -86,13 +107,14 @@ const TEXT: Record<"ja" | "en" | "zh", LocaleText> = {
         cancel: "Cancel",
         delete: "Delete",
         deleteConfirm: "Delete this comment?",
+        reactionFailed: "Failed to send reaction.",
     },
     zh: {
         title: "Comments",
         placeholder: "请输入评论",
         post: "发布评论",
         posting: "发布中...",
-        loginRequired: "登录后可发布评论。",
+        loginRequired: "请先登录后再发表评论。",
         loading: "加载中...",
         empty: "还没有评论。",
         fetchFailed: "获取评论失败。",
@@ -106,6 +128,7 @@ const TEXT: Record<"ja" | "en" | "zh", LocaleText> = {
         cancel: "取消",
         delete: "删除",
         deleteConfirm: "要删除这条评论吗？",
+        reactionFailed: "发送反应失败。",
     },
 };
 
@@ -119,6 +142,11 @@ export default function PostComments({ postId, isSignedIn, currentUserId = null 
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState("");
 
+    const [reactionCounts, setReactionCounts] = useState<ReactionCounts>(EMPTY_REACTION_COUNTS);
+    const [myReactions, setMyReactions] = useState<ReactionType[]>([]);
+    const [reacting, setReacting] = useState(false);
+    const [burstReaction, setBurstReaction] = useState<ReactionType | null>(null);
+
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editingContent, setEditingContent] = useState("");
     const [savingEditId, setSavingEditId] = useState<string | null>(null);
@@ -127,6 +155,8 @@ export default function PostComments({ postId, isSignedIn, currentUserId = null 
     useEffect(() => {
         if (!postId) {
             setComments([]);
+            setReactionCounts(EMPTY_REACTION_COUNTS);
+            setMyReactions([]);
             setNewComment("");
             setError("");
             setEditingId(null);
@@ -138,33 +168,74 @@ export default function PostComments({ postId, isSignedIn, currentUserId = null 
         setLoading(true);
         setError("");
 
-        fetch(`/api/posts/${postId}/comments`)
-            .then(async (res) => {
-                if (!res.ok) {
+        Promise.all([
+            fetch(`/api/posts/${postId}/comments`),
+            fetch(`/api/posts/${postId}/reactions`),
+        ])
+            .then(async ([commentRes, reactionRes]) => {
+                if (!commentRes.ok) {
                     throw new Error("Failed to fetch comments");
                 }
-                return res.json();
-            })
-            .then((data) => {
-                if (active) {
-                    setComments(Array.isArray(data) ? data : []);
+
+                const commentData = await commentRes.json();
+                if (!active) return;
+                setComments(Array.isArray(commentData) ? commentData : []);
+
+                if (reactionRes.ok) {
+                    const reactionData = await reactionRes.json();
+                    if (!active) return;
+                    setReactionCounts({ ...EMPTY_REACTION_COUNTS, ...(reactionData.counts || {}) });
+                    setMyReactions(Array.isArray(reactionData.myReactions) ? reactionData.myReactions : []);
                 }
             })
             .catch(() => {
-                if (active) {
-                    setError(locale.fetchFailed);
-                }
+                if (active) setError(locale.fetchFailed);
             })
             .finally(() => {
-                if (active) {
-                    setLoading(false);
-                }
+                if (active) setLoading(false);
             });
 
         return () => {
             active = false;
         };
     }, [postId, locale.fetchFailed]);
+
+    const submitReaction = async (reaction: ReactionType) => {
+        if (!postId || reacting) return;
+
+        if (!isSignedIn) {
+            setError(locale.loginRequired);
+            return;
+        }
+
+        if (myReactions.includes(reaction)) {
+            return;
+        }
+
+        setReacting(true);
+        setError("");
+        try {
+            const res = await fetch(`/api/posts/${postId}/reactions`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ reaction }),
+            });
+            const payload = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                setError(payload.error || locale.reactionFailed);
+                return;
+            }
+
+            setReactionCounts({ ...EMPTY_REACTION_COUNTS, ...(payload.counts || {}) });
+            setMyReactions(Array.isArray(payload.myReactions) ? payload.myReactions : []);
+            setBurstReaction(reaction);
+            setTimeout(() => setBurstReaction((current) => (current === reaction ? null : current)), 260);
+        } catch {
+            setError(locale.reactionFailed);
+        } finally {
+            setReacting(false);
+        }
+    };
 
     const submitComment = async () => {
         const content = newComment.trim();
@@ -259,9 +330,7 @@ export default function PostComments({ postId, isSignedIn, currentUserId = null 
         setError("");
 
         try {
-            const res = await fetch(`/api/posts/${postId}/comments/${commentId}`, {
-                method: "DELETE",
-            });
+            const res = await fetch(`/api/posts/${postId}/comments/${commentId}`, { method: "DELETE" });
 
             const payload = await res.json().catch(() => ({}));
             if (!res.ok) {
@@ -285,7 +354,28 @@ export default function PostComments({ postId, isSignedIn, currentUserId = null 
 
     return (
         <section style={{ marginTop: 40, borderTop: "1px solid var(--border)", paddingTop: 24 }}>
-            <h3 style={{ fontFamily: "var(--serif)", fontSize: 22, fontWeight: 400, marginBottom: 10 }}>{locale.title}</h3>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 10, flexWrap: "wrap" }}>
+                <h3 style={{ fontFamily: "var(--serif)", fontSize: 22, fontWeight: 400 }}>{locale.title}</h3>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                    {REACTIONS.map((reaction) => {
+                        const clicked = myReactions.includes(reaction.key);
+                        const burst = burstReaction === reaction.key;
+                        return (
+                            <button
+                                key={reaction.key}
+                                type="button"
+                                className={`reaction-btn ${clicked ? "active" : ""} ${burst ? "burst" : ""}`}
+                                onClick={() => void submitReaction(reaction.key)}
+                                disabled={reacting || clicked}
+                                title={`${reaction.label}: 1人1回`}
+                            >
+                                <span>{reaction.icon}</span>
+                                <span>{reactionCounts[reaction.key] || 0}</span>
+                            </button>
+                        );
+                    })}
+                </div>
+            </div>
 
             {isSignedIn ? (
                 <div style={{ marginBottom: 16 }}>

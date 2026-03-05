@@ -1,0 +1,129 @@
+import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/db";
+import {
+    REACTION_TYPES,
+    ReactionType,
+    isReactionType,
+    withPostReactionTable,
+} from "@/lib/postReactions";
+
+type Counts = Record<ReactionType, number>;
+
+function buildEmptyCounts(): Counts {
+    return {
+        GOOD: 0,
+        SURPRISED: 0,
+        SMIRK: 0,
+        FIRE: 0,
+        ROCKET: 0,
+    };
+}
+
+async function getReactionPayload(postId: string, currentUserId?: string | null) {
+    const [grouped, myRows] = await Promise.all([
+        withPostReactionTable(() =>
+            prisma.postReaction.groupBy({
+                by: ["reaction"],
+                where: { postId },
+                _count: { _all: true },
+            })
+        ),
+        currentUserId
+            ? withPostReactionTable(() =>
+                  prisma.postReaction.findMany({
+                      where: { postId, userId: currentUserId },
+                      select: { reaction: true },
+                  })
+              )
+            : Promise.resolve([] as Array<{ reaction: string }>),
+    ]);
+
+    const counts = buildEmptyCounts();
+    for (const row of grouped) {
+        if (isReactionType(row.reaction)) {
+            counts[row.reaction] = row._count._all;
+        }
+    }
+
+    const myReactions = myRows
+        .map((row) => row.reaction)
+        .filter((reaction): reaction is ReactionType => isReactionType(reaction));
+
+    return { counts, myReactions };
+}
+
+export async function GET(
+    request: NextRequest,
+    { params }: { params: Promise<{ id: string }> }
+) {
+    const session = await auth();
+    const currentUserId = session?.user?.id ?? null;
+    const { id: postId } = await params;
+
+    try {
+        const post = await prisma.post.findUnique({ where: { id: postId }, select: { id: true } });
+        if (!post) {
+            return NextResponse.json({ error: "Post not found" }, { status: 404 });
+        }
+
+        const payload = await getReactionPayload(postId, currentUserId);
+        return NextResponse.json(payload);
+    } catch (error) {
+        console.error("Failed to fetch reactions:", error);
+        return NextResponse.json({ error: "Failed to fetch reactions" }, { status: 500 });
+    }
+}
+
+export async function POST(
+    request: NextRequest,
+    { params }: { params: Promise<{ id: string }> }
+) {
+    const session = await auth();
+    const currentUserId = session?.user?.id;
+    if (!currentUserId) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { id: postId } = await params;
+
+    try {
+        const body = await request.json();
+        const reactionRaw = typeof body.reaction === "string" ? body.reaction.trim().toUpperCase() : "";
+        if (!isReactionType(reactionRaw)) {
+            return NextResponse.json(
+                { error: `Invalid reaction. Allowed: ${REACTION_TYPES.join(", ")}` },
+                { status: 400 }
+            );
+        }
+
+        const post = await prisma.post.findUnique({ where: { id: postId }, select: { id: true } });
+        if (!post) {
+            return NextResponse.json({ error: "Post not found" }, { status: 404 });
+        }
+
+        await withPostReactionTable(() =>
+            prisma.postReaction.upsert({
+                where: {
+                    postId_userId_reaction: {
+                        postId,
+                        userId: currentUserId,
+                        reaction: reactionRaw,
+                    },
+                },
+                update: {},
+                create: {
+                    postId,
+                    userId: currentUserId,
+                    reaction: reactionRaw,
+                },
+            })
+        );
+
+        const payload = await getReactionPayload(postId, currentUserId);
+        return NextResponse.json(payload, { status: 201 });
+    } catch (error) {
+        console.error("Failed to post reaction:", error);
+        return NextResponse.json({ error: "Failed to post reaction" }, { status: 500 });
+    }
+}

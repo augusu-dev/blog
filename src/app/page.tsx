@@ -100,6 +100,18 @@ export default function HomePage() {
     return () => document.removeEventListener("keydown", handler);
   }, []);
 
+  useEffect(() => {
+    if (!overlayOpen) return;
+    const anchors = document.querySelectorAll<HTMLAnchorElement>(".post-overlay.open .md-content a[href]");
+    anchors.forEach((anchor) => {
+      const href = anchor.getAttribute("href") || "";
+      if (!href.startsWith("#") && !href.toLowerCase().startsWith("javascript:")) {
+        anchor.setAttribute("target", "_blank");
+        anchor.setAttribute("rel", "noopener noreferrer");
+      }
+    });
+  }, [overlayOpen, overlayContent, translatedContent]);
+
   const blogPosts = posts.filter((p) => !p.tags?.includes("product"));
   const productPosts = posts.filter((p) => p.tags?.includes("product"));
 

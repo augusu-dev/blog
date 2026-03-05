@@ -1599,3 +1599,52 @@ body {
   margin-bottom: 6px;
   font-family: var(--sans);
 }
+
+/* ========================================
+   POST REACTIONS
+   ======================================== */
+.reaction-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text-soft);
+  border-radius: 999px;
+  font-size: 12px;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: transform 0.18s ease, background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+}
+
+.reaction-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: var(--bg-soft);
+}
+
+.reaction-btn.active {
+  color: var(--azuki-deep);
+  border-color: rgba(146, 92, 92, 0.35);
+  background: rgba(146, 92, 92, 0.1);
+}
+
+.reaction-btn.burst {
+  animation: reactionBurst 0.26s ease;
+}
+
+.reaction-btn:disabled {
+  opacity: 0.75;
+  cursor: default;
+}
+
+@keyframes reactionBurst {
+  0% {
+    transform: scale(1);
+  }
+  45% {
+    transform: scale(1.18);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
