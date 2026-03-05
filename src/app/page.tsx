@@ -190,8 +190,8 @@ export default function HomePage() {
   return (
     <>
       {/* ─── Navbar ─── */}
-      <nav className="navbar" id="navbar" style={{ justifyContent: "space-between" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <nav className="navbar home-navbar" id="navbar" style={{ justifyContent: "space-between" }}>
+        <div className="home-navbar-brand">
           <Link href="/" className="nav-logo" style={{ textDecoration: "none", position: "static", left: "auto" }}>
             <img src="/images/a.png" alt="Next Blog" className="nav-logo-img" />
             {t("Next Blog")} <span className="beta-badge">β</span>
@@ -199,18 +199,18 @@ export default function HomePage() {
           {session ? (
             <Link
               href="/pins"
-              className="nav-auth-btn nav-user-btn"
+              className="nav-auth-btn nav-user-btn home-navbar-pin-btn"
               style={{ textDecoration: "none", padding: "4px 10px", fontSize: 13 }}
               title="ピンしたユーザーの新着"
             >
               👥</Link>
           ) : null}
         </div>
-        <div className="nav-auth">
+        <div className="nav-auth home-navbar-actions">
           {session ? (
             <>
               <Link href="/editor" className="nav-auth-btn nav-write-btn">{t("✏ 記事を書く")}</Link>
-              <Link href={myPageHref} className="nav-auth-btn nav-user-btn" style={{ textDecoration: "none" }}>
+              <Link href={myPageHref} className="nav-auth-btn nav-user-btn home-navbar-mypage" style={{ textDecoration: "none" }}>
                 {t("マイページ")}
               </Link>
               <Link href="/settings" className="nav-auth-btn nav-user-btn" style={{ textDecoration: "none" }}>⚙</Link>

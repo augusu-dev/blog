@@ -1,7 +1,7 @@
 /* eslint-disable */
 "use client";
 
-import { useEffect, useState } from "react";
+import { type ChangeEvent, useEffect, useRef, useState } from "react";
 import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -37,7 +37,14 @@ export default function SettingsPage() {
     const { data: session, status, update } = useSession();
     const router = useRouter();
     const { language, setLanguage, t } = useLanguage();
-    const { theme, setTheme, customColor, setCustomColor } = useTheme();
+    const {
+        theme,
+        setTheme,
+        customColor,
+        setCustomColor,
+        commitTheme,
+        resetTheme,
+    } = useTheme();
     const locale = language as "ja" | "en" | "zh";
 
     const [name, setName] = useState("");
@@ -51,6 +58,11 @@ export default function SettingsPage() {
     const [myPosts, setMyPosts] = useState<Post[]>([]);
     const [saving, setSaving] = useState(false);
     const [message, setMessage] = useState("");
+    const [showRestoreModal, setShowRestoreModal] = useState(false);
+    const [restoreConfirmed, setRestoreConfirmed] = useState(false);
+    const [restoring, setRestoring] = useState(false);
+    const restoreInputRef = useRef<HTMLInputElement | null>(null);
+    const resetThemeOnLeaveRef = useRef(resetTheme);
 
     const themeTitle = locale === "en" ? "Site Color" : locale === "zh" ? "站点颜色" : "サイトカラー";
     const themeDescription =
@@ -61,6 +73,23 @@ export default function SettingsPage() {
               : "Next Blog の配色を変更できます。";
     const customColorLabel =
         locale === "en" ? "Custom color" : locale === "zh" ? "自定义颜色" : "カスタムカラー";
+
+    const backButtonLabel = locale === "en" ? "Back" : locale === "zh" ? "杩斿洖" : "戻る";
+    const restoreButtonLabel = locale === "en" ? "Restore" : locale === "zh" ? "鎭㈠師" : "復元";
+    const restoreDialogTitle =
+        locale === "en" ? "Restore from Backup" : locale === "zh" ? "浠庡浠戒腑鎭㈠師" : "バックアップから復元";
+    const restoreDialogMessage =
+        locale === "en"
+            ? "When you restore, only the data contained in the selected JSON file will be applied to this account. Any newer posts or settings currently saved on this account and not included in the file may be overwritten or removed, so please export a fresh backup before continuing."
+            : locale === "zh"
+              ? "鎭㈠師鍚庯紝鍙細灏嗘墍閫夌殑 JSON 鏂囦欢涓寘鍚殑鏁版嵁鍙嶆槧鍒拌繖涓处鍙枫�傚綋鍓嶈处鍙蜂腑鍚庢潵鏂板銆佷絾涓嶅湪鏂囦欢鍐呯殑鍐呭锛屽彲鑳戒細琚鐩栨垨鍒犻櫎銆傝鍦ㄧ户缁箣鍓嶅厛瀵煎嚭鏈�鏂扮殑澶囦唤銆�"
+              : "復元を実行すると、選択した JSON ファイルに含まれる内容だけがこのアカウントへ反映されます。現在のアカウントにある投稿や設定のうち、ファイルに含まれていない新しい内容は上書きまたは削除される可能性があるため、続行する前に最新のバックアップを書き出しておくことをおすすめします。";
+    const restoreConfirmLabel =
+        locale === "en" ? "I understand the warning" : locale === "zh" ? "鎴戝凡纭涓婅堪鍐呭" : "注意事項を確認しました";
+    const restoreSelectLabel =
+        locale === "en" ? "Choose JSON File" : locale === "zh" ? "閫夋嫨 JSON 鏂囦欢" : "JSON ファイルを選ぶ";
+    const restoreCancelLabel = locale === "en" ? "Cancel" : locale === "zh" ? "鍙栨秷" : "キャンセル";
+    const restoreLoadingLabel = locale === "en" ? "Restoring..." : locale === "zh" ? "鎭㈠師涓..." : "復元中...";
 
     const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -118,9 +147,122 @@ export default function SettingsPage() {
         }
     };
 
+    const applySettingsPayload = (data: Record<string, any>) => {
+        setName(data.name || "");
+        setUserId(data.userId || "");
+        setImage(data.image || "");
+        setHeaderImage(data.headerImage || "");
+        setBio(data.bio || "");
+        setAboutMe(data.aboutMe || "");
+        setLinks(Array.isArray(data.links) ? data.links : []);
+    };
+
+    const loadSettingsData = async (): Promise<void> => {
+        const result = await loadJsonWithRetry("/api/user/settings", 4);
+        const data = result.data;
+        if (!result.ok || !data || typeof data !== "object") {
+            setMessage("Error: settings-load");
+            await hydrateFromPublicProfile();
+            return;
+        }
+
+        applySettingsPayload(data as Record<string, any>);
+        setMessage("");
+    };
+
+    const loadMyPosts = async (): Promise<void> => {
+        const result = await loadJsonWithRetry("/api/posts/my", 4);
+        if (!result.ok || !Array.isArray(result.data)) {
+            setMyPosts([]);
+            return;
+        }
+        setMyPosts(result.data as Post[]);
+    };
+
+    const handleBack = () => {
+        if (typeof window !== "undefined" && window.history.length > 1) {
+            router.back();
+            return;
+        }
+        router.push("/");
+    };
+
+    const closeRestoreModal = () => {
+        if (restoring) return;
+        setShowRestoreModal(false);
+        setRestoreConfirmed(false);
+    };
+
+    const handleRestoreFileChange = async (
+        event: ChangeEvent<HTMLInputElement>
+    ): Promise<void> => {
+        const file = event.target.files?.[0];
+        event.target.value = "";
+
+        if (!file) return;
+
+        setRestoring(true);
+        setMessage("");
+
+        try {
+            const raw = await file.text();
+            const res = await fetch("/api/user/import", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: raw,
+            });
+            const payload = await res.json().catch(() => ({} as Record<string, any>));
+
+            if (!res.ok) {
+                setMessage(`❌ ${payload.error || "restore-failed"}`);
+                return;
+            }
+
+            if (payload.user && typeof payload.user === "object") {
+                applySettingsPayload(payload.user as Record<string, any>);
+            }
+
+            if (payload.user?.theme && payload.user?.themeCustomColor) {
+                commitTheme(payload.user.theme as ThemeName, payload.user.themeCustomColor as string);
+            }
+
+            await Promise.all([update(), loadMyPosts(), loadSettingsData()]);
+            setMessage(
+                locale === "en"
+                    ? "Backup restored."
+                    : locale === "zh"
+                      ? "澶囦唤宸叉仮澶嶃�"
+                      : "バックアップを復元しました。"
+            );
+            setShowRestoreModal(false);
+            setRestoreConfirmed(false);
+            setMessage(
+                locale === "en"
+                    ? "Backup restored."
+                    : locale === "zh"
+                      ? "已恢复备份。"
+                      : "バックアップを復元しました。"
+            );
+        } catch {
+            setMessage("❌ restore-failed");
+        } finally {
+            setRestoring(false);
+        }
+    };
+
     useEffect(() => {
         if (status === "unauthenticated") router.push("/login");
     }, [status, router]);
+
+    useEffect(() => {
+        resetThemeOnLeaveRef.current = resetTheme;
+    }, [resetTheme]);
+
+    useEffect(() => {
+        return () => {
+            resetThemeOnLeaveRef.current();
+        };
+    }, []);
 
     useEffect(() => {
         if (session) {
@@ -184,6 +326,10 @@ export default function SettingsPage() {
             });
             const payload = await res.json().catch(() => ({}));
             if (res.ok) {
+                commitTheme(
+                    (payload.theme as ThemeName | undefined) || theme,
+                    (payload.themeCustomColor as string | undefined) || customColor
+                );
                 setMessage("✅ " + t("設定を保存しました。"));
                 await update();
             } else {
@@ -271,7 +417,20 @@ export default function SettingsPage() {
             </nav>
 
             <div className="editor-container" style={{ maxWidth: 600 }}>
-                <h1 style={{ fontFamily: "var(--serif)", fontSize: 28, fontWeight: 400, marginBottom: 32 }}>{t("設定")}</h1>
+                <div className="settings-page-title-row">
+                    <h1 style={{ fontFamily: "var(--serif)", fontSize: 28, fontWeight: 400, marginBottom: 0 }}>{t("設定")}</h1>
+                    <button
+                        type="button"
+                        className="settings-back-btn"
+                        onClick={handleBack}
+                        aria-label={backButtonLabel}
+                        title={backButtonLabel}
+                    >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M15 18l-6-6 6-6" />
+                        </svg>
+                    </button>
+                </div>
                 <div style={{ marginTop: -12, marginBottom: 24 }}>
                     <Link
                         href="/settings/collab"
@@ -290,7 +449,7 @@ export default function SettingsPage() {
                 </div>
 
                 {message && (
-                    <div className={`login-message ${message.startsWith("❌") ? "login-error" : ""}`} style={{ marginBottom: 20 }}>
+                    <div className={`login-message ${message.startsWith("❌") || message.startsWith("Error:") ? "login-error" : ""}`} style={{ marginBottom: 20 }}>
                         {message}
                     </div>
                 )}
@@ -596,14 +755,35 @@ export default function SettingsPage() {
                     <p style={{ fontSize: 13, color: "var(--text-soft)", marginBottom: 16 }}>
                         {t("あなたの設定、自己紹介、そしてこれまで投稿したすべての記事やプロダクトのデータをJSON形式でエクスポート（ダウンロード）できます。")}
                     </p>
-                    <a
-                        href="/api/user/export"
-                        download
-                        className="editor-btn editor-btn-secondary"
-                        style={{ display: "inline-block", textAlign: "center", textDecoration: "none" }}
-                    >
-                        {t("データをエクスポート")}
-                    </a>
+                    <div style={{ display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap" }}>
+                        <a
+                            href="/api/user/export"
+                            download
+                            className="editor-btn editor-btn-secondary"
+                            style={{ display: "inline-block", textAlign: "center", textDecoration: "none" }}
+                        >
+                            {t("データをエクスポート")}
+                        </a>
+                        <button
+                            type="button"
+                            className="editor-btn editor-btn-danger"
+                            onClick={() => {
+                                setRestoreConfirmed(false);
+                                setShowRestoreModal(true);
+                            }}
+                        >
+                            {restoreButtonLabel}
+                        </button>
+                        <input
+                            ref={restoreInputRef}
+                            type="file"
+                            accept="application/json,.json"
+                            style={{ display: "none" }}
+                            onChange={(event) => {
+                                void handleRestoreFileChange(event);
+                            }}
+                        />
+                    </div>
                 </section>
 
                 {/* 危険ゾーン */}
@@ -629,6 +809,42 @@ export default function SettingsPage() {
                         {t("アカウントを削除すると、すべての投稿データも完全に削除されます。")}
                     </p>
                 </section>
+
+                {showRestoreModal ? (
+                    <div className="restore-modal-backdrop" onClick={closeRestoreModal}>
+                        <div className="restore-modal-card" onClick={(event) => event.stopPropagation()}>
+                            <h3 className="restore-modal-title">{restoreDialogTitle}</h3>
+                            <p className="restore-modal-copy">{restoreDialogMessage}</p>
+                            <label className="restore-modal-check">
+                                <input
+                                    type="checkbox"
+                                    checked={restoreConfirmed}
+                                    onChange={(event) => setRestoreConfirmed(event.target.checked)}
+                                    disabled={restoring}
+                                />
+                                <span>{restoreConfirmLabel}</span>
+                            </label>
+                            <div className="restore-modal-actions">
+                                <button
+                                    type="button"
+                                    className="editor-btn editor-btn-secondary"
+                                    onClick={closeRestoreModal}
+                                    disabled={restoring}
+                                >
+                                    {restoreCancelLabel}
+                                </button>
+                                <button
+                                    type="button"
+                                    className="editor-btn editor-btn-danger"
+                                    onClick={() => restoreInputRef.current?.click()}
+                                    disabled={!restoreConfirmed || restoring}
+                                >
+                                    {restoring ? restoreLoadingLabel : restoreSelectLabel}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                ) : null}
             </div>
         </>
     );

@@ -259,8 +259,12 @@ function writeStoredTheme(userRef: string, theme: ThemeName, customColor: string
 type ThemeContextType = {
     theme: ThemeName;
     customColor: string;
+    committedTheme: ThemeName;
+    committedCustomColor: string;
     setTheme: (nextTheme: ThemeName) => void;
     setCustomColor: (nextColor: string) => void;
+    commitTheme: (nextTheme?: ThemeName, nextColor?: string) => void;
+    resetTheme: () => void;
 };
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
@@ -269,6 +273,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     const { data: session, status } = useSession();
     const [theme, setThemeState] = useState<ThemeName>(DEFAULT_THEME);
     const [customColor, setCustomColorState] = useState(DEFAULT_CUSTOM_COLOR);
+    const [committedTheme, setCommittedTheme] = useState<ThemeName>(DEFAULT_THEME);
+    const [committedCustomColor, setCommittedCustomColor] = useState(DEFAULT_CUSTOM_COLOR);
     const serverThemeRequestedUserRef = useRef<string | null>(null);
 
     useEffect(() => {
@@ -284,6 +290,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
             queueMicrotask(() => {
                 setThemeState(DEFAULT_THEME);
                 setCustomColorState(DEFAULT_CUSTOM_COLOR);
+                setCommittedTheme(DEFAULT_THEME);
+                setCommittedCustomColor(DEFAULT_CUSTOM_COLOR);
             });
             return;
         }
@@ -297,6 +305,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
             queueMicrotask(() => {
                 setThemeState(cachedTheme.theme);
                 setCustomColorState(cachedTheme.customColor);
+                setCommittedTheme(cachedTheme.theme);
+                setCommittedCustomColor(cachedTheme.customColor);
             });
         }
 
@@ -316,28 +326,48 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
             setThemeState(nextTheme);
             setCustomColorState(nextColor);
+            setCommittedTheme(nextTheme);
+            setCommittedCustomColor(nextColor);
             writeStoredTheme(userRef, nextTheme, nextColor);
         })();
     }, [session, status]);
 
     const setTheme = (nextTheme: ThemeName) => {
         setThemeState(nextTheme);
-        const userRef = getSessionThemeUserRef(session);
-        if (userRef) {
-            writeStoredTheme(userRef, nextTheme, customColor);
-        }
     };
 
     const setCustomColor = (nextColor: string) => {
         const normalized = normalizeHex(nextColor);
         setCustomColorState(normalized);
+    };
+
+    const commitTheme = (nextTheme = theme, nextColor = customColor) => {
+        const normalizedColor = normalizeHex(nextColor);
+        setThemeState(nextTheme);
+        setCustomColorState(normalizedColor);
+        setCommittedTheme(nextTheme);
+        setCommittedCustomColor(normalizedColor);
         const userRef = getSessionThemeUserRef(session);
         if (userRef) {
-            writeStoredTheme(userRef, theme, normalized);
+            writeStoredTheme(userRef, nextTheme, normalizedColor);
         }
     };
 
-    const value = { theme, customColor, setTheme, setCustomColor };
+    const resetTheme = () => {
+        setThemeState(committedTheme);
+        setCustomColorState(committedCustomColor);
+    };
+
+    const value = {
+        theme,
+        customColor,
+        committedTheme,
+        committedCustomColor,
+        setTheme,
+        setCustomColor,
+        commitTheme,
+        resetTheme,
+    };
 
     return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }

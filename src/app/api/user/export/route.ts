@@ -5,6 +5,13 @@ import { prisma } from "@/lib/db";
 import { resolveSessionUserId } from "@/lib/sessionUser";
 import { withShortPostTable } from "@/lib/shortPosts";
 
+type DmSetting = "OPEN" | "PR_ONLY" | "CLOSED";
+type ThemeName = "default" | "lightblue" | "sand" | "apricot" | "white" | "black" | "custom";
+
+const DEFAULT_DM_SETTING: DmSetting = "OPEN";
+const DEFAULT_THEME: ThemeName = "default";
+const DEFAULT_THEME_CUSTOM_COLOR = "#925c5c";
+
 export async function GET(request: NextRequest) {
     const session = await auth();
     const userId = await resolveSessionUserId(session);
@@ -25,18 +32,51 @@ export async function GET(request: NextRequest) {
         }
 
         let parsedLinks = [];
+        let parsedDmSetting: DmSetting = DEFAULT_DM_SETTING;
+        let parsedTheme: ThemeName = DEFAULT_THEME;
+        let parsedThemeCustomColor = DEFAULT_THEME_CUSTOM_COLOR;
         try {
             if ((user as any).links) {
                 const rawParsed = JSON.parse((user as any).links as string);
                 if (Array.isArray(rawParsed)) {
                     parsedLinks = rawParsed;
                 } else if (rawParsed && typeof rawParsed === "object") {
-                    const candidate = rawParsed as { items?: unknown; links?: unknown };
+                    const candidate = rawParsed as {
+                        items?: unknown;
+                        links?: unknown;
+                        dmSetting?: unknown;
+                        theme?: unknown;
+                        themeCustomColor?: unknown;
+                    };
                     parsedLinks = Array.isArray(candidate.items)
                         ? candidate.items
                         : Array.isArray(candidate.links)
                           ? candidate.links
                           : [];
+                    if (
+                        candidate.dmSetting === "OPEN" ||
+                        candidate.dmSetting === "PR_ONLY" ||
+                        candidate.dmSetting === "CLOSED"
+                    ) {
+                        parsedDmSetting = candidate.dmSetting;
+                    }
+                    if (
+                        candidate.theme === "default" ||
+                        candidate.theme === "lightblue" ||
+                        candidate.theme === "sand" ||
+                        candidate.theme === "apricot" ||
+                        candidate.theme === "white" ||
+                        candidate.theme === "black" ||
+                        candidate.theme === "custom"
+                    ) {
+                        parsedTheme = candidate.theme;
+                    }
+                    if (
+                        typeof candidate.themeCustomColor === "string" &&
+                        /^#?[0-9a-fA-F]{6}$/.test(candidate.themeCustomColor.trim())
+                    ) {
+                        parsedThemeCustomColor = `#${candidate.themeCustomColor.replace(/^#/, "").toLowerCase()}`;
+                    }
                 }
             }
         } catch { }
@@ -72,6 +112,9 @@ export async function GET(request: NextRequest) {
                 bio: (user as any).bio,
                 aboutMe: (user as any).aboutMe,
                 links: parsedLinks,
+                dmSetting: parsedDmSetting,
+                theme: parsedTheme,
+                themeCustomColor: parsedThemeCustomColor,
             },
             posts: user.posts.map((p: any) => ({
                 id: p.id,

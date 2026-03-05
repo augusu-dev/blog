@@ -40,6 +40,16 @@ type DirectMessage = {
     pending?: boolean;
 };
 
+function formatMessageTime(value: string): string {
+    if (!value) return "";
+
+    try {
+        return new Date(value).toLocaleString("ja-JP");
+    } catch {
+        return value;
+    }
+}
+
 export default function MessagesPage() {
     const { data: session, status } = useSession();
     const router = useRouter();
@@ -51,12 +61,12 @@ export default function MessagesPage() {
     const [draft, setDraft] = useState("");
     const [loadingThreads, setLoadingThreads] = useState(false);
     const [loadingMessages, setLoadingMessages] = useState(false);
-    const [sending, setSending] = useState(false);
     const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
     const [togglingGoodId, setTogglingGoodId] = useState<string | null>(null);
     const [goodPulseId, setGoodPulseId] = useState<string | null>(null);
     const [error, setError] = useState("");
     const [presetTarget, setPresetTarget] = useState("");
+    const [threadDrawerOpen, setThreadDrawerOpen] = useState(false);
 
     const currentUserId = (session?.user as { id?: string } | undefined)?.id ?? "";
     const sessionUser = session?.user as {
@@ -86,11 +96,9 @@ export default function MessagesPage() {
             };
 
             setThreads((prev) => [nextThread, ...prev.filter((thread) => thread.id !== otherUser.id)]);
-            if (!selectedUser) {
-                setSelectedUser(otherUser);
-            }
+            setSelectedUser((current) => current || otherUser);
         },
-        [currentUserId, selectedUser]
+        [currentUserId]
     );
 
     useEffect(() => {
@@ -109,6 +117,15 @@ export default function MessagesPage() {
             router.push("/login");
         }
     }, [router, status]);
+
+    useEffect(() => {
+        if (!threadDrawerOpen || typeof document === "undefined") return;
+        const originalOverflow = document.body.style.overflow;
+        document.body.style.overflow = "hidden";
+        return () => {
+            document.body.style.overflow = originalOverflow;
+        };
+    }, [threadDrawerOpen]);
 
     const loadThreads = useCallback(async () => {
         if (!currentUserId) return;
@@ -140,7 +157,7 @@ export default function MessagesPage() {
 
     useEffect(() => {
         if (!currentUserId) return;
-        loadThreads();
+        void loadThreads();
     }, [currentUserId, loadThreads]);
 
     useEffect(() => {
@@ -157,6 +174,7 @@ export default function MessagesPage() {
 
         const cachedUser = threads.find((thread) => thread.id === selectedUserId)?.user || null;
         setSelectedUser(cachedUser);
+        setThreadDrawerOpen(false);
 
         let active = true;
         setLoadingMessages(true);
@@ -209,13 +227,13 @@ export default function MessagesPage() {
             if (!res.ok) return;
             setMessages(Array.isArray(payload.messages) ? payload.messages : []);
         } catch {
-            // silent refresh failure
+            // ignore silent refresh failures
         }
     }, [selectedUserId]);
 
     const sendMessage = async () => {
         const content = draft.trim();
-        if (!selectedUserId || !content || sending) return;
+        if (!selectedUserId || !content) return;
 
         if (content.length > 10000) {
             setError("Message must be 10000 characters or fewer.");
@@ -254,11 +272,10 @@ export default function MessagesPage() {
         };
 
         setDraft("");
+        setError("");
         setMessages((prev) => [...prev, optimisticMessage]);
         syncThreadFromMessage(optimisticMessage);
 
-        setSending(true);
-        setError("");
         try {
             const res = await fetch("/api/direct-messages", {
                 method: "POST",
@@ -292,8 +309,6 @@ export default function MessagesPage() {
             setDraft((prev) => (prev ? prev : content));
             setError("Failed to send message.");
             void loadThreads();
-        } finally {
-            setSending(false);
         }
     };
 
@@ -369,7 +384,7 @@ export default function MessagesPage() {
 
     const deleteMessage = async (messageId: string) => {
         if (!messageId || deletingMessageId) return;
-        if (!confirm("このメッセージを取り消しますか？")) return;
+        if (!confirm("このメッセージを削除しますか？")) return;
 
         if (messageId.startsWith("temp-")) {
             setMessages((prev) => prev.filter((message) => message.id !== messageId));
@@ -424,21 +439,241 @@ export default function MessagesPage() {
                 </div>
             </nav>
 
-            <div className="editor-container" style={{ maxWidth: 1000 }}>
+            <div className="editor-container" style={{ maxWidth: 980 }}>
                 <h1 style={{ fontFamily: "var(--serif)", fontSize: 30, fontWeight: 400, marginBottom: 18 }}>DM</h1>
 
                 {error && <div className="login-message login-error" style={{ marginBottom: 12 }}>{error}</div>}
 
-                <div style={{ display: "grid", gridTemplateColumns: "280px 1fr", gap: 14 }}>
-                    <aside style={{ border: "1px solid var(--border)", borderRadius: 12, background: "var(--card)" }}>
-                        <div style={{ padding: "10px 12px", borderBottom: "1px solid var(--border)", fontSize: 12, color: "var(--text-soft)" }}>
-                            会話一覧
+                <section
+                    style={{
+                        border: "1px solid var(--border)",
+                        borderRadius: 14,
+                        background: "var(--card)",
+                        display: "flex",
+                        flexDirection: "column",
+                        minHeight: 560,
+                        overflow: "hidden",
+                    }}
+                >
+                    <div
+                        style={{
+                            padding: "12px 14px",
+                            borderBottom: "1px solid var(--border)",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: 12,
+                        }}
+                    >
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                            <button
+                                type="button"
+                                className="dm-thread-menu-btn"
+                                onClick={() => setThreadDrawerOpen(true)}
+                                aria-label="会話一覧を開く"
+                                title="会話一覧"
+                            >
+                                <span />
+                                <span />
+                                <span />
+                            </button>
+                            {selectedUser?.id ? (
+                                <Link
+                                    href={`/user/${encodeURIComponent(selectedUser.userId || selectedUser.id)}`}
+                                    style={{ textDecoration: "none" }}
+                                >
+                                    <div
+                                        style={{
+                                            width: 28,
+                                            height: 28,
+                                            borderRadius: "50%",
+                                            border: "1px solid var(--border)",
+                                            background: "var(--bg-soft)",
+                                            color: "var(--azuki)",
+                                            overflow: "hidden",
+                                            display: "flex",
+                                            alignItems: "center",
+                                            justifyContent: "center",
+                                            fontSize: 11,
+                                            fontWeight: 600,
+                                            flexShrink: 0,
+                                        }}
+                                    >
+                                        {selectedUser.image ? (
+                                            <img
+                                                src={selectedUser.image}
+                                                alt={selectedUser.name || "user"}
+                                                style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                                            />
+                                        ) : (
+                                            (selectedUser.name || selectedUser.email || "U").charAt(0).toUpperCase()
+                                        )}
+                                    </div>
+                                </Link>
+                            ) : null}
+                            <div style={{ minWidth: 0 }}>
+                                <div style={{ fontSize: 12, color: "var(--text-soft)", marginBottom: 1 }}>会話先</div>
+                                <div
+                                    style={{
+                                        fontSize: 14,
+                                        color: "var(--text)",
+                                        whiteSpace: "nowrap",
+                                        overflow: "hidden",
+                                        textOverflow: "ellipsis",
+                                    }}
+                                >
+                                    {selectedUser ? (selectedUser.name || selectedUser.email || selectedUser.id) : "会話相手を選択してください"}
+                                </div>
+                            </div>
                         </div>
-                        <div style={{ maxHeight: 520, overflow: "auto" }}>
+                        <button
+                            type="button"
+                            className="editor-btn editor-btn-secondary"
+                            style={{ padding: "6px 10px", fontSize: 12 }}
+                            onClick={() => setThreadDrawerOpen(true)}
+                        >
+                            会話一覧
+                        </button>
+                    </div>
+
+                    <div style={{ flex: 1, overflow: "auto", padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+                        {loadingMessages ? (
+                            <p style={{ fontSize: 12, color: "var(--text-soft)" }}>読み込み中...</p>
+                        ) : !selectedUserId ? (
+                            <p style={{ fontSize: 12, color: "var(--text-soft)" }}>左上の三本線から会話相手を選んでください。</p>
+                        ) : messages.length === 0 ? (
+                            <p style={{ fontSize: 12, color: "var(--text-soft)" }}>まだメッセージはありません。</p>
+                        ) : (
+                            messages.map((message) => {
+                                const mine = message.senderId === currentUserId;
+                                const isPending = !!message.pending || message.id.startsWith("temp-");
+                                const deletingThis = deletingMessageId === message.id;
+                                const togglingThis = togglingGoodId === message.id;
+                                const goodCount = Number(message.goodCount || 0);
+
+                                return (
+                                    <div
+                                        key={message.id}
+                                        style={{
+                                            alignSelf: mine ? "flex-end" : "flex-start",
+                                            maxWidth: "min(78%, 640px)",
+                                        }}
+                                    >
+                                        <div
+                                            style={{
+                                                border: "1px solid var(--border)",
+                                                background: mine ? "rgba(155,107,107,0.08)" : "var(--bg-card)",
+                                                borderRadius: 12,
+                                                padding: "10px 12px",
+                                                fontSize: 13,
+                                                lineHeight: 1.65,
+                                                whiteSpace: "pre-wrap",
+                                                opacity: isPending ? 0.88 : 1,
+                                            }}
+                                        >
+                                            {message.content}
+                                        </div>
+                                        <div
+                                            style={{
+                                                display: "flex",
+                                                alignItems: "center",
+                                                justifyContent: mine ? "flex-end" : "flex-start",
+                                                gap: 8,
+                                                marginTop: 4,
+                                                flexWrap: "wrap",
+                                            }}
+                                        >
+                                            <span style={{ fontSize: 10, color: "var(--text-soft)" }}>
+                                                {formatMessageTime(message.createdAt)}
+                                            </span>
+                                            {!mine && !isPending ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => void toggleGood(message.id)}
+                                                    disabled={togglingThis}
+                                                    className="editor-btn editor-btn-secondary"
+                                                    style={{
+                                                        padding: "2px 9px",
+                                                        fontSize: 11,
+                                                        borderColor: message.likedByMe ? "var(--azuki)" : undefined,
+                                                        color: message.likedByMe ? "var(--azuki-deep)" : undefined,
+                                                        background: message.likedByMe ? "rgba(155,107,107,0.1)" : undefined,
+                                                        transform: goodPulseId === message.id ? "scale(1.08)" : "scale(1)",
+                                                        transition: "transform 0.18s ease, background 0.18s ease",
+                                                    }}
+                                                >
+                                                    {goodCount > 0 ? `👍 ${goodCount}` : "👍"}
+                                                </button>
+                                            ) : null}
+                                            {mine && goodCount > 0 ? (
+                                                <span style={{ fontSize: 11, color: "var(--azuki)" }}>{`👍 ${goodCount}`}</span>
+                                            ) : null}
+                                            {mine && !isPending ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => void deleteMessage(message.id)}
+                                                    disabled={deletingThis}
+                                                    className="editor-btn editor-btn-secondary"
+                                                    style={{ padding: "2px 7px", fontSize: 10 }}
+                                                >
+                                                    {deletingThis ? "削除中..." : "削除"}
+                                                </button>
+                                            ) : null}
+                                        </div>
+                                    </div>
+                                );
+                            })
+                        )}
+                    </div>
+
+                    <div style={{ borderTop: "1px solid var(--border)", padding: 12 }}>
+                        <textarea
+                            className="login-input"
+                            rows={3}
+                            value={draft}
+                            onChange={(event) => setDraft(event.target.value)}
+                            placeholder={selectedUserId ? "メッセージを入力..." : "会話相手を選択してください"}
+                            disabled={!selectedUserId}
+                            style={{ marginBottom: 8, resize: "vertical", fontFamily: "var(--sans)" }}
+                        />
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+                            <span style={{ fontSize: 11, color: "var(--text-soft)" }}>{draft.length}/10000</span>
+                            <button
+                                type="button"
+                                className="editor-btn editor-btn-primary"
+                                disabled={!selectedUserId || !draft.trim()}
+                                onClick={sendMessage}
+                            >
+                                送信
+                            </button>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            {threadDrawerOpen ? (
+                <div className="dm-thread-drawer-backdrop" onClick={() => setThreadDrawerOpen(false)}>
+                    <aside className="dm-thread-drawer" onClick={(event) => event.stopPropagation()}>
+                        <div className="dm-thread-drawer-header">
+                            <div>
+                                <div style={{ fontSize: 12, color: "var(--text-soft)", marginBottom: 2 }}>DM</div>
+                                <div style={{ fontSize: 16, color: "var(--text)", fontWeight: 600 }}>会話一覧</div>
+                            </div>
+                            <button
+                                type="button"
+                                className="dm-thread-close-btn"
+                                onClick={() => setThreadDrawerOpen(false)}
+                                aria-label="閉じる"
+                            >
+                                ×
+                            </button>
+                        </div>
+
+                        <div style={{ padding: "0 12px 12px" }}>
                             {loadingThreads ? (
-                                <p style={{ fontSize: 12, color: "var(--text-soft)", padding: 12 }}>読み込み中...</p>
+                                <p style={{ fontSize: 12, color: "var(--text-soft)", padding: "8px 2px" }}>読み込み中...</p>
                             ) : threads.length === 0 ? (
-                                <p style={{ fontSize: 12, color: "var(--text-soft)", padding: 12 }}>会話履歴はありません。</p>
+                                <p style={{ fontSize: 12, color: "var(--text-soft)", padding: "8px 2px" }}>会話履歴はありません。</p>
                             ) : (
                                 threads.map((thread) => {
                                     const active = selectedUserId === thread.id;
@@ -447,19 +682,25 @@ export default function MessagesPage() {
                                         <button
                                             key={thread.id}
                                             type="button"
-                                            onClick={() => setSelectedUserId(thread.id)}
+                                            onClick={() => {
+                                                setSelectedUserId(thread.id);
+                                                setThreadDrawerOpen(false);
+                                            }}
+                                            className="dm-thread-row"
                                             style={{
-                                                width: "100%",
-                                                textAlign: "left",
-                                                border: "none",
-                                                borderBottom: "1px solid var(--border)",
                                                 background: active ? "var(--bg-soft)" : "transparent",
-                                                padding: "10px 12px",
-                                                cursor: "pointer",
                                             }}
                                         >
                                             <div style={{ fontSize: 13, marginBottom: 3, color: "var(--text)" }}>{name}</div>
-                                            <div style={{ fontSize: 11, color: "var(--text-soft)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                            <div
+                                                style={{
+                                                    fontSize: 11,
+                                                    color: "var(--text-soft)",
+                                                    whiteSpace: "nowrap",
+                                                    overflow: "hidden",
+                                                    textOverflow: "ellipsis",
+                                                }}
+                                            >
                                                 {thread.lastMessage.content}
                                             </div>
                                         </button>
@@ -468,153 +709,8 @@ export default function MessagesPage() {
                             )}
                         </div>
                     </aside>
-
-                    <section style={{ border: "1px solid var(--border)", borderRadius: 12, background: "var(--card)", display: "flex", flexDirection: "column", minHeight: 520 }}>
-                        <div style={{ padding: "10px 12px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                {selectedUser?.id ? (
-                                    <Link href={`/user/${encodeURIComponent(selectedUser.userId || selectedUser.id)}`} style={{ textDecoration: "none" }}>
-                                        <div
-                                            style={{
-                                                width: 24,
-                                                height: 24,
-                                                borderRadius: "50%",
-                                                border: "1px solid var(--border)",
-                                                background: "var(--bg-soft)",
-                                                color: "var(--azuki)",
-                                                overflow: "hidden",
-                                                display: "flex",
-                                                alignItems: "center",
-                                                justifyContent: "center",
-                                                fontSize: 11,
-                                                fontWeight: 600,
-                                            }}
-                                        >
-                                            {selectedUser.image ? (
-                                                <img src={selectedUser.image} alt={selectedUser.name || "user"} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                                            ) : (
-                                                (selectedUser.name || selectedUser.email || "U").charAt(0).toUpperCase()
-                                            )}
-                                        </div>
-                                    </Link>
-                                ) : null}
-                                <div style={{ fontSize: 13, color: "var(--text)" }}>
-                                    {selectedUser ? (selectedUser.name || selectedUser.email || selectedUser.id) : "会話相手を選択"}
-                                </div>
-                            </div>
-                        </div>
-
-                        <div style={{ flex: 1, overflow: "auto", padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-                            {loadingMessages ? (
-                                <p style={{ fontSize: 12, color: "var(--text-soft)" }}>読み込み中...</p>
-                            ) : !selectedUserId ? (
-                                <p style={{ fontSize: 12, color: "var(--text-soft)" }}>左の一覧からユーザーを選んでください。</p>
-                            ) : messages.length === 0 ? (
-                                <p style={{ fontSize: 12, color: "var(--text-soft)" }}>まだメッセージはありません。</p>
-                            ) : (
-                                messages.map((message) => {
-                                    const mine = message.senderId === currentUserId;
-                                    const isPending = !!message.pending || message.id.startsWith("temp-");
-                                    const deletingThis = deletingMessageId === message.id;
-                                    const togglingGood = togglingGoodId === message.id;
-                                    const showGoodButton = !mine && !isPending;
-                                    const showGoodCount = mine && Number(message.goodCount || 0) > 0;
-                                    return (
-                                        <div key={message.id} style={{ alignSelf: mine ? "flex-end" : "flex-start", maxWidth: "78%" }}>
-                                            <div
-                                                style={{
-                                                    border: "1px solid var(--border)",
-                                                    background: mine ? "rgba(155,107,107,0.08)" : "var(--bg-card)",
-                                                    borderRadius: 10,
-                                                    padding: "8px 10px",
-                                                    fontSize: 13,
-                                                    lineHeight: 1.6,
-                                                    whiteSpace: "pre-wrap",
-                                                }}
-                                            >
-                                                {message.content}
-                                            </div>
-                                            <div
-                                                style={{
-                                                    display: "flex",
-                                                    alignItems: "center",
-                                                    justifyContent: mine ? "flex-end" : "flex-start",
-                                                    gap: 8,
-                                                    marginTop: 2,
-                                                }}
-                                            >
-                                                <span style={{ fontSize: 10, color: "var(--text-soft)" }}>
-                                                    {isPending
-                                                        ? "送信中..."
-                                                        : new Date(message.createdAt).toLocaleString("ja-JP")}
-                                                </span>
-                                                {showGoodButton ? (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => void toggleGood(message.id)}
-                                                        disabled={togglingGood}
-                                                        className="editor-btn editor-btn-secondary"
-                                                        style={{
-                                                            padding: "1px 8px",
-                                                            fontSize: 10,
-                                                            borderColor: message.likedByMe ? "var(--azuki)" : undefined,
-                                                            color: message.likedByMe ? "var(--azuki-deep)" : undefined,
-                                                            background: message.likedByMe ? "rgba(155,107,107,0.1)" : undefined,
-                                                            transform: goodPulseId === message.id ? "scale(1.08)" : "scale(1)",
-                                                            transition: "transform 0.18s ease, background 0.18s ease",
-                                                        }}
-                                                    >
-                                                        {`${message.likedByMe ? "Good" : "+Good"} ${Number(message.goodCount || 0)}`}
-                                                    </button>
-                                                ) : null}
-                                                {showGoodCount ? (
-                                                    <span style={{ fontSize: 10, color: "var(--azuki)" }}>
-                                                        {`Good ${Number(message.goodCount || 0)}`}
-                                                    </span>
-                                                ) : null}
-                                                {mine && !isPending ? (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => void deleteMessage(message.id)}
-                                                        disabled={deletingThis}
-                                                        className="editor-btn editor-btn-secondary"
-                                                        style={{ padding: "1px 6px", fontSize: 10 }}
-                                                    >
-                                                        {deletingThis ? "取消中..." : "取り消し"}
-                                                    </button>
-                                                ) : null}
-                                            </div>
-                                        </div>
-                                    );
-                                })
-                            )}
-                        </div>
-
-                        <div style={{ borderTop: "1px solid var(--border)", padding: 10 }}>
-                            <textarea
-                                className="login-input"
-                                rows={3}
-                                value={draft}
-                                onChange={(e) => setDraft(e.target.value)}
-                                placeholder={selectedUserId ? "メッセージを入力..." : "会話相手を選択してください"}
-                                disabled={!selectedUserId || sending}
-                                style={{ marginBottom: 8, resize: "vertical", fontFamily: "var(--sans)" }}
-                            />
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                                <span style={{ fontSize: 11, color: "var(--text-soft)" }}>{draft.length}/10000</span>
-                                <button
-                                    type="button"
-                                    className="editor-btn editor-btn-primary"
-                                    disabled={!selectedUserId || sending || !draft.trim()}
-                                    onClick={sendMessage}
-                                >
-                                    {sending ? "送信中..." : "送信"}
-                                </button>
-                            </div>
-                        </div>
-                    </section>
                 </div>
-            </div>
+            ) : null}
         </>
     );
 }
