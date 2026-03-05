@@ -95,7 +95,17 @@ export default function SettingsPage() {
             const res = await fetch("/api/user/settings", {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ name, userId, bio, aboutMe, links, image, headerImage }),
+                body: JSON.stringify({
+                    name,
+                    userId,
+                    bio,
+                    aboutMe,
+                    links,
+                    image,
+                    headerImage,
+                    theme,
+                    themeCustomColor: customColor,
+                }),
             });
             const payload = await res.json().catch(() => ({}));
             if (res.ok) {

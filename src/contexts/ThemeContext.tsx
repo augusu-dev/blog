@@ -1,6 +1,7 @@
 "use client";
 
-import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, ReactNode, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { useSession } from "next-auth/react";
 
 export type ThemeName = "default" | "lightblue" | "sand" | "apricot" | "white" | "black" | "custom";
 
@@ -22,6 +23,7 @@ type ThemeVars = {
 
 const STORAGE_THEME_KEY = "app-theme";
 const STORAGE_CUSTOM_COLOR_KEY = "app-theme-custom-color";
+const DEFAULT_THEME: ThemeName = "default";
 const DEFAULT_CUSTOM_COLOR = "#925c5c";
 
 const PRESET_THEMES: Record<Exclude<ThemeName, "custom">, ThemeVars> = {
@@ -220,6 +222,7 @@ type ThemeContextType = {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
+    const { data: session, status } = useSession();
     const [theme, setThemeState] = useState<ThemeName>(() => {
         if (typeof window === "undefined") return "default";
         const storedTheme = localStorage.getItem(STORAGE_THEME_KEY);
@@ -236,12 +239,65 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         const storedColor = localStorage.getItem(STORAGE_CUSTOM_COLOR_KEY);
         return storedColor ? normalizeHex(storedColor) : DEFAULT_CUSTOM_COLOR;
     });
+    const [serverThemeLoaded, setServerThemeLoaded] = useState(false);
+    const serverThemeRequestedUserRef = useRef<string | null>(null);
 
     useEffect(() => {
         const themeVars = theme === "custom" ? buildCustomTheme(customColor) : PRESET_THEMES[theme];
         applyThemeVars(themeVars);
         localStorage.setItem(STORAGE_THEME_KEY, theme);
+        localStorage.setItem(STORAGE_CUSTOM_COLOR_KEY, customColor);
     }, [theme, customColor]);
+
+    useEffect(() => {
+        const sessionUserId = session?.user?.id || null;
+        if (
+            status !== "authenticated" ||
+            !sessionUserId ||
+            serverThemeRequestedUserRef.current === sessionUserId
+        ) {
+            if (status === "unauthenticated") {
+                setServerThemeLoaded(false);
+                serverThemeRequestedUserRef.current = null;
+            }
+            return;
+        }
+
+        serverThemeRequestedUserRef.current = sessionUserId;
+
+        void (async () => {
+            try {
+                const res = await fetch("/api/user/settings");
+                const data = await res.json().catch(() => ({} as { theme?: unknown; themeCustomColor?: unknown }));
+                if (!res.ok) return;
+
+                const nextTheme = (parseThemeName(data.theme) || DEFAULT_THEME) as ThemeName;
+                const nextColor = parseThemeColor(data.themeCustomColor) || DEFAULT_CUSTOM_COLOR;
+
+                setThemeState(nextTheme);
+                setCustomColorState(nextColor);
+            } finally {
+                setServerThemeLoaded(true);
+            }
+        })();
+    }, [status, session?.user?.id]);
+
+    useEffect(() => {
+        if (status !== "authenticated" || !session?.user?.id || !serverThemeLoaded) {
+            return;
+        }
+
+        void fetch("/api/user/settings", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                theme,
+                themeCustomColor: customColor,
+            }),
+        }).catch(() => {
+            // Keep local theme if sync fails.
+        });
+    }, [theme, customColor, status, session?.user?.id, serverThemeLoaded]);
 
     const setTheme = (nextTheme: ThemeName) => {
         setThemeState(nextTheme);
@@ -260,6 +316,28 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     );
 
     return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
+}
+
+function parseThemeName(value: unknown): ThemeName | undefined {
+    if (
+        value === "default" ||
+        value === "lightblue" ||
+        value === "sand" ||
+        value === "apricot" ||
+        value === "white" ||
+        value === "black" ||
+        value === "custom"
+    ) {
+        return value;
+    }
+    return undefined;
+}
+
+function parseThemeColor(value: unknown): string | undefined {
+    if (typeof value !== "string") return undefined;
+    const trimmed = value.trim();
+    if (!/^#?[0-9a-fA-F]{6}$/.test(trimmed)) return undefined;
+    return `#${trimmed.replace(/^#/, "").toLowerCase()}`;
 }
 
 export function useTheme() {

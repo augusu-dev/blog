@@ -9,6 +9,9 @@ import {
 
 type DmSetting = "OPEN" | "PR_ONLY" | "CLOSED";
 const DEFAULT_DM_SETTING: DmSetting = "OPEN";
+type ThemeName = "default" | "lightblue" | "sand" | "apricot" | "white" | "black" | "custom";
+const DEFAULT_THEME: ThemeName = "default";
+const DEFAULT_THEME_CUSTOM_COLOR = "#925c5c";
 
 const USER_SETTINGS_SELECT = {
     id: true,
@@ -30,40 +33,113 @@ function parseDmSetting(value: unknown): DmSetting | undefined {
     return undefined;
 }
 
-function unpackLinks(raw: string | null | undefined): { links: unknown[]; dmSetting: DmSetting } {
+function parseThemeName(value: unknown): ThemeName | undefined {
+    if (value === undefined) return undefined;
+    if (
+        value === "default" ||
+        value === "lightblue" ||
+        value === "sand" ||
+        value === "apricot" ||
+        value === "white" ||
+        value === "black" ||
+        value === "custom"
+    ) {
+        return value;
+    }
+    return undefined;
+}
+
+function parseThemeColor(value: unknown): string | undefined {
+    if (value === undefined) return undefined;
+    if (typeof value !== "string") return undefined;
+    const trimmed = value.trim();
+    const match = trimmed.match(/^#?[0-9a-fA-F]{6}$/);
+    if (!match) return undefined;
+    return `#${trimmed.replace(/^#/, "").toLowerCase()}`;
+}
+
+function unpackLinks(raw: string | null | undefined): {
+    links: unknown[];
+    dmSetting: DmSetting;
+    theme: ThemeName;
+    themeCustomColor: string;
+} {
     if (!raw) {
-        return { links: [], dmSetting: DEFAULT_DM_SETTING };
+        return {
+            links: [],
+            dmSetting: DEFAULT_DM_SETTING,
+            theme: DEFAULT_THEME,
+            themeCustomColor: DEFAULT_THEME_CUSTOM_COLOR,
+        };
     }
 
     try {
         const parsed = JSON.parse(raw);
 
         if (Array.isArray(parsed)) {
-            return { links: parsed, dmSetting: DEFAULT_DM_SETTING };
+            return {
+                links: parsed,
+                dmSetting: DEFAULT_DM_SETTING,
+                theme: DEFAULT_THEME,
+                themeCustomColor: DEFAULT_THEME_CUSTOM_COLOR,
+            };
         }
 
         if (parsed && typeof parsed === "object") {
-            const candidate = parsed as { items?: unknown; links?: unknown; dmSetting?: unknown };
+            const candidate = parsed as {
+                items?: unknown;
+                links?: unknown;
+                dmSetting?: unknown;
+                theme?: unknown;
+                themeCustomColor?: unknown;
+            };
             const links = Array.isArray(candidate.items)
                 ? candidate.items
                 : Array.isArray(candidate.links)
                   ? candidate.links
                   : [];
             const dmSetting = parseDmSetting(candidate.dmSetting) || DEFAULT_DM_SETTING;
-            return { links, dmSetting };
+            const theme = parseThemeName(candidate.theme) || DEFAULT_THEME;
+            const themeCustomColor =
+                parseThemeColor(candidate.themeCustomColor) || DEFAULT_THEME_CUSTOM_COLOR;
+            return { links, dmSetting, theme, themeCustomColor };
         }
     } catch {
-        return { links: [], dmSetting: DEFAULT_DM_SETTING };
+        return {
+            links: [],
+            dmSetting: DEFAULT_DM_SETTING,
+            theme: DEFAULT_THEME,
+            themeCustomColor: DEFAULT_THEME_CUSTOM_COLOR,
+        };
     }
 
-    return { links: [], dmSetting: DEFAULT_DM_SETTING };
+    return {
+        links: [],
+        dmSetting: DEFAULT_DM_SETTING,
+        theme: DEFAULT_THEME,
+        themeCustomColor: DEFAULT_THEME_CUSTOM_COLOR,
+    };
 }
 
-function packLinks(links: unknown[], dmSetting: DmSetting): string {
-    if (dmSetting === DEFAULT_DM_SETTING) {
+function packLinks(
+    links: unknown[],
+    dmSetting: DmSetting,
+    theme: ThemeName,
+    themeCustomColor: string
+): string {
+    if (
+        dmSetting === DEFAULT_DM_SETTING &&
+        theme === DEFAULT_THEME &&
+        themeCustomColor === DEFAULT_THEME_CUSTOM_COLOR
+    ) {
         return JSON.stringify(links);
     }
-    return JSON.stringify({ items: links, dmSetting });
+    return JSON.stringify({
+        items: links,
+        dmSetting,
+        theme,
+        themeCustomColor,
+    });
 }
 
 export async function GET() {
@@ -86,6 +162,8 @@ export async function GET() {
         ...user,
         links: unpacked.links,
         dmSetting: unpacked.dmSetting,
+        theme: unpacked.theme,
+        themeCustomColor: unpacked.themeCustomColor,
     });
 }
 
@@ -98,13 +176,42 @@ export async function PUT(request: NextRequest) {
 
     await ensureUserIdForUser(userId);
 
-    const { name, bio, aboutMe, links, image, headerImage, dmSetting, userId: userIdInput } = await request.json();
+    const {
+        name,
+        bio,
+        aboutMe,
+        links,
+        image,
+        headerImage,
+        dmSetting,
+        theme,
+        themeCustomColor,
+        userId: userIdInput,
+    } = await request.json();
     const parsedDmSetting = parseDmSetting(dmSetting);
+    const parsedTheme = parseThemeName(theme);
+    const parsedThemeCustomColor = parseThemeColor(themeCustomColor);
     const normalizedUserId = userIdInput === undefined ? undefined : normalizeUserIdInput(userIdInput);
 
     if (dmSetting !== undefined && !parsedDmSetting) {
         return NextResponse.json(
             { error: "Invalid dmSetting. Use OPEN, PR_ONLY, or CLOSED." },
+            { status: 400 }
+        );
+    }
+
+    if (theme !== undefined && !parsedTheme) {
+        return NextResponse.json(
+            {
+                error: "Invalid theme. Use default, lightblue, sand, apricot, white, black, or custom.",
+            },
+            { status: 400 }
+        );
+    }
+
+    if (themeCustomColor !== undefined && !parsedThemeCustomColor) {
+        return NextResponse.json(
+            { error: "Invalid themeCustomColor. Use hex color like #925c5c." },
             { status: 400 }
         );
     }
@@ -142,6 +249,8 @@ export async function PUT(request: NextRequest) {
     const currentUnpacked = unpackLinks(current?.links);
     const nextLinks = Array.isArray(links) ? links : currentUnpacked.links;
     const nextDmSetting = parsedDmSetting || currentUnpacked.dmSetting;
+    const nextTheme = parsedTheme || currentUnpacked.theme;
+    const nextThemeCustomColor = parsedThemeCustomColor || currentUnpacked.themeCustomColor;
 
     const user = await prisma.user.update({
         where: { id: userId },
@@ -152,7 +261,7 @@ export async function PUT(request: NextRequest) {
             ...(image !== undefined && { image }),
             ...(headerImage !== undefined && { headerImage }),
             ...(normalizedUserId !== undefined && { userId: normalizedUserId }),
-            links: packLinks(nextLinks, nextDmSetting),
+            links: packLinks(nextLinks, nextDmSetting, nextTheme, nextThemeCustomColor),
         },
         select: USER_SETTINGS_SELECT,
     });
@@ -163,6 +272,8 @@ export async function PUT(request: NextRequest) {
         ...user,
         links: unpacked.links,
         dmSetting: unpacked.dmSetting,
+        theme: unpacked.theme,
+        themeCustomColor: unpacked.themeCustomColor,
     });
 }
 

@@ -94,10 +94,14 @@ body {
   font-size: 10px;
   background: var(--azuki);
   color: white;
-  padding: 2px 4px;
+  padding: 2px 5px;
   border-radius: 4px;
-  vertical-align: super;
-  margin-left: -2px;
+  vertical-align: middle;
+  margin-left: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
   font-family: var(--sans);
 }
 

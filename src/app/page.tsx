@@ -1,4 +1,4 @@
-/* eslint-disable */
+﻿/* eslint-disable */
 "use client";
 
 import { useEffect, useState } from "react";
@@ -167,7 +167,7 @@ export default function HomePage() {
       {/* ─── Navbar ─── */}
       <nav className="navbar" id="navbar" style={{ justifyContent: "space-between" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <Link href="/" className="nav-logo" style={{ textDecoration: "none" }}>
+          <Link href="/" className="nav-logo" style={{ textDecoration: "none", position: "static", left: "auto" }}>
             <img src="/images/a.png" alt="Next Blog" className="nav-logo-img" />
             {t("Next Blog")} <span className="beta-badge">β</span>
           </Link>
@@ -178,8 +178,7 @@ export default function HomePage() {
               style={{ textDecoration: "none", padding: "4px 10px", fontSize: 13 }}
               title="ピンしたユーザーの新着"
             >
-              👥
-            </Link>
+              👥</Link>
           ) : null}
         </div>
         <div className="nav-auth">

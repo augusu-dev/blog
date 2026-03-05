@@ -2,6 +2,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
@@ -37,6 +38,38 @@ function getAuthorLabel(author: ShortPostAuthor): string {
 
 function getAuthorHref(author: ShortPostAuthor): string {
     return `/user/${encodeURIComponent(author.userId || author.id)}`;
+}
+
+function renderTextWithLinks(content: string) {
+    const urlPattern = /(https?:\/\/[^\s<>"']+)/g;
+    const parts: ReactNode[] = [];
+    let lastIndex = 0;
+
+    for (const match of content.matchAll(urlPattern)) {
+        const matchedUrl = match[0];
+        const start = match.index ?? 0;
+        if (start > lastIndex) {
+            parts.push(content.slice(lastIndex, start));
+        }
+        parts.push(
+            <a
+                key={`${matchedUrl}-${start}`}
+                href={matchedUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: "var(--azuki)", textDecoration: "underline" }}
+            >
+                {matchedUrl}
+            </a>
+        );
+        lastIndex = start + matchedUrl.length;
+    }
+
+    if (lastIndex < content.length) {
+        parts.push(content.slice(lastIndex));
+    }
+
+    return parts.length > 0 ? parts : content;
 }
 
 export default function HomeShortPosts() {
@@ -192,7 +225,7 @@ export default function HomeShortPosts() {
                                         {getAuthorLabel(post.author)} ・ {formatDate(post.createdAt)}
                                     </p>
                                     <p style={{ margin: "4px 0 0", whiteSpace: "pre-wrap", lineHeight: 1.6, fontSize: 14 }}>
-                                        {post.content}
+                                        {renderTextWithLinks(post.content)}
                                     </p>
                                 </div>
                             </article>
