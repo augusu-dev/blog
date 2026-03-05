@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, ReactNode, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, ReactNode, useContext, useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 
 export type ThemeName = "default" | "lightblue" | "sand" | "apricot" | "white" | "black" | "custom";
@@ -212,6 +212,50 @@ function applyThemeVars(vars: ThemeVars): void {
     root.style.setProperty("--white", vars.white);
 }
 
+function getThemeStorageKey(userRef: string): string {
+    return `${STORAGE_THEME_KEY}:${userRef}`;
+}
+
+function getCustomColorStorageKey(userRef: string): string {
+    return `${STORAGE_CUSTOM_COLOR_KEY}:${userRef}`;
+}
+
+function getSessionThemeUserRef(
+    session: ReturnType<typeof useSession>["data"]
+): string | null {
+    const sessionUser = session?.user as { id?: string | null; userId?: string | null } | undefined;
+    const publicUserId = typeof sessionUser?.userId === "string" ? sessionUser.userId.trim() : "";
+    if (publicUserId) {
+        return publicUserId;
+    }
+    const userId = typeof sessionUser?.id === "string" ? sessionUser.id.trim() : "";
+    return userId || null;
+}
+
+function readStoredTheme(userRef: string): { theme: ThemeName; customColor: string } | null {
+    if (typeof window === "undefined") return null;
+
+    const storedTheme = localStorage.getItem(getThemeStorageKey(userRef));
+    const storedColor = localStorage.getItem(getCustomColorStorageKey(userRef));
+    const parsedTheme = parseThemeName(storedTheme);
+    const parsedColor = parseThemeColor(storedColor) || DEFAULT_CUSTOM_COLOR;
+
+    if (!parsedTheme && !storedColor) {
+        return null;
+    }
+
+    return {
+        theme: parsedTheme || DEFAULT_THEME,
+        customColor: parsedColor,
+    };
+}
+
+function writeStoredTheme(userRef: string, theme: ThemeName, customColor: string): void {
+    if (typeof window === "undefined") return;
+    localStorage.setItem(getThemeStorageKey(userRef), theme);
+    localStorage.setItem(getCustomColorStorageKey(userRef), customColor);
+}
+
 type ThemeContextType = {
     theme: ThemeName;
     customColor: string;
@@ -223,97 +267,77 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
     const { data: session, status } = useSession();
-    const [theme, setThemeState] = useState<ThemeName>(() => {
-        if (typeof window === "undefined") return "default";
-        const storedTheme = localStorage.getItem(STORAGE_THEME_KEY);
-        if (
-            storedTheme &&
-            ["default", "lightblue", "sand", "apricot", "white", "black", "custom"].includes(storedTheme)
-        ) {
-            return storedTheme as ThemeName;
-        }
-        return "default";
-    });
-    const [customColor, setCustomColorState] = useState(() => {
-        if (typeof window === "undefined") return DEFAULT_CUSTOM_COLOR;
-        const storedColor = localStorage.getItem(STORAGE_CUSTOM_COLOR_KEY);
-        return storedColor ? normalizeHex(storedColor) : DEFAULT_CUSTOM_COLOR;
-    });
-    const [serverThemeLoaded, setServerThemeLoaded] = useState(false);
+    const [theme, setThemeState] = useState<ThemeName>(DEFAULT_THEME);
+    const [customColor, setCustomColorState] = useState(DEFAULT_CUSTOM_COLOR);
     const serverThemeRequestedUserRef = useRef<string | null>(null);
 
     useEffect(() => {
         const themeVars = theme === "custom" ? buildCustomTheme(customColor) : PRESET_THEMES[theme];
         applyThemeVars(themeVars);
-        localStorage.setItem(STORAGE_THEME_KEY, theme);
-        localStorage.setItem(STORAGE_CUSTOM_COLOR_KEY, customColor);
     }, [theme, customColor]);
 
     useEffect(() => {
-        const sessionUserId = session?.user?.id || null;
-        if (
-            status !== "authenticated" ||
-            !sessionUserId ||
-            serverThemeRequestedUserRef.current === sessionUserId
-        ) {
-            if (status === "unauthenticated") {
-                setServerThemeLoaded(false);
-                serverThemeRequestedUserRef.current = null;
-            }
+        const userRef = getSessionThemeUserRef(session);
+
+        if (status === "unauthenticated") {
+            serverThemeRequestedUserRef.current = null;
+            queueMicrotask(() => {
+                setThemeState(DEFAULT_THEME);
+                setCustomColorState(DEFAULT_CUSTOM_COLOR);
+            });
             return;
         }
 
-        serverThemeRequestedUserRef.current = sessionUserId;
+        if (status !== "authenticated" || !userRef) {
+            return;
+        }
+
+        const cachedTheme = readStoredTheme(userRef);
+        if (cachedTheme) {
+            queueMicrotask(() => {
+                setThemeState(cachedTheme.theme);
+                setCustomColorState(cachedTheme.customColor);
+            });
+        }
+
+        if (serverThemeRequestedUserRef.current === userRef) {
+            return;
+        }
+
+        serverThemeRequestedUserRef.current = userRef;
 
         void (async () => {
-            try {
-                const res = await fetch("/api/user/settings");
-                const data = await res.json().catch(() => ({} as { theme?: unknown; themeCustomColor?: unknown }));
-                if (!res.ok) return;
+            const res = await fetch("/api/user/settings", { cache: "no-store" });
+            const data = await res.json().catch(() => ({} as { theme?: unknown; themeCustomColor?: unknown }));
+            if (!res.ok) return;
 
-                const nextTheme = (parseThemeName(data.theme) || DEFAULT_THEME) as ThemeName;
-                const nextColor = parseThemeColor(data.themeCustomColor) || DEFAULT_CUSTOM_COLOR;
+            const nextTheme = (parseThemeName(data.theme) || DEFAULT_THEME) as ThemeName;
+            const nextColor = parseThemeColor(data.themeCustomColor) || DEFAULT_CUSTOM_COLOR;
 
-                setThemeState(nextTheme);
-                setCustomColorState(nextColor);
-            } finally {
-                setServerThemeLoaded(true);
-            }
+            setThemeState(nextTheme);
+            setCustomColorState(nextColor);
+            writeStoredTheme(userRef, nextTheme, nextColor);
         })();
-    }, [status, session?.user?.id]);
-
-    useEffect(() => {
-        if (status !== "authenticated" || !session?.user?.id || !serverThemeLoaded) {
-            return;
-        }
-
-        void fetch("/api/user/settings", {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                theme,
-                themeCustomColor: customColor,
-            }),
-        }).catch(() => {
-            // Keep local theme if sync fails.
-        });
-    }, [theme, customColor, status, session?.user?.id, serverThemeLoaded]);
+    }, [session, status]);
 
     const setTheme = (nextTheme: ThemeName) => {
         setThemeState(nextTheme);
-        localStorage.setItem(STORAGE_THEME_KEY, nextTheme);
+        const userRef = getSessionThemeUserRef(session);
+        if (userRef) {
+            writeStoredTheme(userRef, nextTheme, customColor);
+        }
     };
 
     const setCustomColor = (nextColor: string) => {
         const normalized = normalizeHex(nextColor);
         setCustomColorState(normalized);
-        localStorage.setItem(STORAGE_CUSTOM_COLOR_KEY, normalized);
+        const userRef = getSessionThemeUserRef(session);
+        if (userRef) {
+            writeStoredTheme(userRef, theme, normalized);
+        }
     };
 
-    const value = useMemo(
-        () => ({ theme, customColor, setTheme, setCustomColor }),
-        [theme, customColor]
-    );
+    const value = { theme, customColor, setTheme, setCustomColor };
 
     return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }

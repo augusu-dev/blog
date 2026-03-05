@@ -3,7 +3,7 @@
 import { CSSProperties, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
-import { getDmUnreadRefreshEventName, getDmUnreadSince, markDmPrSeen } from "@/lib/dmUnreadClient";
+import { getDmUnreadRefreshEventName, getDmUnreadSince } from "@/lib/dmUnreadClient";
 
 type UnreadDmButtonProps = {
     href?: string;
@@ -30,12 +30,6 @@ export default function UnreadDmButton({
         }
 
         const since = getDmUnreadSince();
-        if (!since) {
-            markDmPrSeen();
-            setUnreadCount(0);
-            return;
-        }
-
         const url = since
             ? `/api/notifications/unread?since=${encodeURIComponent(since)}`
             : "/api/notifications/unread";

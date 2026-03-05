@@ -55,6 +55,28 @@ ALTER TABLE "DirectMessage"
 ALTER COLUMN "content" TYPE VARCHAR(10000)
 `;
 
+const CREATE_DIRECT_MESSAGE_GOOD_TABLE_SQL = `
+CREATE TABLE IF NOT EXISTS "DirectMessageGood" (
+  "id" TEXT NOT NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "messageId" TEXT NOT NULL,
+  "userId" TEXT NOT NULL,
+  CONSTRAINT "DirectMessageGood_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "DirectMessageGood_messageId_fkey" FOREIGN KEY ("messageId") REFERENCES "DirectMessage"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT "DirectMessageGood_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+`;
+
+const CREATE_DIRECT_MESSAGE_GOOD_UNIQUE_SQL = `
+CREATE UNIQUE INDEX IF NOT EXISTS "DirectMessageGood_messageId_userId_key"
+ON "DirectMessageGood"("messageId", "userId")
+`;
+
+const CREATE_DIRECT_MESSAGE_GOOD_INDEX_SQL = `
+CREATE INDEX IF NOT EXISTS "DirectMessageGood_messageId_createdAt_idx"
+ON "DirectMessageGood"("messageId", "createdAt")
+`;
+
 let schemaEnsured = false;
 let ensureSchemaPromise: Promise<void> | null = null;
 
@@ -98,6 +120,13 @@ export async function ensureDirectMessageCapacity(): Promise<void> {
     await prisma.$executeRawUnsafe(EXPAND_DIRECT_MESSAGE_CONTENT_SQL);
 }
 
+export async function ensureDirectMessageGoodSchema(): Promise<void> {
+    await ensureDirectMessageSchema();
+    await prisma.$executeRawUnsafe(CREATE_DIRECT_MESSAGE_GOOD_TABLE_SQL);
+    await prisma.$executeRawUnsafe(CREATE_DIRECT_MESSAGE_GOOD_UNIQUE_SQL);
+    await prisma.$executeRawUnsafe(CREATE_DIRECT_MESSAGE_GOOD_INDEX_SQL);
+}
+
 export async function withDirectMessageTable<T>(operation: () => Promise<T>): Promise<T> {
     try {
         return await operation();
@@ -108,5 +137,18 @@ export async function withDirectMessageTable<T>(operation: () => Promise<T>): Pr
     }
 
     await ensureDirectMessageSchema();
+    return operation();
+}
+
+export async function withDirectMessageGoodTable<T>(operation: () => Promise<T>): Promise<T> {
+    try {
+        return await operation();
+    } catch (error) {
+        if (!isMissingDirectMessageSchemaError(error)) {
+            throw error;
+        }
+    }
+
+    await ensureDirectMessageGoodSchema();
     return operation();
 }

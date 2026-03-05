@@ -6,55 +6,61 @@ import { reserveAvailableUserId } from "@/lib/userId";
 export async function POST(request: NextRequest) {
     try {
         const { name, email, password } = await request.json();
+        const normalizedEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
+        const normalizedName = typeof name === "string" ? name.trim() : "";
 
-        if (!email || !password) {
+        if (!normalizedEmail || !password) {
             return NextResponse.json(
-                { error: "メールアドレスとパスワードは必須です" },
+                { error: "Email and password are required." },
                 { status: 400 }
             );
         }
 
         if (password.length < 6) {
             return NextResponse.json(
-                { error: "パスワードは6文字以上にしてください" },
+                { error: "Password must be at least 6 characters." },
                 { status: 400 }
             );
         }
 
-        // メールアドレスが既に使われているかチェック
-        const existingUser = await prisma.user.findUnique({
-            where: { email },
+        const existingUser = await prisma.user.findFirst({
+            where: {
+                email: {
+                    equals: normalizedEmail,
+                    mode: "insensitive",
+                },
+            },
+            select: { id: true },
         });
 
         if (existingUser) {
             return NextResponse.json(
-                { error: "このメールアドレスは既に登録されています" },
+                { error: "This email address is already registered." },
                 { status: 400 }
             );
         }
 
-        // パスワードをハッシュ化して保存
         const hashedPassword = await bcrypt.hash(password, 12);
-        const baseUserId = (name || email.split("@")[0] || "").toString();
+        const baseUserId = (normalizedName || normalizedEmail.split("@")[0] || "").toString();
         const userId = await reserveAvailableUserId(baseUserId);
 
         const user = await prisma.user.create({
             data: {
-                name: name || email.split("@")[0],
-                email,
+                name: normalizedName || normalizedEmail.split("@")[0],
+                email: normalizedEmail,
                 password: hashedPassword,
                 userId,
             },
         });
 
         return NextResponse.json(
-            { message: "アカウントを作成しました", userId: user.id },
+            { message: "Account created.", userId: user.id },
             { status: 201 }
         );
     } catch (error) {
         console.error("Signup error:", error);
         return NextResponse.json(
-            { error: "アカウント作成に失敗しました" },
+            { error: "Failed to create account." },
             { status: 500 }
         );
     }

@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { DirectMessageContext } from "@prisma/client";
 import {
     ensureDirectMessageCapacity,
+    withDirectMessageGoodTable,
     withDirectMessageTable,
 } from "@/lib/directMessages";
 import { resolveSessionUserId } from "@/lib/sessionUser";
@@ -36,6 +37,78 @@ function unpackDmSettingFromLinks(raw: string | null | undefined): DmSetting {
     }
 
     return DEFAULT_DM_SETTING;
+}
+
+async function getDirectMessageGoodState(messageIds: string[], currentUserId: string | null) {
+    const empty = new Map<string, { goodCount: number; likedByMe: boolean }>();
+    if (messageIds.length === 0) {
+        return empty;
+    }
+
+    for (const messageId of messageIds) {
+        empty.set(messageId, { goodCount: 0, likedByMe: false });
+    }
+
+    try {
+        const [counts, mine] = await Promise.all([
+            withDirectMessageGoodTable(() =>
+                prisma.directMessageGood.groupBy({
+                    by: ["messageId"],
+                    where: { messageId: { in: messageIds } },
+                    _count: { _all: true },
+                })
+            ),
+            currentUserId
+                ? withDirectMessageGoodTable(() =>
+                      prisma.directMessageGood.findMany({
+                          where: {
+                              messageId: { in: messageIds },
+                              userId: currentUserId,
+                          },
+                          select: { messageId: true },
+                      })
+                  )
+                : Promise.resolve([] as Array<{ messageId: string }>),
+        ]);
+
+        for (const row of counts) {
+            empty.set(row.messageId, {
+                goodCount: row._count._all,
+                likedByMe: empty.get(row.messageId)?.likedByMe ?? false,
+            });
+        }
+
+        for (const row of mine) {
+            empty.set(row.messageId, {
+                goodCount: empty.get(row.messageId)?.goodCount ?? 0,
+                likedByMe: true,
+            });
+        }
+    } catch (error) {
+        console.error("Failed to load direct message goods:", error);
+    }
+
+    return empty;
+}
+
+async function appendDirectMessageGoodState<
+    T extends {
+        id: string;
+    },
+>(messages: T[], currentUserId: string | null) {
+    const goodState = await getDirectMessageGoodState(
+        messages.map((message) => message.id),
+        currentUserId
+    );
+
+    return messages.map((message) => {
+        const state = goodState.get(message.id);
+        return {
+            ...message,
+            goodCount: state?.goodCount ?? 0,
+            likedByMe: state?.likedByMe ?? false,
+        };
+    });
 }
 
 async function resolveUserPrimaryId(userRef: string): Promise<string | null> {
@@ -111,7 +184,11 @@ export async function GET(request: NextRequest) {
                 })
             );
 
-            return NextResponse.json({ mode, userId: resolvedTargetUserId, messages });
+            return NextResponse.json({
+                mode,
+                userId: resolvedTargetUserId,
+                messages: await appendDirectMessageGoodState(messages, userId),
+            });
         }
 
         if (mode === "threads") {
@@ -275,7 +352,14 @@ export async function POST(request: NextRequest) {
             })
         );
 
-        return NextResponse.json(message, { status: 201 });
+        return NextResponse.json(
+            {
+                ...message,
+                goodCount: 0,
+                likedByMe: false,
+            },
+            { status: 201 }
+        );
     } catch (error) {
         console.error("Failed to send direct message:", error);
         return NextResponse.json({ error: "Failed to send direct message" }, { status: 500 });

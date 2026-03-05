@@ -35,6 +35,8 @@ type DirectMessage = {
     recipientId: string;
     sender: ThreadUser;
     recipient: ThreadUser;
+    goodCount?: number;
+    likedByMe?: boolean;
     pending?: boolean;
 };
 
@@ -51,6 +53,8 @@ export default function MessagesPage() {
     const [loadingMessages, setLoadingMessages] = useState(false);
     const [sending, setSending] = useState(false);
     const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
+    const [togglingGoodId, setTogglingGoodId] = useState<string | null>(null);
+    const [goodPulseId, setGoodPulseId] = useState<string | null>(null);
     const [error, setError] = useState("");
     const [presetTarget, setPresetTarget] = useState("");
 
@@ -244,6 +248,8 @@ export default function MessagesPage() {
             recipientId: selectedUserId,
             sender: senderUser,
             recipient: fallbackRecipient,
+            goodCount: 0,
+            likedByMe: false,
             pending: true,
         };
 
@@ -288,6 +294,76 @@ export default function MessagesPage() {
             void loadThreads();
         } finally {
             setSending(false);
+        }
+    };
+
+    const toggleGood = async (messageId: string) => {
+        if (!messageId || togglingGoodId) return;
+
+        const current = messages.find((message) => message.id === messageId);
+        if (!current || current.pending || current.senderId === currentUserId) {
+            return;
+        }
+
+        const optimisticLiked = !current.likedByMe;
+        const optimisticCount = Math.max(
+            0,
+            Number(current.goodCount || 0) + (optimisticLiked ? 1 : -1)
+        );
+
+        setTogglingGoodId(messageId);
+        setGoodPulseId(messageId);
+        setMessages((prev) =>
+            prev.map((message) =>
+                message.id === messageId
+                    ? {
+                          ...message,
+                          likedByMe: optimisticLiked,
+                          goodCount: optimisticCount,
+                      }
+                    : message
+            )
+        );
+
+        window.setTimeout(() => {
+            setGoodPulseId((currentPulse) => (currentPulse === messageId ? null : currentPulse));
+        }, 180);
+
+        try {
+            const res = await fetch(`/api/direct-messages/${encodeURIComponent(messageId)}/good`, {
+                method: "POST",
+            });
+            const payload = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                throw new Error(payload.error || "Failed to react to message.");
+            }
+
+            setMessages((prev) =>
+                prev.map((message) =>
+                    message.id === messageId
+                        ? {
+                              ...message,
+                              goodCount: Number(payload.goodCount || 0),
+                              likedByMe: !!payload.likedByMe,
+                          }
+                        : message
+                )
+            );
+        } catch (err) {
+            setMessages((prev) =>
+                prev.map((message) =>
+                    message.id === messageId
+                        ? {
+                              ...message,
+                              likedByMe: !!current.likedByMe,
+                              goodCount: Number(current.goodCount || 0),
+                          }
+                        : message
+                )
+            );
+            setError(err instanceof Error ? err.message : "Failed to react to message.");
+        } finally {
+            setTogglingGoodId(null);
         }
     };
 
@@ -440,6 +516,9 @@ export default function MessagesPage() {
                                     const mine = message.senderId === currentUserId;
                                     const isPending = !!message.pending || message.id.startsWith("temp-");
                                     const deletingThis = deletingMessageId === message.id;
+                                    const togglingGood = togglingGoodId === message.id;
+                                    const showGoodButton = !mine && !isPending;
+                                    const showGoodCount = mine && Number(message.goodCount || 0) > 0;
                                     return (
                                         <div key={message.id} style={{ alignSelf: mine ? "flex-end" : "flex-start", maxWidth: "78%" }}>
                                             <div
@@ -469,6 +548,30 @@ export default function MessagesPage() {
                                                         ? "送信中..."
                                                         : new Date(message.createdAt).toLocaleString("ja-JP")}
                                                 </span>
+                                                {showGoodButton ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => void toggleGood(message.id)}
+                                                        disabled={togglingGood}
+                                                        className="editor-btn editor-btn-secondary"
+                                                        style={{
+                                                            padding: "1px 8px",
+                                                            fontSize: 10,
+                                                            borderColor: message.likedByMe ? "var(--azuki)" : undefined,
+                                                            color: message.likedByMe ? "var(--azuki-deep)" : undefined,
+                                                            background: message.likedByMe ? "rgba(155,107,107,0.1)" : undefined,
+                                                            transform: goodPulseId === message.id ? "scale(1.08)" : "scale(1)",
+                                                            transition: "transform 0.18s ease, background 0.18s ease",
+                                                        }}
+                                                    >
+                                                        {`${message.likedByMe ? "Good" : "+Good"} ${Number(message.goodCount || 0)}`}
+                                                    </button>
+                                                ) : null}
+                                                {showGoodCount ? (
+                                                    <span style={{ fontSize: 10, color: "var(--azuki)" }}>
+                                                        {`Good ${Number(message.goodCount || 0)}`}
+                                                    </span>
+                                                ) : null}
                                                 {mine && !isPending ? (
                                                     <button
                                                         type="button"

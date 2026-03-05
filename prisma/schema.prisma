@@ -56,6 +56,7 @@ model User {
   receivedPullRequests ArticlePullRequest[] @relation("PullRequestRecipient")
   sentMessages         DirectMessage[]      @relation("DirectMessageSender")
   receivedMessages     DirectMessage[]      @relation("DirectMessageRecipient")
+  directMessageGoods   DirectMessageGood[]
   shortPosts           ShortPost[]
   pinnedUsers          PinnedUser[]         @relation("PinnedUserOwner")
   pinnedByUsers        PinnedUser[]         @relation("PinnedUserTarget")
@@ -172,10 +173,24 @@ model DirectMessage {
 
   pullRequest   ArticlePullRequest? @relation(fields: [pullRequestId], references: [id], onDelete: SetNull)
   pullRequestId String?
+  goods         DirectMessageGood[]
 
   @@index([recipientId, createdAt])
   @@index([senderId, createdAt])
   @@index([pullRequestId])
+}
+
+model DirectMessageGood {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+
+  message   DirectMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  messageId String
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+
+  @@unique([messageId, userId])
+  @@index([messageId, createdAt])
 }
 
 model ShortPost {
