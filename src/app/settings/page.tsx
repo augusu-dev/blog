@@ -21,7 +21,7 @@ interface Post {
 }
 
 export default function SettingsPage() {
-    const { data: session, status } = useSession();
+    const { data: session, status, update } = useSession();
     const router = useRouter();
     const { language, setLanguage, t } = useLanguage();
 
@@ -73,8 +73,12 @@ export default function SettingsPage() {
                 body: JSON.stringify({ name, userId, bio, aboutMe, links, image, headerImage }),
             });
             const payload = await res.json().catch(() => ({}));
-            if (res.ok) setMessage("✅ " + t("設定を保存しました。"));
-            else setMessage(`❌ ${payload.error || t("保存に失敗しました。")}`);
+            if (res.ok) {
+                setMessage("✅ " + t("設定を保存しました。"));
+                await update();
+            } else {
+                setMessage(`❌ ${payload.error || t("保存に失敗しました。")}`);
+            }
         } catch {
             setMessage("❌ " + t("エラーが発生しました。"));
         } finally {
