@@ -37,7 +37,7 @@ export async function GET(
         return NextResponse.json(comments);
     } catch (error) {
         console.error("Failed to fetch comments:", error);
-        return NextResponse.json({ error: "Failed to fetch comments" }, { status: 500 });
+        return NextResponse.json([]);
     }
 }
 

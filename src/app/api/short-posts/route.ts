@@ -6,29 +6,83 @@ import { withShortPostTable } from "@/lib/shortPosts";
 const SHORT_POST_LIMIT = 300;
 const LIST_LIMIT = 30;
 
+function isUserIdColumnMissing(error: unknown): boolean {
+    if (error && typeof error === "object" && "code" in error) {
+        const code = String((error as { code?: unknown }).code || "");
+        if (code === "P2022") {
+            const column = String((error as { meta?: { column?: unknown } }).meta?.column || "");
+            return !column || column.includes("userId");
+        }
+    }
+    if (error instanceof Error) {
+        return /userId|unknown arg `userId`|column .*userId/i.test(error.message);
+    }
+    return false;
+}
+
 function normalizeContent(value: unknown): string {
     return typeof value === "string" ? value.trim() : "";
 }
 
 export async function GET() {
     try {
-        const posts = await withShortPostTable(() =>
-            prisma.shortPost.findMany({
-                orderBy: { createdAt: "desc" },
-                take: LIST_LIMIT,
-                include: {
-                    author: {
-                        select: {
-                            id: true,
-                            userId: true,
-                            name: true,
-                            email: true,
-                            image: true,
+        let posts:
+            | Array<{
+                  id: string;
+                  content: string;
+                  createdAt: Date;
+                  authorId: string;
+                  author: {
+                      id: string;
+                      userId?: string | null;
+                      name: string | null;
+                      email: string | null;
+                      image: string | null;
+                  };
+              }>
+            | null = null;
+
+        try {
+            posts = await withShortPostTable(() =>
+                prisma.shortPost.findMany({
+                    orderBy: { createdAt: "desc" },
+                    take: LIST_LIMIT,
+                    include: {
+                        author: {
+                            select: {
+                                id: true,
+                                userId: true,
+                                name: true,
+                                email: true,
+                                image: true,
+                            },
                         },
                     },
-                },
-            })
-        );
+                })
+            );
+        } catch (error) {
+            if (!isUserIdColumnMissing(error)) throw error;
+        }
+
+        if (!posts) {
+            posts = await withShortPostTable(() =>
+                prisma.shortPost.findMany({
+                    orderBy: { createdAt: "desc" },
+                    take: LIST_LIMIT,
+                    include: {
+                        author: {
+                            select: {
+                                id: true,
+                                name: true,
+                                email: true,
+                                image: true,
+                            },
+                        },
+                    },
+                })
+            );
+        }
+
         return NextResponse.json(posts);
     } catch (error) {
         console.error("Failed to fetch short posts:", error);
@@ -53,22 +107,60 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        const post = await withShortPostTable(() =>
-            prisma.shortPost.create({
-                data: { content, authorId: userId },
-                include: {
-                    author: {
-                        select: {
-                            id: true,
-                            userId: true,
-                            name: true,
-                            email: true,
-                            image: true,
+        let post:
+            | {
+                  id: string;
+                  content: string;
+                  createdAt: Date;
+                  authorId: string;
+                  author: {
+                      id: string;
+                      userId?: string | null;
+                      name: string | null;
+                      email: string | null;
+                      image: string | null;
+                  };
+              }
+            | null = null;
+
+        try {
+            post = await withShortPostTable(() =>
+                prisma.shortPost.create({
+                    data: { content, authorId: userId },
+                    include: {
+                        author: {
+                            select: {
+                                id: true,
+                                userId: true,
+                                name: true,
+                                email: true,
+                                image: true,
+                            },
                         },
                     },
-                },
-            })
-        );
+                })
+            );
+        } catch (error) {
+            if (!isUserIdColumnMissing(error)) throw error;
+        }
+
+        if (!post) {
+            post = await withShortPostTable(() =>
+                prisma.shortPost.create({
+                    data: { content, authorId: userId },
+                    include: {
+                        author: {
+                            select: {
+                                id: true,
+                                name: true,
+                                email: true,
+                                image: true,
+                            },
+                        },
+                    },
+                })
+            );
+        }
 
         return NextResponse.json(post, { status: 201 });
     } catch (error) {

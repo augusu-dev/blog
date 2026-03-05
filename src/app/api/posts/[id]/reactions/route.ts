@@ -72,7 +72,7 @@ export async function GET(
         return NextResponse.json(payload);
     } catch (error) {
         console.error("Failed to fetch reactions:", error);
-        return NextResponse.json({ error: "Failed to fetch reactions" }, { status: 500 });
+        return NextResponse.json({ counts: buildEmptyCounts(), myReaction: null });
     }
 }
 

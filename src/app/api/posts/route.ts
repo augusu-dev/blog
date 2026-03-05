@@ -1,18 +1,51 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { auth } from "@/lib/auth";
 import { ensureUserIdSchema } from "@/lib/userId";
 
-// GET: 記事一覧取得（公開記事のみ、未認証でもOK）
+function isUserIdColumnMissing(error: unknown): boolean {
+    if (error && typeof error === "object" && "code" in error) {
+        const code = String((error as { code?: unknown }).code || "");
+        if (code === "P2022") {
+            const column = String((error as { meta?: { column?: unknown } }).meta?.column || "");
+            return !column || column.includes("userId");
+        }
+    }
+    if (error instanceof Error) {
+        return /userId|unknown arg `userId`|column .*userId/i.test(error.message);
+    }
+    return false;
+}
+
 export async function GET() {
     try {
-        await ensureUserIdSchema();
+        try {
+            await ensureUserIdSchema();
+        } catch (schemaError) {
+            console.error("Failed to ensure userId schema in posts route:", schemaError);
+        }
+
+        try {
+            const posts = await prisma.post.findMany({
+                where: { published: true },
+                orderBy: { createdAt: "desc" },
+                include: {
+                    author: {
+                        select: { id: true, userId: true, name: true, email: true, image: true },
+                    },
+                },
+            });
+            return NextResponse.json(posts);
+        } catch (error) {
+            if (!isUserIdColumnMissing(error)) throw error;
+        }
+
         const posts = await prisma.post.findMany({
             where: { published: true },
             orderBy: { createdAt: "desc" },
             include: {
                 author: {
-                    select: { id: true, userId: true, name: true, email: true, image: true },
+                    select: { id: true, name: true, email: true, image: true },
                 },
             },
         });
@@ -23,7 +56,6 @@ export async function GET() {
     }
 }
 
-// POST: 新規記事作成（認証必須）
 export async function POST(request: NextRequest) {
     const session = await auth();
     if (!session?.user?.id) {

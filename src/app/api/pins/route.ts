@@ -3,8 +3,37 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { withPinnedUserTable } from "@/lib/pinnedUsers";
 
+const PINNED_USER_PUBLIC_SELECT_WITH_USER_ID = {
+    id: true,
+    userId: true,
+    name: true,
+    email: true,
+    image: true,
+} as const;
+
+const PINNED_USER_PUBLIC_SELECT_LEGACY = {
+    id: true,
+    name: true,
+    email: true,
+    image: true,
+} as const;
+
 function normalizeString(value: unknown): string {
     return typeof value === "string" ? value.trim() : "";
+}
+
+function isUserIdColumnMissing(error: unknown): boolean {
+    if (error && typeof error === "object" && "code" in error) {
+        const code = String((error as { code?: unknown }).code || "");
+        if (code === "P2022") {
+            const column = String((error as { meta?: { column?: unknown } }).meta?.column || "");
+            return !column || column.includes("userId");
+        }
+    }
+    if (error instanceof Error) {
+        return /userId|unknown arg `userId`|column .*userId/i.test(error.message);
+    }
+    return false;
 }
 
 async function resolveTargetUserId(rawRef: string): Promise<string | null> {
@@ -12,20 +41,78 @@ async function resolveTargetUserId(rawRef: string): Promise<string | null> {
     if (!userRef) return null;
 
     try {
-        const user = await prisma.user.findFirst({
+        const matched = await prisma.user.findFirst({
             where: {
-                OR: [{ id: userRef }, { userId: userRef.toLowerCase() }],
+                OR: [
+                    { id: userRef },
+                    { userId: userRef.toLowerCase() },
+                    { name: { equals: userRef, mode: "insensitive" } },
+                ],
             },
             select: { id: true },
         });
-        return user?.id || null;
-    } catch {
-        const user = await prisma.user.findUnique({
-            where: { id: userRef },
-            select: { id: true },
-        });
-        return user?.id || null;
+        return matched?.id || null;
+    } catch (error) {
+        if (!isUserIdColumnMissing(error)) {
+            throw error;
+        }
     }
+
+    const matched = await prisma.user.findFirst({
+        where: {
+            OR: [{ id: userRef }, { name: { equals: userRef, mode: "insensitive" } }],
+        },
+        select: { id: true },
+    });
+    return matched?.id || null;
+}
+
+async function fetchPinnedUsers(ownerId: string) {
+    try {
+        const pinnedUsers = await withPinnedUserTable(() =>
+            prisma.pinnedUser.findMany({
+                where: { ownerId },
+                orderBy: { createdAt: "desc" },
+                include: {
+                    pinnedUser: {
+                        select: PINNED_USER_PUBLIC_SELECT_WITH_USER_ID,
+                    },
+                },
+            })
+        );
+        return pinnedUsers;
+    } catch (error) {
+        if (!isUserIdColumnMissing(error)) {
+            throw error;
+        }
+    }
+
+    return withPinnedUserTable(() =>
+        prisma.pinnedUser.findMany({
+            where: { ownerId },
+            orderBy: { createdAt: "desc" },
+            include: {
+                pinnedUser: {
+                    select: PINNED_USER_PUBLIC_SELECT_LEGACY,
+                },
+            },
+        })
+    );
+}
+
+async function resolvePinnedUserIdForDelete(rawRef: string): Promise<string | null> {
+    const normalized = normalizeString(rawRef);
+    if (!normalized) return null;
+
+    const pinnedById = await withPinnedUserTable(() =>
+        prisma.pinnedUser.findFirst({
+            where: { id: normalized },
+            select: { id: true },
+        })
+    );
+    if (pinnedById) return pinnedById.id;
+
+    return resolveTargetUserId(normalized);
 }
 
 export async function GET(request: NextRequest) {
@@ -52,23 +139,7 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ pinned: !!existing, userId: targetUserId });
         }
 
-        const pinnedUsers = await withPinnedUserTable(() =>
-            prisma.pinnedUser.findMany({
-                where: { ownerId },
-                orderBy: { createdAt: "desc" },
-                include: {
-                    pinnedUser: {
-                        select: {
-                            id: true,
-                            userId: true,
-                            name: true,
-                            email: true,
-                            image: true,
-                        },
-                    },
-                },
-            })
-        );
+        const pinnedUsers = await fetchPinnedUsers(ownerId);
         return NextResponse.json({
             count: pinnedUsers.length,
             users: pinnedUsers,
@@ -134,7 +205,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     const targetRef = normalizeString(request.nextUrl.searchParams.get("userId"));
-    const pinnedUserId = await resolveTargetUserId(targetRef);
+    const pinnedUserId = await resolvePinnedUserIdForDelete(targetRef);
     if (!pinnedUserId) {
         return NextResponse.json({ error: "User not found" }, { status: 404 });
     }

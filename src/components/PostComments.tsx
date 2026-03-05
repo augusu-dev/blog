@@ -171,28 +171,41 @@ export default function PostComments({ postId, isSignedIn, currentUserId = null 
         let active = true;
         setLoading(true);
         setError("");
+        setComments([]);
+        setReactionCounts(EMPTY_COUNTS);
+        setMyReaction(null);
 
-        Promise.all([fetch(`/api/posts/${postId}/comments`), fetch(`/api/posts/${postId}/reactions`)])
-            .then(async ([commentRes, reactionRes]) => {
+        const loadComments = async () => {
+            try {
+                const commentRes = await fetch(`/api/posts/${postId}/comments`);
                 if (!commentRes.ok) throw new Error("Failed to fetch comments");
 
                 const commentData = await commentRes.json();
                 if (!active) return;
                 setComments(Array.isArray(commentData) ? commentData : []);
+            } catch {
+                if (active) setError(locale.fetchFailed);
+            } finally {
+                if (active) setLoading(false);
+            }
+        };
 
+        const loadReactions = async () => {
+            try {
+                const reactionRes = await fetch(`/api/posts/${postId}/reactions`);
                 if (reactionRes.ok) {
                     const reactionData = await reactionRes.json();
                     if (!active) return;
                     setReactionCounts({ ...EMPTY_COUNTS, ...(reactionData.counts || {}) });
                     setMyReaction((reactionData.myReaction as ReactionType | null) || null);
                 }
-            })
-            .catch(() => {
-                if (active) setError(locale.fetchFailed);
-            })
-            .finally(() => {
-                if (active) setLoading(false);
-            });
+            } catch {
+                // Keep comments available even if reactions endpoint is temporarily unavailable.
+            }
+        };
+
+        void loadComments();
+        void loadReactions();
 
         return () => {
             active = false;

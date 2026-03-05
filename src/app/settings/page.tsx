@@ -70,8 +70,9 @@ export default function SettingsPage() {
         if (session) {
             setEmail(session.user?.email || "");
             fetch("/api/user/settings")
-                .then((r) => r.json())
-                .then((data) => {
+                .then(async (r) => {
+                    const data = await r.json().catch(() => ({}));
+                    if (!r.ok || !data || typeof data !== "object") return;
                     setName(data.name || "");
                     setUserId(data.userId || "");
                     setImage(data.image || "");
@@ -82,8 +83,14 @@ export default function SettingsPage() {
                 })
                 .catch(() => { });
             fetch("/api/posts/my")
-                .then((r) => r.json())
-                .then((posts) => setMyPosts(posts))
+                .then(async (r) => {
+                    const posts = await r.json().catch(() => []);
+                    if (!r.ok || !Array.isArray(posts)) {
+                        setMyPosts([]);
+                        return;
+                    }
+                    setMyPosts(posts);
+                })
                 .catch(() => { });
         }
     }, [session]);

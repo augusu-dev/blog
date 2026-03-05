@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { Prisma } from "@prisma/client";
 import {
     ensureUserIdForUser,
     isValidUserId,
@@ -8,14 +9,26 @@ import {
 } from "@/lib/userId";
 
 type DmSetting = "OPEN" | "PR_ONLY" | "CLOSED";
-const DEFAULT_DM_SETTING: DmSetting = "OPEN";
 type ThemeName = "default" | "lightblue" | "sand" | "apricot" | "white" | "black" | "custom";
+
+const DEFAULT_DM_SETTING: DmSetting = "OPEN";
 const DEFAULT_THEME: ThemeName = "default";
 const DEFAULT_THEME_CUSTOM_COLOR = "#925c5c";
 
-const USER_SETTINGS_SELECT = {
+const USER_SETTINGS_SELECT_WITH_USER_ID = {
     id: true,
     userId: true,
+    name: true,
+    email: true,
+    image: true,
+    headerImage: true,
+    bio: true,
+    aboutMe: true,
+    links: true,
+} as const;
+
+const USER_SETTINGS_SELECT_LEGACY = {
+    id: true,
     name: true,
     email: true,
     image: true,
@@ -56,6 +69,13 @@ function parseThemeColor(value: unknown): string | undefined {
     const match = trimmed.match(/^#?[0-9a-fA-F]{6}$/);
     if (!match) return undefined;
     return `#${trimmed.replace(/^#/, "").toLowerCase()}`;
+}
+
+function normalizeNullableString(value: unknown): string | null {
+    if (value === null) return null;
+    if (value === undefined) return null;
+    if (typeof value === "string") return value;
+    return String(value);
 }
 
 function unpackLinks(raw: string | null | undefined): {
@@ -142,12 +162,62 @@ function packLinks(
     });
 }
 
+function isUserIdColumnMissing(error: unknown): boolean {
+    if (error && typeof error === "object" && "code" in error) {
+        const code = String((error as { code?: unknown }).code || "");
+        if (code === "P2022") {
+            const column = String((error as { meta?: { column?: unknown } }).meta?.column || "");
+            return !column || column.includes("userId");
+        }
+    }
+    if (error instanceof Error) {
+        return /userId|unknown arg `userId`|column .*userId/i.test(error.message);
+    }
+    return false;
+}
+
 async function tryEnsureUserId(userId: string): Promise<void> {
     try {
         await ensureUserIdForUser(userId);
     } catch (error) {
         console.error("Failed to ensure userId in user settings route:", error);
     }
+}
+
+async function fetchUserSettingsRecord(userId: string) {
+    try {
+        const user = await prisma.user.findUnique({
+            where: { id: userId },
+            select: USER_SETTINGS_SELECT_WITH_USER_ID,
+        });
+        return { user, hasUserIdColumn: true as const };
+    } catch (error) {
+        if (!isUserIdColumnMissing(error)) throw error;
+    }
+
+    const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: USER_SETTINGS_SELECT_LEGACY,
+    });
+    return { user, hasUserIdColumn: false as const };
+}
+
+async function fetchCurrentLinksAndUserId(userId: string) {
+    try {
+        const current = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { links: true, userId: true },
+        });
+        return { current, hasUserIdColumn: true as const };
+    } catch (error) {
+        if (!isUserIdColumnMissing(error)) throw error;
+    }
+
+    const current = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { links: true },
+    });
+    return { current, hasUserIdColumn: false as const };
 }
 
 export async function GET() {
@@ -159,20 +229,30 @@ export async function GET() {
 
     await tryEnsureUserId(userId);
 
-    const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: USER_SETTINGS_SELECT,
-    });
+    try {
+        const { user } = await fetchUserSettingsRecord(userId);
+        if (!user) {
+            return NextResponse.json({ error: "User not found" }, { status: 404 });
+        }
 
-    const unpacked = unpackLinks(user?.links);
+        const unpacked = unpackLinks(user.links);
+        const publicUserId =
+            ("userId" in user && typeof user.userId === "string" && user.userId.trim())
+                ? user.userId.trim()
+                : user.id;
 
-    return NextResponse.json({
-        ...user,
-        links: unpacked.links,
-        dmSetting: unpacked.dmSetting,
-        theme: unpacked.theme,
-        themeCustomColor: unpacked.themeCustomColor,
-    });
+        return NextResponse.json({
+            ...user,
+            userId: publicUserId,
+            links: unpacked.links,
+            dmSetting: unpacked.dmSetting,
+            theme: unpacked.theme,
+            themeCustomColor: unpacked.themeCustomColor,
+        });
+    } catch (error) {
+        console.error("Failed to fetch user settings:", error);
+        return NextResponse.json({ error: "Failed to fetch user settings" }, { status: 500 });
+    }
 }
 
 export async function PUT(request: NextRequest) {
@@ -196,6 +276,7 @@ export async function PUT(request: NextRequest) {
         themeCustomColor,
         userId: userIdInput,
     } = await request.json();
+
     const parsedDmSetting = parseDmSetting(dmSetting);
     const parsedTheme = parseThemeName(theme);
     const parsedThemeCustomColor = parseThemeColor(themeCustomColor);
@@ -231,58 +312,101 @@ export async function PUT(request: NextRequest) {
         );
     }
 
-    const current = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { links: true, userId: true },
-    });
+    try {
+        const { current, hasUserIdColumn } = await fetchCurrentLinksAndUserId(userId);
 
-    if (!current) {
-        return NextResponse.json({ error: "User not found" }, { status: 404 });
-    }
-
-    if (normalizedUserId && normalizedUserId !== current.userId) {
-        const existing = await prisma.user.findFirst({
-            where: {
-                userId: normalizedUserId,
-                NOT: { id: userId },
-            },
-            select: { id: true },
-        });
-
-        if (existing) {
-            return NextResponse.json({ error: "This userId is already in use." }, { status: 409 });
+        if (!current) {
+            return NextResponse.json({ error: "User not found" }, { status: 404 });
         }
-    }
 
-    const currentUnpacked = unpackLinks(current?.links);
-    const nextLinks = Array.isArray(links) ? links : currentUnpacked.links;
-    const nextDmSetting = parsedDmSetting || currentUnpacked.dmSetting;
-    const nextTheme = parsedTheme || currentUnpacked.theme;
-    const nextThemeCustomColor = parsedThemeCustomColor || currentUnpacked.themeCustomColor;
+        if (normalizedUserId && hasUserIdColumn && normalizedUserId !== current.userId) {
+            const existing = await prisma.user.findFirst({
+                where: {
+                    userId: normalizedUserId,
+                    NOT: { id: userId },
+                },
+                select: { id: true },
+            });
 
-    const user = await prisma.user.update({
-        where: { id: userId },
-        data: {
-            ...(name !== undefined && { name }),
-            ...(bio !== undefined && { bio }),
-            ...(aboutMe !== undefined && { aboutMe }),
-            ...(image !== undefined && { image }),
-            ...(headerImage !== undefined && { headerImage }),
-            ...(normalizedUserId !== undefined && { userId: normalizedUserId }),
+            if (existing) {
+                return NextResponse.json({ error: "This userId is already in use." }, { status: 409 });
+            }
+        }
+
+        const currentUnpacked = unpackLinks(current.links);
+        const nextLinks = Array.isArray(links) ? links : currentUnpacked.links;
+        const nextDmSetting = parsedDmSetting || currentUnpacked.dmSetting;
+        const nextTheme = parsedTheme || currentUnpacked.theme;
+        const nextThemeCustomColor = parsedThemeCustomColor || currentUnpacked.themeCustomColor;
+
+        const updateData: Prisma.UserUpdateInput = {
             links: packLinks(nextLinks, nextDmSetting, nextTheme, nextThemeCustomColor),
-        },
-        select: USER_SETTINGS_SELECT,
-    });
+        };
 
-    const unpacked = unpackLinks(user.links);
+        if (name !== undefined) updateData.name = normalizeNullableString(name);
+        if (bio !== undefined) updateData.bio = normalizeNullableString(bio);
+        if (aboutMe !== undefined) updateData.aboutMe = normalizeNullableString(aboutMe);
+        if (image !== undefined) updateData.image = normalizeNullableString(image);
+        if (headerImage !== undefined) updateData.headerImage = normalizeNullableString(headerImage);
 
-    return NextResponse.json({
-        ...user,
-        links: unpacked.links,
-        dmSetting: unpacked.dmSetting,
-        theme: unpacked.theme,
-        themeCustomColor: unpacked.themeCustomColor,
-    });
+        if (hasUserIdColumn && normalizedUserId !== undefined) {
+            updateData.userId = normalizedUserId;
+        }
+
+        let updatedUser:
+            | {
+                  id: string;
+                  userId?: string | null;
+                  name: string | null;
+                  email: string | null;
+                  image: string | null;
+                  headerImage: string | null;
+                  bio: string | null;
+                  aboutMe: string | null;
+                  links: string | null;
+              }
+            | null = null;
+
+        if (hasUserIdColumn) {
+            try {
+                updatedUser = await prisma.user.update({
+                    where: { id: userId },
+                    data: updateData,
+                    select: USER_SETTINGS_SELECT_WITH_USER_ID,
+                });
+            } catch (error) {
+                if (!isUserIdColumnMissing(error)) throw error;
+            }
+        }
+
+        if (!updatedUser) {
+            const legacyUpdateData = { ...updateData };
+            delete (legacyUpdateData as { userId?: string }).userId;
+            updatedUser = await prisma.user.update({
+                where: { id: userId },
+                data: legacyUpdateData,
+                select: USER_SETTINGS_SELECT_LEGACY,
+            });
+        }
+
+        const unpacked = unpackLinks(updatedUser.links);
+        const publicUserId =
+            ("userId" in updatedUser && typeof updatedUser.userId === "string" && updatedUser.userId.trim())
+                ? updatedUser.userId.trim()
+                : updatedUser.id;
+
+        return NextResponse.json({
+            ...updatedUser,
+            userId: publicUserId,
+            links: unpacked.links,
+            dmSetting: unpacked.dmSetting,
+            theme: unpacked.theme,
+            themeCustomColor: unpacked.themeCustomColor,
+        });
+    } catch (error) {
+        console.error("Failed to update user settings:", error);
+        return NextResponse.json({ error: "Failed to update user settings" }, { status: 500 });
+    }
 }
 
 export async function DELETE() {

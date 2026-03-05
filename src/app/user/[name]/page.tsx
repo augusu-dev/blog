@@ -117,19 +117,33 @@ export default function UserPage() {
     /* ─── Fetch user data ─── */
     useEffect(() => {
         async function loadUser() {
+            const sessionUser = session?.user as { id?: string; userId?: string | null } | undefined;
+            const normalizedUserName = typeof userName === "string" ? userName.trim() : "";
+
             try {
-                const res = await fetch(`/api/user/${userName}`);
-                if (res.ok) {
-                    const data: UserProfile = await res.json();
-                    setUser(data);
-                    const allPosts = data.posts.map((p) => ({
-                        ...p,
-                        date: p.date || p.createdAt,
-                        excerpt: p.excerpt || "",
-                    }));
-                    setPosts(allPosts.filter((p) => !p.tags?.includes("product")));
-                    setProducts(allPosts.filter((p) => p.tags?.includes("product")));
+                let res = await fetch(`/api/user/${userName}`);
+                if (
+                    !res.ok &&
+                    sessionUser?.id &&
+                    sessionUser.userId &&
+                    sessionUser.userId.trim() === normalizedUserName
+                ) {
+                    res = await fetch(`/api/user/${encodeURIComponent(sessionUser.id)}`);
                 }
+
+                if (!res.ok) {
+                    return;
+                }
+
+                const data: UserProfile = await res.json();
+                setUser(data);
+                const allPosts = data.posts.map((p) => ({
+                    ...p,
+                    date: p.date || p.createdAt,
+                    excerpt: p.excerpt || "",
+                }));
+                setPosts(allPosts.filter((p) => !p.tags?.includes("product")));
+                setProducts(allPosts.filter((p) => p.tags?.includes("product")));
             } catch (e) {
                 console.warn("Failed to load user:", e);
             } finally {
@@ -137,7 +151,7 @@ export default function UserPage() {
             }
         }
         if (userName) loadUser();
-    }, [userName]);
+    }, [session?.user, userName]);
 
     useEffect(() => {
         async function loadPinState() {
