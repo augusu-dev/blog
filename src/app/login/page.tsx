@@ -19,21 +19,25 @@ export default function LoginPage() {
     const [error, setError] = useState("");
     const [googleEnabled, setGoogleEnabled] = useState(false);
 
-    const buildMyPageHref = (rawPublicUserId?: string | null) => {
+    const buildMyPageHref = (rawPublicUserId?: string | null, rawUserId?: string | null) => {
         const publicUserId = typeof rawPublicUserId === "string" ? rawPublicUserId.trim() : "";
-        return publicUserId ? `/user/${encodeURIComponent(publicUserId)}` : "/settings";
+        if (publicUserId) {
+            return `/user/${encodeURIComponent(publicUserId)}`;
+        }
+        const userId = typeof rawUserId === "string" ? rawUserId.trim() : "";
+        return userId ? `/user/${encodeURIComponent(userId)}` : "/settings";
     };
 
     const resolveMyPageHref = async () => {
-        const sessionUser = session?.user as { userId?: string | null } | undefined;
+        const sessionUser = session?.user as { id?: string | null; userId?: string | null } | undefined;
         if (sessionUser?.userId) {
-            return buildMyPageHref(sessionUser.userId);
+            return buildMyPageHref(sessionUser.userId, sessionUser.id);
         }
         try {
             const res = await fetch("/api/auth/session", { cache: "no-store" });
             if (res.ok) {
-                const payload = (await res.json()) as { user?: { userId?: string | null } };
-                return buildMyPageHref(payload.user?.userId);
+                const payload = (await res.json()) as { user?: { id?: string | null; userId?: string | null } };
+                return buildMyPageHref(payload.user?.userId, payload.user?.id);
             }
         } catch {
             // noop
@@ -43,8 +47,8 @@ export default function LoginPage() {
 
     useEffect(() => {
         if (status !== "authenticated") return;
-        const sessionUser = session?.user as { userId?: string | null } | undefined;
-        router.replace(buildMyPageHref(sessionUser?.userId));
+        const sessionUser = session?.user as { id?: string | null; userId?: string | null } | undefined;
+        router.replace(buildMyPageHref(sessionUser?.userId, sessionUser?.id));
     }, [router, session, status]);
 
     useEffect(() => {

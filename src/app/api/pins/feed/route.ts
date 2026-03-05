@@ -35,27 +35,6 @@ function isUserIdColumnMissing(error: unknown): boolean {
 }
 
 async function fetchPinnedRows(ownerId: string) {
-    try {
-        const rows = await withPinnedUserTable(() =>
-            prisma.pinnedUser.findMany({
-                where: { ownerId },
-                orderBy: { createdAt: "desc" },
-                select: {
-                    pinnedUserId: true,
-                    createdAt: true,
-                    pinnedUser: {
-                        select: USER_PUBLIC_SELECT_WITH_USER_ID,
-                    },
-                },
-            })
-        );
-        return rows;
-    } catch (error) {
-        if (!isUserIdColumnMissing(error)) {
-            throw error;
-        }
-    }
-
     return withPinnedUserTable(() =>
         prisma.pinnedUser.findMany({
             where: { ownerId },
@@ -63,12 +42,35 @@ async function fetchPinnedRows(ownerId: string) {
             select: {
                 pinnedUserId: true,
                 createdAt: true,
-                pinnedUser: {
-                    select: USER_PUBLIC_SELECT_LEGACY,
-                },
             },
         })
     );
+}
+
+async function fetchUsersByIds(userIds: string[]) {
+    if (userIds.length === 0) return [] as Array<{
+        id: string;
+        userId?: string | null;
+        name: string | null;
+        email: string | null;
+        image: string | null;
+    }>;
+
+    try {
+        return await prisma.user.findMany({
+            where: { id: { in: userIds } },
+            select: USER_PUBLIC_SELECT_WITH_USER_ID,
+        });
+    } catch (error) {
+        if (!isUserIdColumnMissing(error)) {
+            throw error;
+        }
+    }
+
+    return prisma.user.findMany({
+        where: { id: { in: userIds } },
+        select: USER_PUBLIC_SELECT_LEGACY,
+    });
 }
 
 async function fetchPinnedPosts(pinnedUserIds: string[]) {
@@ -123,11 +125,31 @@ export async function GET() {
             return NextResponse.json({ pinnedCount: 0, pinnedUsers: [], posts: [] });
         }
 
-        const posts = await fetchPinnedPosts(pinnedUserIds);
+        const users = await fetchUsersByIds([...new Set(pinnedUserIds)]);
+        const userMap = new Map(users.map((user) => [user.id, user]));
+
+        const normalizedPinnedRows = pinnedRows
+            .map((row) => {
+                const pinnedUser = userMap.get(row.pinnedUserId);
+                if (!pinnedUser) return null;
+                return {
+                    pinnedUserId: row.pinnedUserId,
+                    createdAt: row.createdAt,
+                    pinnedUser,
+                };
+            })
+            .filter((row): row is NonNullable<typeof row> => !!row);
+
+        const normalizedPinnedUserIds = normalizedPinnedRows.map((row) => row.pinnedUserId);
+        if (normalizedPinnedUserIds.length === 0) {
+            return NextResponse.json({ pinnedCount: 0, pinnedUsers: [], posts: [] });
+        }
+
+        const posts = await fetchPinnedPosts(normalizedPinnedUserIds);
 
         return NextResponse.json({
-            pinnedCount: pinnedRows.length,
-            pinnedUsers: pinnedRows,
+            pinnedCount: normalizedPinnedRows.length,
+            pinnedUsers: normalizedPinnedRows,
             posts,
         });
     } catch (error) {

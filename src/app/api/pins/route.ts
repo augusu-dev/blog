@@ -68,36 +68,57 @@ async function resolveTargetUserId(rawRef: string): Promise<string | null> {
 }
 
 async function fetchPinnedUsers(ownerId: string) {
+    const rows = await withPinnedUserTable(() =>
+        prisma.pinnedUser.findMany({
+            where: { ownerId },
+            orderBy: { createdAt: "desc" },
+            select: { pinnedUserId: true, createdAt: true },
+        })
+    );
+
+    const pinnedUserIds = [...new Set(rows.map((row) => row.pinnedUserId))];
+    if (pinnedUserIds.length === 0) return [];
+
+    let users:
+        | Array<{
+              id: string;
+              userId?: string | null;
+              name: string | null;
+              email: string | null;
+              image: string | null;
+          }>
+        | null = null;
+
     try {
-        const pinnedUsers = await withPinnedUserTable(() =>
-            prisma.pinnedUser.findMany({
-                where: { ownerId },
-                orderBy: { createdAt: "desc" },
-                include: {
-                    pinnedUser: {
-                        select: PINNED_USER_PUBLIC_SELECT_WITH_USER_ID,
-                    },
-                },
-            })
-        );
-        return pinnedUsers;
+        users = await prisma.user.findMany({
+            where: { id: { in: pinnedUserIds } },
+            select: PINNED_USER_PUBLIC_SELECT_WITH_USER_ID,
+        });
     } catch (error) {
         if (!isUserIdColumnMissing(error)) {
             throw error;
         }
     }
 
-    return withPinnedUserTable(() =>
-        prisma.pinnedUser.findMany({
-            where: { ownerId },
-            orderBy: { createdAt: "desc" },
-            include: {
-                pinnedUser: {
-                    select: PINNED_USER_PUBLIC_SELECT_LEGACY,
-                },
-            },
+    if (!users) {
+        users = await prisma.user.findMany({
+            where: { id: { in: pinnedUserIds } },
+            select: PINNED_USER_PUBLIC_SELECT_LEGACY,
+        });
+    }
+
+    const userMap = new Map(users.map((user) => [user.id, user]));
+    return rows
+        .map((row) => {
+            const pinnedUser = userMap.get(row.pinnedUserId);
+            if (!pinnedUser) return null;
+            return {
+                pinnedUserId: row.pinnedUserId,
+                createdAt: row.createdAt,
+                pinnedUser,
+            };
         })
-    );
+        .filter((row): row is NonNullable<typeof row> => !!row);
 }
 
 async function resolvePinnedUserIdForDelete(rawRef: string): Promise<string | null> {
@@ -107,10 +128,10 @@ async function resolvePinnedUserIdForDelete(rawRef: string): Promise<string | nu
     const pinnedById = await withPinnedUserTable(() =>
         prisma.pinnedUser.findFirst({
             where: { id: normalized },
-            select: { id: true },
+            select: { pinnedUserId: true },
         })
     );
-    if (pinnedById) return pinnedById.id;
+    if (pinnedById) return pinnedById.pinnedUserId;
 
     return resolveTargetUserId(normalized);
 }

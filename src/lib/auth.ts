@@ -76,23 +76,41 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     callbacks: {
         async jwt({ token, user }) {
             if (user) {
-                token.id = user.id;
+                if (typeof user.id === "string" && user.id) {
+                    token.id = user.id;
+                }
                 if (typeof user.userId === "string" && user.userId.trim()) {
                     token.userId = user.userId;
                 }
             }
-            if (token.id) {
+
+            const tokenPrimaryId =
+                (typeof token.id === "string" && token.id) ||
+                (typeof token.sub === "string" && token.sub) ||
+                "";
+
+            if (tokenPrimaryId) {
+                token.id = tokenPrimaryId;
                 token.userId = await resolveUserIdSafely(
-                    token.id as string,
+                    tokenPrimaryId,
                     typeof token.userId === "string" ? token.userId : undefined
                 );
             }
             return token;
         },
         session({ session, token }) {
-            if (session.user && token.id) {
-                session.user.id = token.id as string;
-                session.user.userId = token.userId as string;
+            const tokenPrimaryId =
+                (typeof token.id === "string" && token.id) ||
+                (typeof token.sub === "string" && token.sub) ||
+                "";
+
+            if (session.user && tokenPrimaryId) {
+                session.user.id = tokenPrimaryId;
+                const publicUserId =
+                    typeof token.userId === "string" && token.userId.trim()
+                        ? token.userId
+                        : tokenPrimaryId;
+                session.user.userId = publicUserId;
             }
             return session;
         },
