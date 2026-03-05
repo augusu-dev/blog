@@ -62,17 +62,37 @@ export default function HomePage() {
     author: null as Post["author"] | null,
   });
   const [searchQuery, setSearchQuery] = useState("");
+  const [postsError, setPostsError] = useState("");
 
   useEffect(() => {
-    fetch("/api/posts")
-      .then((r) => r.json())
-      .then((data) => {
-        setPosts(data.map((p: Post) => ({
-          ...p,
-          excerpt: p.excerpt || "",
-        })));
-      })
-      .catch(console.error);
+    let active = true;
+    const loadPosts = async () => {
+      setPostsError("");
+      try {
+        const res = await fetch("/api/posts", { cache: "no-store" });
+        const data = await res.json().catch(() => []);
+        if (!res.ok || !Array.isArray(data)) {
+          throw new Error("Failed to fetch posts");
+        }
+        if (!active) return;
+        setPosts(
+          data.map((p: Post) => ({
+            ...p,
+            excerpt: p.excerpt || "",
+          }))
+        );
+      } catch (error) {
+        if (!active) return;
+        console.error(error);
+        setPosts([]);
+        setPostsError("記事の読み込みに失敗しました。時間をおいて再読み込みしてください。");
+      }
+    };
+
+    void loadPosts();
+    return () => {
+      active = false;
+    };
   }, []);
 
   const openPost = (post: Post) => {
@@ -238,6 +258,11 @@ export default function HomePage() {
         </section>
 
         <HomeShortPosts />
+        {postsError && (
+          <div className="login-message login-error" style={{ marginBottom: 12 }}>
+            {postsError}
+          </div>
+        )}
 
         <div className="section-divider" />
 

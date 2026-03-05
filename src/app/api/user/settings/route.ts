@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { Prisma } from "@prisma/client";
+import { resolveSessionUserId } from "@/lib/sessionUser";
 import {
     ensureUserIdForUser,
     isValidUserId,
@@ -222,7 +223,7 @@ async function fetchCurrentLinksAndUserId(userId: string) {
 
 export async function GET() {
     const session = await auth();
-    const userId = session?.user?.id;
+    const userId = await resolveSessionUserId(session);
     if (!userId) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -257,7 +258,7 @@ export async function GET() {
 
 export async function PUT(request: NextRequest) {
     const session = await auth();
-    const userId = session?.user?.id;
+    const userId = await resolveSessionUserId(session);
     if (!userId) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -411,7 +412,7 @@ export async function PUT(request: NextRequest) {
 
 export async function DELETE() {
     const session = await auth();
-    const userId = session?.user?.id;
+    const userId = await resolveSessionUserId(session);
     if (!userId) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

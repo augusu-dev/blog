@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { withPinnedUserTable } from "@/lib/pinnedUsers";
+import { resolveSessionUserId } from "@/lib/sessionUser";
 
 const FEED_LIMIT = 120;
 
@@ -112,7 +113,7 @@ async function fetchPinnedPosts(pinnedUserIds: string[]) {
 
 export async function GET() {
     const session = await auth();
-    const ownerId = session?.user?.id;
+    const ownerId = await resolveSessionUserId(session);
     if (!ownerId) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

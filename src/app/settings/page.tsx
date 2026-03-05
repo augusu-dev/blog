@@ -62,6 +62,29 @@ export default function SettingsPage() {
     const customColorLabel =
         locale === "en" ? "Custom color" : locale === "zh" ? "自定义颜色" : "カスタムカラー";
 
+    const hydrateFromPublicProfile = async () => {
+        try {
+            const sessionRes = await fetch("/api/auth/session", { cache: "no-store" });
+            const sessionPayload = await sessionRes.json().catch(() => ({} as { user?: { id?: string; userId?: string } }));
+            const ref = sessionPayload.user?.userId || sessionPayload.user?.id;
+            if (!sessionRes.ok || !ref) return;
+
+            const profileRes = await fetch(`/api/user/${encodeURIComponent(ref)}`);
+            const profile = await profileRes.json().catch(() => ({}));
+            if (!profileRes.ok || !profile || typeof profile !== "object") return;
+
+            setName(profile.name || "");
+            setUserId(profile.userId || ref);
+            setImage(profile.image || "");
+            setHeaderImage(profile.headerImage || "");
+            setBio(profile.bio || "");
+            setAboutMe(profile.aboutMe || "");
+            setLinks(Array.isArray(profile.links) ? profile.links : []);
+        } catch {
+            // ignore fallback load failure
+        }
+    };
+
     useEffect(() => {
         if (status === "unauthenticated") router.push("/login");
     }, [status, router]);
@@ -72,7 +95,11 @@ export default function SettingsPage() {
             fetch("/api/user/settings")
                 .then(async (r) => {
                     const data = await r.json().catch(() => ({}));
-                    if (!r.ok || !data || typeof data !== "object") return;
+                    if (!r.ok || !data || typeof data !== "object") {
+                        setMessage("❌ 設定情報の取得に失敗しました。");
+                        await hydrateFromPublicProfile();
+                        return;
+                    }
                     setName(data.name || "");
                     setUserId(data.userId || "");
                     setImage(data.image || "");
@@ -81,7 +108,10 @@ export default function SettingsPage() {
                     setAboutMe(data.aboutMe || "");
                     setLinks(Array.isArray(data.links) ? data.links : []);
                 })
-                .catch(() => { });
+                .catch(async () => {
+                    setMessage("❌ 設定情報の取得に失敗しました。");
+                    await hydrateFromPublicProfile();
+                });
             fetch("/api/posts/my")
                 .then(async (r) => {
                     const posts = await r.json().catch(() => []);

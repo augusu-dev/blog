@@ -2,16 +2,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { resolveSessionUserId } from "@/lib/sessionUser";
+import { withShortPostTable } from "@/lib/shortPosts";
 
 export async function GET(request: NextRequest) {
     const session = await auth();
-    if (!session?.user?.id) {
+    const userId = await resolveSessionUserId(session);
+    if (!userId) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     try {
         const user = await prisma.user.findUnique({
-            where: { id: session.user.id },
+            where: { id: userId },
             include: {
                 posts: true,
             },
@@ -24,9 +27,40 @@ export async function GET(request: NextRequest) {
         let parsedLinks = [];
         try {
             if ((user as any).links) {
-                parsedLinks = JSON.parse((user as any).links as string);
+                const rawParsed = JSON.parse((user as any).links as string);
+                if (Array.isArray(rawParsed)) {
+                    parsedLinks = rawParsed;
+                } else if (rawParsed && typeof rawParsed === "object") {
+                    const candidate = rawParsed as { items?: unknown; links?: unknown };
+                    parsedLinks = Array.isArray(candidate.items)
+                        ? candidate.items
+                        : Array.isArray(candidate.links)
+                          ? candidate.links
+                          : [];
+                }
             }
         } catch { }
+
+        let shortPosts: Array<{
+            id: string;
+            content: string;
+            createdAt: Date;
+        }> = [];
+        try {
+            shortPosts = await withShortPostTable(() =>
+                prisma.shortPost.findMany({
+                    where: { authorId: userId },
+                    orderBy: { createdAt: "desc" },
+                    select: {
+                        id: true,
+                        content: true,
+                        createdAt: true,
+                    },
+                })
+            );
+        } catch {
+            shortPosts = [];
+        }
 
         const data = {
             exportDate: new Date().toISOString(),
@@ -49,7 +83,12 @@ export async function GET(request: NextRequest) {
                 published: p.published,
                 createdAt: p.createdAt,
                 updatedAt: p.updatedAt,
-            }))
+            })),
+            shortPosts: shortPosts.map((p) => ({
+                id: p.id,
+                content: p.content,
+                createdAt: p.createdAt,
+            })),
         };
 
         const filename = `backup-${user.name || "user"}-${new Date().toISOString().split("T")[0]}.json`;

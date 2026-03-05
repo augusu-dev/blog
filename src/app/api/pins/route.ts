@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { withPinnedUserTable } from "@/lib/pinnedUsers";
+import { resolveSessionUserId } from "@/lib/sessionUser";
 
 const PINNED_USER_PUBLIC_SELECT_WITH_USER_ID = {
     id: true,
@@ -138,7 +139,7 @@ async function resolvePinnedUserIdForDelete(rawRef: string): Promise<string | nu
 
 export async function GET(request: NextRequest) {
     const session = await auth();
-    const ownerId = session?.user?.id;
+    const ownerId = await resolveSessionUserId(session);
     if (!ownerId) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -173,7 +174,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
     const session = await auth();
-    const ownerId = session?.user?.id;
+    const ownerId = await resolveSessionUserId(session);
     if (!ownerId) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -220,7 +221,7 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
     const session = await auth();
-    const ownerId = session?.user?.id;
+    const ownerId = await resolveSessionUserId(session);
     if (!ownerId) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
