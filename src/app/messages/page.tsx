@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { markDmPrSeen } from "@/lib/dmUnreadClient";
+import { getDmUnreadSince, markDmPrSeen } from "@/lib/dmUnreadClient";
 
 type ThreadUser = {
     id: string;
@@ -44,7 +44,13 @@ function formatMessageTime(value: string): string {
     if (!value) return "";
 
     try {
-        return new Date(value).toLocaleString("ja-JP");
+        return new Intl.DateTimeFormat("ja-JP", {
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+        }).format(new Date(value));
     } catch {
         return value;
     }
@@ -67,6 +73,7 @@ export default function MessagesPage() {
     const [error, setError] = useState("");
     const [presetTarget, setPresetTarget] = useState("");
     const [threadDrawerOpen, setThreadDrawerOpen] = useState(false);
+    const [unreadDmCount, setUnreadDmCount] = useState(0);
 
     const currentUserId = (session?.user as { id?: string } | undefined)?.id ?? "";
     const sessionUser = session?.user as {
@@ -161,9 +168,47 @@ export default function MessagesPage() {
     }, [currentUserId, loadThreads]);
 
     useEffect(() => {
+        if (!currentUserId) {
+            setUnreadDmCount(0);
+            return;
+        }
+
+        const loadUnreadDmCount = async () => {
+            const since = getDmUnreadSince();
+            const url = since
+                ? `/api/notifications/unread?since=${encodeURIComponent(since)}`
+                : "/api/notifications/unread";
+
+            try {
+                const res = await fetch(url, { cache: "no-store" });
+                const payload = await res.json().catch(() => ({}));
+                if (!res.ok) return;
+                const nextUnreadCount = Number(payload.dm || 0);
+                setUnreadDmCount(Number.isFinite(nextUnreadCount) && nextUnreadCount > 0 ? nextUnreadCount : 0);
+            } catch {
+                // keep previous unread count
+            }
+        };
+
+        void loadUnreadDmCount();
+    }, [currentUserId]);
+
+    useEffect(() => {
         if (!currentUserId) return;
         markDmPrSeen();
     }, [currentUserId]);
+
+    useEffect(() => {
+        if (!selectedUserId) {
+            setSelectedUser(null);
+            return;
+        }
+
+        const cachedUser = threads.find((thread) => thread.id === selectedUserId)?.user || null;
+        if (cachedUser) {
+            setSelectedUser(cachedUser);
+        }
+    }, [selectedUserId, threads]);
 
     useEffect(() => {
         if (!selectedUserId) {
@@ -172,8 +217,6 @@ export default function MessagesPage() {
             return;
         }
 
-        const cachedUser = threads.find((thread) => thread.id === selectedUserId)?.user || null;
-        setSelectedUser(cachedUser);
         setThreadDrawerOpen(false);
 
         let active = true;
@@ -182,7 +225,7 @@ export default function MessagesPage() {
 
         Promise.all([
             fetch(`/api/direct-messages?mode=thread&userId=${encodeURIComponent(selectedUserId)}`),
-            cachedUser ? Promise.resolve(null) : fetch(`/api/user/${encodeURIComponent(selectedUserId)}`),
+            fetch(`/api/user/${encodeURIComponent(selectedUserId)}`),
         ])
             .then(async ([threadRes, userRes]) => {
                 const threadPayload = await threadRes.json().catch(() => ({}));
@@ -193,7 +236,7 @@ export default function MessagesPage() {
                 if (!active) return;
                 setMessages(Array.isArray(threadPayload.messages) ? threadPayload.messages : []);
 
-                if (userRes && userRes.ok) {
+                if (userRes.ok) {
                     const profile = await userRes.json();
                     if (!active) return;
                     setSelectedUser({
@@ -217,7 +260,7 @@ export default function MessagesPage() {
         return () => {
             active = false;
         };
-    }, [selectedUserId, threads]);
+    }, [selectedUserId]);
 
     const refreshCurrentThread = useCallback(async () => {
         if (!selectedUserId) return;
@@ -477,6 +520,21 @@ export default function MessagesPage() {
                                 <span />
                                 <span />
                             </button>
+                            <span
+                                style={{
+                                    fontSize: 11,
+                                    color: unreadDmCount > 0 ? "#fff" : "var(--text-soft)",
+                                    background: unreadDmCount > 0 ? "#d35b5b" : "var(--bg-soft)",
+                                    border: "1px solid var(--border)",
+                                    borderRadius: 999,
+                                    padding: "3px 8px",
+                                    lineHeight: 1,
+                                    whiteSpace: "nowrap",
+                                    flexShrink: 0,
+                                }}
+                            >
+                                未読 {unreadDmCount}
+                            </span>
                             {selectedUser?.id ? (
                                 <Link
                                     href={`/user/${encodeURIComponent(selectedUser.userId || selectedUser.id)}`}

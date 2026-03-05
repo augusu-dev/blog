@@ -5,7 +5,7 @@ import { reserveAvailableUserId } from "@/lib/userId";
 
 export async function POST(request: NextRequest) {
     try {
-        const { name, email, password } = await request.json();
+        const { name, email, password, agreedToTerms } = await request.json();
         const normalizedEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
         const normalizedName = typeof name === "string" ? name.trim() : "";
 
@@ -19,6 +19,13 @@ export async function POST(request: NextRequest) {
         if (password.length < 6) {
             return NextResponse.json(
                 { error: "Password must be at least 6 characters." },
+                { status: 400 }
+            );
+        }
+
+        if (agreedToTerms !== true) {
+            return NextResponse.json(
+                { error: "You must agree to the terms to create an account." },
                 { status: 400 }
             );
         }

@@ -90,6 +90,12 @@ export default function SettingsPage() {
         locale === "en" ? "Choose JSON File" : locale === "zh" ? "閫夋嫨 JSON 鏂囦欢" : "JSON ファイルを選ぶ";
     const restoreCancelLabel = locale === "en" ? "Cancel" : locale === "zh" ? "鍙栨秷" : "キャンセル";
     const restoreLoadingLabel = locale === "en" ? "Restoring..." : locale === "zh" ? "鎭㈠師涓..." : "復元中...";
+    const backupReminderMessage =
+        locale === "en"
+            ? "We take care to preserve your data, but unexpected issues can still cause data loss. Please export backups regularly for anything important."
+            : locale === "zh"
+              ? "我们会尽力妥善保存数据，但仍无法完全排除因意外问题导致数据丢失的可能。重要内容请定期导出备份保存。"
+              : "当サイトではデータの保全に努めていますが、予期しない不具合などでデータが失われる可能性を完全にはなくせません。大切な内容は、こまめにバックアップを書き出して保管してください。";
 
     const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -754,6 +760,9 @@ export default function SettingsPage() {
                     <h2 className="settings-section-title">{t("データとバックアップ")}</h2>
                     <p style={{ fontSize: 13, color: "var(--text-soft)", marginBottom: 16 }}>
                         {t("あなたの設定、自己紹介、そしてこれまで投稿したすべての記事やプロダクトのデータをJSON形式でエクスポート（ダウンロード）できます。")}
+                    </p>
+                    <p style={{ fontSize: 12, color: "var(--text-soft)", marginTop: -4, marginBottom: 16 }}>
+                        {backupReminderMessage}
                     </p>
                     <div style={{ display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap" }}>
                         <a

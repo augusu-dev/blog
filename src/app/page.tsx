@@ -340,7 +340,14 @@ export default function HomePage() {
 
       {/* ─── Footer ─── */}
       <footer className="footer">
-        <span className="footer-copy">© 2026 Next Blog</span>
+        <div className="footer-links">
+          <span className="footer-copy">© 2026 Next Blog</span>
+          {session ? (
+            <Link href="/terms" className="footer-link">
+              利用規約
+            </Link>
+          ) : null}
+        </div>
       </footer>
 
       {/* ─── Overlay ─── */}

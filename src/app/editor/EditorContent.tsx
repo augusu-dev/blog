@@ -23,6 +23,36 @@ interface Post {
     updatedAt: string;
 }
 
+type PostType = "blog" | "product";
+
+type EditorSnapshot = {
+    postType: PostType;
+    title: string;
+    content: string;
+    excerpt: string;
+    tags: string[];
+    aiGenerated: boolean;
+};
+
+function createSnapshot(values: EditorSnapshot): EditorSnapshot {
+    return {
+        ...values,
+        tags: [...values.tags],
+    };
+}
+
+function snapshotsEqual(a: EditorSnapshot, b: EditorSnapshot): boolean {
+    return (
+        a.postType === b.postType &&
+        a.title === b.title &&
+        a.content === b.content &&
+        a.excerpt === b.excerpt &&
+        a.aiGenerated === b.aiGenerated &&
+        a.tags.length === b.tags.length &&
+        a.tags.every((tag, index) => tag === b.tags[index])
+    );
+}
+
 export default function EditorPage() {
     const { data: session, status } = useSession();
     const router = useRouter();
@@ -31,7 +61,7 @@ export default function EditorPage() {
     const initialType = searchParams.get("type");
 
     // Post type: "blog" or "product"
-    const [postType, setPostType] = useState<"blog" | "product">(
+    const [postType, setPostType] = useState<PostType>(
         initialType === "product" ? "product" : "blog"
     );
     const [title, setTitle] = useState("");
@@ -46,6 +76,20 @@ export default function EditorPage() {
     const contentKeyRef = useRef(0);
     const [isLoaded, setIsLoaded] = useState(false);
     const [lastFetchedId, setLastFetchedId] = useState<string | null>(null);
+    const savedSnapshotRef = useRef<EditorSnapshot>(
+        createSnapshot({
+            postType: initialType === "product" ? "product" : "blog",
+            title: "",
+            content: "",
+            excerpt: "",
+            tags: [],
+            aiGenerated: false,
+        })
+    );
+    const hasUnsavedChangesRef = useRef(false);
+    const bypassLeaveGuardRef = useRef(false);
+    const pendingNavigationRef = useRef<(() => void) | null>(null);
+    const [showLeaveConfirmModal, setShowLeaveConfirmModal] = useState(false);
 
     // Redirect to login if not authenticated
     useEffect(() => {
@@ -53,6 +97,54 @@ export default function EditorPage() {
             router.push("/login");
         }
     }, [status, router]);
+
+    const buildCurrentSnapshot = useCallback(
+        (): EditorSnapshot =>
+            createSnapshot({
+                postType,
+                title,
+                content,
+                excerpt,
+                tags,
+                aiGenerated,
+            }),
+        [aiGenerated, content, excerpt, postType, tags, title]
+    );
+
+    const markCurrentStateAsSaved = useCallback(() => {
+        savedSnapshotRef.current = buildCurrentSnapshot();
+        hasUnsavedChangesRef.current = false;
+    }, [buildCurrentSnapshot]);
+
+    const closeLeaveConfirmModal = useCallback(() => {
+        pendingNavigationRef.current = null;
+        setShowLeaveConfirmModal(false);
+    }, []);
+
+    const confirmLeaveAndNavigate = useCallback(() => {
+        const action = pendingNavigationRef.current;
+        pendingNavigationRef.current = null;
+        setShowLeaveConfirmModal(false);
+
+        if (!action) return;
+
+        bypassLeaveGuardRef.current = true;
+        action();
+    }, []);
+
+    const navigateWithGuard = useCallback(
+        (action: () => void) => {
+            if (bypassLeaveGuardRef.current || !hasUnsavedChangesRef.current) {
+                bypassLeaveGuardRef.current = true;
+                action();
+                return;
+            }
+
+            pendingNavigationRef.current = action;
+            setShowLeaveConfirmModal(true);
+        },
+        []
+    );
 
     // Load my posts
     const loadMyPosts = useCallback(async () => {
@@ -71,6 +163,51 @@ export default function EditorPage() {
         if (session) loadMyPosts();
     }, [session, loadMyPosts]);
 
+    useEffect(() => {
+        hasUnsavedChangesRef.current = !snapshotsEqual(savedSnapshotRef.current, buildCurrentSnapshot());
+    }, [buildCurrentSnapshot]);
+
+    useEffect(() => {
+        const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+            if (bypassLeaveGuardRef.current || !hasUnsavedChangesRef.current) return;
+            event.preventDefault();
+            event.returnValue = "";
+        };
+
+        const handleDocumentClick = (event: MouseEvent) => {
+            if (bypassLeaveGuardRef.current || !hasUnsavedChangesRef.current) return;
+            if (event.defaultPrevented || event.button !== 0) return;
+            if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+
+            const target = event.target as HTMLElement | null;
+            const anchor = target?.closest("a[href]") as HTMLAnchorElement | null;
+            if (!anchor) return;
+            if (anchor.target === "_blank") return;
+
+            const href = anchor.getAttribute("href");
+            if (!href || href.startsWith("#") || href.startsWith("javascript:")) return;
+
+            const currentUrl = new URL(window.location.href);
+            const nextUrl = new URL(anchor.href, window.location.href);
+            if (currentUrl.href === nextUrl.href) return;
+
+            event.preventDefault();
+            event.stopPropagation();
+            pendingNavigationRef.current = () => {
+                window.location.assign(anchor.href);
+            };
+            setShowLeaveConfirmModal(true);
+        };
+
+        window.addEventListener("beforeunload", handleBeforeUnload);
+        document.addEventListener("click", handleDocumentClick, true);
+
+        return () => {
+            window.removeEventListener("beforeunload", handleBeforeUnload);
+            document.removeEventListener("click", handleDocumentClick, true);
+        };
+    }, []);
+
     // Load post for editing
     useEffect(() => {
         if (!session) return;
@@ -80,46 +217,42 @@ export default function EditorPage() {
                 .then((res) => res.json())
                 .then((post) => {
                     const loadedTags = Array.isArray(post.tags) ? post.tags : [];
+                    const nextPostType = loadedTags.includes("product") ? "product" : "blog";
                     setTitle(post.title || "");
                     setContent(post.content || "");
                     setExcerpt(post.excerpt || "");
                     setTags(loadedTags.filter((tag: string) => tag !== AI_TAG));
                     setAiGenerated(loadedTags.includes(AI_TAG));
-                    if (loadedTags.includes("product")) setPostType("product");
+                    setPostType(nextPostType);
+                    savedSnapshotRef.current = createSnapshot({
+                        postType: nextPostType,
+                        title: post.title || "",
+                        content: post.content || "",
+                        excerpt: post.excerpt || "",
+                        tags: loadedTags.filter((tag: string) => tag !== AI_TAG),
+                        aiGenerated: loadedTags.includes(AI_TAG),
+                    });
+                    hasUnsavedChangesRef.current = false;
                     contentKeyRef.current += 1;
+                    bypassLeaveGuardRef.current = false;
                     setLastFetchedId(editId);
                     setIsLoaded(true);
                 })
                 .catch(console.error);
         } else if (!editId && !isLoaded) {
-            // Load autosave from local storage for new posts
-            const saved = localStorage.getItem("draft-post");
-            if (saved) {
-                try {
-                    const data = JSON.parse(saved);
-                    if (data.title) setTitle(data.title);
-                    if (data.content) { setContent(data.content); contentKeyRef.current += 1; }
-                    if (data.excerpt) setExcerpt(data.excerpt);
-                    if (data.tags) setTags(data.tags);
-                    if (typeof data.aiGenerated === "boolean") setAiGenerated(data.aiGenerated);
-                    if (data.postType) setPostType(data.postType);
-                } catch { }
-            }
+            savedSnapshotRef.current = createSnapshot({
+                postType,
+                title: "",
+                content: "",
+                excerpt: "",
+                tags: [],
+                aiGenerated: false,
+            });
+            hasUnsavedChangesRef.current = false;
+            bypassLeaveGuardRef.current = false;
             setIsLoaded(true);
         }
-    }, [editId, session, isLoaded, lastFetchedId]);
-
-    // Auto-save to local storage on change
-    useEffect(() => {
-        if (!editId) {
-            const timer = setTimeout(() => {
-                if (title || content) {
-                    localStorage.setItem("draft-post", JSON.stringify({ title, content, excerpt, tags, postType, aiGenerated }));
-                }
-            }, 1000);
-            return () => clearTimeout(timer);
-        }
-    }, [title, content, excerpt, tags, postType, aiGenerated, editId]);
+    }, [editId, isLoaded, lastFetchedId, postType, session]);
 
     const buildFinalTags = () => {
         const baseTags = postType === "product" && !tags.includes("product")
@@ -127,6 +260,16 @@ export default function EditorPage() {
             : tags.filter((t) => (postType === "blog" ? t !== "product" : true));
         const withoutAiTag = baseTags.filter((tag) => tag !== AI_TAG);
         return aiGenerated ? [...withoutAiTag, AI_TAG] : withoutAiTag;
+    };
+
+    const handleBack = () => {
+        navigateWithGuard(() => {
+            if (typeof window !== "undefined" && window.history.length > 1) {
+                router.back();
+            } else {
+                router.push("/");
+            }
+        });
     };
 
     // Save post
@@ -159,10 +302,11 @@ export default function EditorPage() {
 
             if (res.ok) {
                 setMessage(pub ? "✅ 記事を公開しました！" : "✅ 下書きを保存しました。");
-                if (!editId) localStorage.removeItem("draft-post");
+                markCurrentStateAsSaved();
                 loadMyPosts();
                 if (!editId) {
                     const post = await res.json();
+                    bypassLeaveGuardRef.current = true;
                     router.push(`/editor?id=${post.id}`);
                 }
             } else {
@@ -213,6 +357,7 @@ export default function EditorPage() {
                 return;
             }
 
+            markCurrentStateAsSaved();
             setMessage("✅ 依頼を送信しました。");
         } catch {
             setMessage("❌ 依頼の送信に失敗しました。");
@@ -231,6 +376,7 @@ export default function EditorPage() {
                 setMessage("記事を削除しました。");
                 loadMyPosts();
                 if (editId === id) {
+                    bypassLeaveGuardRef.current = true;
                     router.push("/editor");
                     resetForm();
                 }
@@ -262,6 +408,14 @@ export default function EditorPage() {
 
     if (!session) return null;
 
+    const orderedMyPosts = [...myPosts].sort((a, b) => {
+        if (a.published !== b.published) {
+            return Number(a.published) - Number(b.published);
+        }
+
+        return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+    });
+
     return (
         <>
             <nav className="navbar" style={{ justifyContent: "space-between" }}>
@@ -278,6 +432,22 @@ export default function EditorPage() {
             </nav>
 
             <div className="editor-container">
+                <div className="settings-page-title-row">
+                    <h1 style={{ fontFamily: "var(--serif)", fontSize: 28, fontWeight: 400, marginBottom: 0 }}>
+                        記事を書く
+                    </h1>
+                    <button
+                        type="button"
+                        className="settings-back-btn"
+                        onClick={handleBack}
+                        aria-label="戻る"
+                        title="戻る"
+                    >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M15 18l-6-6 6-6" />
+                        </svg>
+                    </button>
+                </div>
                 {message && (
                     <div
                         className={`login-message ${message.startsWith("❌") ? "login-error" : ""}`}
@@ -375,11 +545,11 @@ export default function EditorPage() {
                 />
 
                 {/* My posts list */}
-                {myPosts.length > 0 && (
+                {orderedMyPosts.length > 0 && (
                     <div style={{ marginTop: 48 }}>
                         <h3 className="my-posts-title">自分の投稿</h3>
                         <div className="my-posts-list">
-                            {myPosts.map((post) => (
+                            {orderedMyPosts.map((post) => (
                                 <div key={post.id} className="my-post-item">
                                     <div style={{ flex: 1 }}>
                                         <h4>
@@ -399,7 +569,7 @@ export default function EditorPage() {
                                         <button
                                             className="editor-btn editor-btn-secondary"
                                             style={{ padding: "6px 12px", fontSize: 12 }}
-                                            onClick={() => router.push(`/editor?id=${post.id}`)}
+                                            onClick={() => navigateWithGuard(() => router.push(`/editor?id=${post.id}`))}
                                         >
                                             編集
                                         </button>
@@ -417,6 +587,33 @@ export default function EditorPage() {
                     </div>
                 )}
             </div>
+            {showLeaveConfirmModal ? (
+                <div className="restore-modal-backdrop" onClick={closeLeaveConfirmModal}>
+                    <div className="restore-modal-card" onClick={(event) => event.stopPropagation()}>
+                        <h3 className="restore-modal-title">下書きを保存していません</h3>
+                        <p className="restore-modal-copy">
+                            下書きを保存しないままページを移動すると、いま書いている内容は保存されません。
+                            そのまま移動してよろしいですか？
+                        </p>
+                        <div className="restore-modal-actions">
+                            <button
+                                type="button"
+                                className="editor-btn editor-btn-secondary"
+                                onClick={closeLeaveConfirmModal}
+                            >
+                                いいえ
+                            </button>
+                            <button
+                                type="button"
+                                className="editor-btn editor-btn-primary"
+                                onClick={confirmLeaveAndNavigate}
+                            >
+                                はい
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            ) : null}
         </>
     );
 }

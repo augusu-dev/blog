@@ -26,7 +26,13 @@ const SHORT_POST_LIMIT = 300;
 
 function formatDate(value: string): string {
     try {
-        return new Date(value).toLocaleString("ja-JP");
+        return new Intl.DateTimeFormat("ja-JP", {
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+        }).format(new Date(value));
     } catch {
         return value;
     }

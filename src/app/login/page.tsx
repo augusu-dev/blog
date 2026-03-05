@@ -18,6 +18,7 @@ export default function LoginPage() {
     const [googleLoading, setGoogleLoading] = useState(false);
     const [error, setError] = useState("");
     const [googleEnabled, setGoogleEnabled] = useState(false);
+    const [agreedToTerms, setAgreedToTerms] = useState(false);
 
     const buildMyPageHref = (rawPublicUserId?: string | null, rawUserId?: string | null) => {
         const publicUserId = typeof rawPublicUserId === "string" ? rawPublicUserId.trim() : "";
@@ -57,7 +58,7 @@ export default function LoginPage() {
                     }
                 }
             } catch {
-                // retry until the auth cookie becomes visible to the session endpoint
+                // wait for the auth session to become visible
             }
 
             await wait(200 * (attempt + 1));
@@ -95,8 +96,14 @@ export default function LoginPage() {
         };
     }, []);
 
-    const handleLogin = async (e: React.FormEvent) => {
-        e.preventDefault();
+    const requireTermsAgreement = () => {
+        if (!isSignup || agreedToTerms) return true;
+        setError("利用規約に同意してください。");
+        return false;
+    };
+
+    const handleLogin = async (event: React.FormEvent) => {
+        event.preventDefault();
         if (!email || !password) return;
 
         setLoading(true);
@@ -122,9 +129,9 @@ export default function LoginPage() {
         }
     };
 
-    const handleSignup = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!email || !password) return;
+    const handleSignup = async (event: React.FormEvent) => {
+        event.preventDefault();
+        if (!email || !password || !requireTermsAgreement()) return;
 
         setLoading(true);
         setError("");
@@ -133,7 +140,7 @@ export default function LoginPage() {
             const res = await fetch("/api/auth/signup", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ name, email, password }),
+                body: JSON.stringify({ name, email, password, agreedToTerms }),
             });
 
             const data = await res.json().catch(() => ({}));
@@ -164,6 +171,8 @@ export default function LoginPage() {
     };
 
     const handleGoogleAuth = async () => {
+        if (!requireTermsAgreement()) return;
+
         setGoogleLoading(true);
         setError("");
         try {
@@ -187,14 +196,14 @@ export default function LoginPage() {
                 {error && <div className="login-message login-error">{error}</div>}
 
                 <form onSubmit={isSignup ? handleSignup : handleLogin}>
-                    {isSignup && (
+                    {isSignup ? (
                         <>
                             <input
                                 type="text"
                                 className="login-input"
                                 placeholder="ユーザー名（任意）"
                                 value={name}
-                                onChange={(e) => setName(e.target.value)}
+                                onChange={(event) => setName(event.target.value)}
                                 disabled={loading || googleLoading}
                                 style={{ marginBottom: 12 }}
                             />
@@ -208,17 +217,17 @@ export default function LoginPage() {
                                 >
                                     sute.jp
                                 </a>
-                                でも使用できます。
+                                でも利用できます。
                             </p>
                         </>
-                    )}
+                    ) : null}
 
                     <input
                         type="email"
                         className="login-input"
                         placeholder="メールアドレス"
                         value={email}
-                        onChange={(e) => setEmail(e.target.value)}
+                        onChange={(event) => setEmail(event.target.value)}
                         required
                         autoFocus
                         disabled={loading || googleLoading}
@@ -230,27 +239,59 @@ export default function LoginPage() {
                         className="login-input"
                         placeholder={isSignup ? "パスワード（6文字以上）" : "パスワード"}
                         value={password}
-                        onChange={(e) => setPassword(e.target.value)}
+                        onChange={(event) => setPassword(event.target.value)}
                         required
                         minLength={isSignup ? 6 : undefined}
                         disabled={loading || googleLoading}
                     />
 
+                    {isSignup ? (
+                        <label
+                            style={{
+                                display: "flex",
+                                alignItems: "flex-start",
+                                gap: 10,
+                                marginTop: 14,
+                                fontSize: 13,
+                                color: "var(--text)",
+                                lineHeight: 1.7,
+                            }}
+                        >
+                            <input
+                                type="checkbox"
+                                checked={agreedToTerms}
+                                onChange={(event) => setAgreedToTerms(event.target.checked)}
+                                disabled={loading || googleLoading}
+                                style={{ marginTop: 3 }}
+                            />
+                            <span>
+                                <Link
+                                    href="/terms"
+                                    style={{ color: "var(--azuki)", textDecoration: "none" }}
+                                    target="_blank"
+                                >
+                                    利用規約
+                                </Link>
+                                に同意します。
+                            </span>
+                        </label>
+                    ) : null}
+
                     <button
                         type="submit"
                         className="login-submit"
-                        disabled={loading || googleLoading || !email || !password}
+                        disabled={loading || googleLoading || !email || !password || (isSignup && !agreedToTerms)}
                     >
                         {loading ? "処理中..." : isSignup ? "アカウントを作成" : "ログイン"}
                     </button>
                 </form>
 
-                {googleEnabled && (
+                {googleEnabled ? (
                     <button
                         type="button"
                         className="editor-btn editor-btn-secondary"
                         onClick={handleGoogleAuth}
-                        disabled={loading || googleLoading}
+                        disabled={loading || googleLoading || (isSignup && !agreedToTerms)}
                         style={{ width: "100%", marginTop: 10, padding: "10px 0" }}
                     >
                         {googleLoading
@@ -259,9 +300,10 @@ export default function LoginPage() {
                               ? "Googleでサインアップ"
                               : "Googleでログイン"}
                     </button>
-                )}
+                ) : null}
 
                 <button
+                    type="button"
                     onClick={() => {
                         setIsSignup(!isSignup);
                         setError("");

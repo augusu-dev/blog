@@ -29,6 +29,20 @@ function getAuthorHref(author: ShortPostAuthor): string {
     return `/user/${encodeURIComponent(author.userId || author.id)}`;
 }
 
+function formatShortPostTime(value: string): string {
+    try {
+        return new Intl.DateTimeFormat("ja-JP", {
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+        }).format(new Date(value));
+    } catch {
+        return value;
+    }
+}
+
 function renderTextWithLinks(content: string) {
     const urlPattern = /(https?:\/\/[^\s<>"']+)/g;
     const parts: ReactNode[] = [];
@@ -209,7 +223,7 @@ export default function ShortPostsPage() {
                                                     textOverflow: "ellipsis",
                                                 }}
                                             >
-                                                {getAuthorLabel(post.author)} ・ {new Date(post.createdAt).toLocaleString("ja-JP")}
+                                                {getAuthorLabel(post.author)} ・ {formatShortPostTime(post.createdAt)}
                                             </p>
                                         </div>
 
