@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useLanguage } from "@/contexts/LanguageContext";
 import PostComments from "@/components/PostComments";
+import UnreadDmButton from "@/components/UnreadDmButton";
 
 interface Post {
   id: string;
@@ -176,14 +177,7 @@ export default function HomePage() {
                 {t("マイページ")}
               </Link>
               <Link href="/settings" className="nav-auth-btn nav-user-btn" style={{ textDecoration: "none" }}>⚙</Link>
-              <Link
-                href="/messages"
-                className="nav-auth-btn nav-user-btn"
-                style={{ textDecoration: "none" }}
-                title="DM"
-              >
-                ✉
-              </Link>
+              <UnreadDmButton className="nav-auth-btn nav-user-btn" />
             </>
           ) : (
             <Link href="/login" className="nav-auth-btn nav-login-btn">{t("ログイン")}</Link>

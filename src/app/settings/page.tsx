@@ -187,7 +187,7 @@ export default function SettingsPage() {
 
                 {/* 言語設定 */}
                 <section style={{ marginBottom: 40 }}>
-                    <h2 className="settings-section-title">{t("言語設定")} / Language</h2>
+                    <h2 className="settings-section-title">{t("言語設定")}</h2>
                     <div style={{ display: "flex", gap: "12px", marginBottom: "16px" }}>
                         <button
                             className={`editor-btn ${language === 'ja' ? 'editor-btn-primary' : 'editor-btn-secondary'}`}

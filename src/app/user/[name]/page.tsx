@@ -7,6 +7,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useLanguage } from "@/contexts/LanguageContext";
 import PostComments from "@/components/PostComments";
+import UnreadDmButton from "@/components/UnreadDmButton";
 
 /* ─── Types ─── */
 interface Post {
@@ -343,14 +344,7 @@ export default function UserPage() {
                         <>
                             <Link href="/editor" className="nav-auth-btn nav-write-btn">✏ 記事を書く</Link>
                             <Link href="/settings" className="nav-auth-btn nav-user-btn" style={{ textDecoration: "none" }}>⚙</Link>
-                            <Link
-                                href="/messages"
-                                className="nav-auth-btn nav-user-btn"
-                                style={{ textDecoration: "none" }}
-                                title="DM"
-                            >
-                                ✉
-                            </Link>
+                            <UnreadDmButton className="nav-auth-btn nav-user-btn" />
                         </>
                     ) : (
                         <Link href="/login" className="nav-auth-btn nav-login-btn">ログイン</Link>
@@ -493,14 +487,12 @@ export default function UserPage() {
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
                         <h2 className="section-title" style={{ marginBottom: 0 }}>About me</h2>
                         {canShowAboutDmButton && (
-                            <Link
+                            <UnreadDmButton
                                 href={`/messages?to=${encodeURIComponent(user.id)}`}
                                 className="nav-auth-btn nav-user-btn"
-                                style={{ textDecoration: "none", fontSize: 12, padding: "4px 10px" }}
+                                style={{ fontSize: 12, padding: "4px 10px" }}
                                 title="DM"
-                            >
-                                ✉
-                            </Link>
+                            />
                         )}
                     </div>
                     <div className="about-header">

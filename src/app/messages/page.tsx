@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { markDmPrSeen } from "@/lib/dmUnreadClient";
 
 type ThreadUser = {
     id: string;
@@ -73,6 +74,7 @@ export default function MessagesPage() {
     const loadThreads = useCallback(async () => {
         if (!currentUserId) return;
 
+        setError("");
         setLoadingThreads(true);
         try {
             const res = await fetch("/api/direct-messages?mode=threads");
@@ -87,20 +89,25 @@ export default function MessagesPage() {
 
             if (presetTarget) {
                 setSelectedUserId(presetTarget);
-            } else if (!selectedUserId && nextThreads[0]) {
-                setSelectedUserId(nextThreads[0].id);
+            } else if (nextThreads[0]) {
+                setSelectedUserId((current) => current || nextThreads[0].id);
             }
         } catch {
             setError("Failed to load conversations.");
         } finally {
             setLoadingThreads(false);
         }
-    }, [currentUserId, presetTarget, selectedUserId]);
+    }, [currentUserId, presetTarget]);
 
     useEffect(() => {
         if (!currentUserId) return;
         loadThreads();
     }, [currentUserId, loadThreads]);
+
+    useEffect(() => {
+        if (!currentUserId) return;
+        markDmPrSeen();
+    }, [currentUserId]);
 
     useEffect(() => {
         if (!selectedUserId) {
@@ -179,12 +186,35 @@ export default function MessagesPage() {
             }
 
             setDraft("");
-            await Promise.all([
-                loadThreads(),
-                fetch(`/api/direct-messages?mode=thread&userId=${encodeURIComponent(selectedUserId)}`)
-                    .then((r) => r.json())
-                    .then((p) => setMessages(Array.isArray(p.messages) ? p.messages : [])),
-            ]);
+            if (payload && typeof payload === "object" && typeof payload.id === "string") {
+                const nextMessage = payload as DirectMessage;
+                setMessages((prev) => [...prev, nextMessage]);
+
+                const otherUser = nextMessage.senderId === currentUserId ? nextMessage.recipient : nextMessage.sender;
+                if (otherUser?.id) {
+                    setThreads((prev) => {
+                        const nextThread: Thread = {
+                            id: otherUser.id,
+                            user: otherUser,
+                            lastMessage: {
+                                id: nextMessage.id,
+                                content: nextMessage.content,
+                                createdAt: nextMessage.createdAt,
+                                senderId: nextMessage.senderId,
+                                recipientId: nextMessage.recipientId,
+                            },
+                        };
+                        return [nextThread, ...prev.filter((thread) => thread.id !== otherUser.id)];
+                    });
+
+                    if (!selectedUser) {
+                        setSelectedUser(otherUser);
+                    }
+                }
+            }
+
+            markDmPrSeen();
+            void loadThreads();
         } catch {
             setError("Failed to send message.");
         } finally {

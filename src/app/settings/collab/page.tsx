@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { markDmPrSeen } from "@/lib/dmUnreadClient";
 
 type DmSetting = "OPEN" | "PR_ONLY" | "CLOSED";
 
@@ -210,6 +211,7 @@ export default function CollaborationSettingsPage() {
 
     useEffect(() => {
         if (session?.user) {
+            markDmPrSeen();
             void loadData();
         }
     }, [session, loadData]);

@@ -8,6 +8,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import RichEditor from "@/components/RichEditor";
 import TagInput from "@/components/TagInput";
+import UnreadDmButton from "@/components/UnreadDmButton";
 
 const AI_TAG = "ai-generated";
 
@@ -249,13 +250,6 @@ export default function EditorPage() {
         contentKeyRef.current += 1;
     };
 
-    // New post
-    const newPost = (type?: "blog" | "product") => {
-        router.push("/editor");
-        if (type) setPostType(type);
-        resetForm();
-    };
-
     if (status === "loading") {
         return (
             <div className="login-container">
@@ -276,23 +270,10 @@ export default function EditorPage() {
                     Next Blog <span className="beta-badge">β</span>
                 </Link>
                 <div className="nav-auth" style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                    <span style={{ fontSize: 12, color: "var(--text-soft)" }}>
-                        {session.user?.name || session.user?.email}
-                    </span>
                     <Link href="/settings" className="nav-auth-btn nav-user-btn" style={{ textDecoration: "none" }}>
                         ⚙
                     </Link>
-                    <Link
-                        href="/messages"
-                        className="nav-auth-btn nav-user-btn"
-                        style={{ textDecoration: "none" }}
-                        title="DM"
-                    >
-                        ✉
-                    </Link>
-                    <button className="nav-auth-btn nav-user-btn" onClick={() => newPost()}>
-                        ＋ 新規
-                    </button>
+                    <UnreadDmButton className="nav-auth-btn nav-user-btn" />
                 </div>
             </nav>
 

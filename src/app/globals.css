@@ -154,6 +154,30 @@ body {
   gap: 6px;
 }
 
+.dm-nav-link {
+  position: relative;
+}
+
+.dm-unread-badge {
+  position: absolute;
+  top: -6px;
+  left: -6px;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: #d35b5b;
+  color: #fff;
+  border: 1px solid #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  line-height: 1;
+  padding: 0 4px;
+  font-weight: 700;
+  pointer-events: none;
+}
+
 .nav-login-btn {
   background: var(--azuki);
   color: var(--white);

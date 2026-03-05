@@ -55,6 +55,9 @@ ALTER TABLE "DirectMessage"
 ALTER COLUMN "content" TYPE VARCHAR(10000)
 `;
 
+let schemaEnsured = false;
+let ensureSchemaPromise: Promise<void> | null = null;
+
 function isMissingDirectMessageSchemaError(error: unknown): boolean {
     return (
         error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -63,13 +66,31 @@ function isMissingDirectMessageSchemaError(error: unknown): boolean {
 }
 
 export async function ensureDirectMessageSchema(): Promise<void> {
-    await prisma.$executeRawUnsafe(CREATE_CONTEXT_ENUM_SQL);
-    await prisma.$executeRawUnsafe(CREATE_DIRECT_MESSAGE_TABLE_SQL);
-    await prisma.$executeRawUnsafe(ADD_CONTEXT_COLUMN_SQL);
-    await prisma.$executeRawUnsafe(ADD_PULL_REQUEST_COLUMN_SQL);
-    await prisma.$executeRawUnsafe(CREATE_RECIPIENT_INDEX_SQL);
-    await prisma.$executeRawUnsafe(CREATE_SENDER_INDEX_SQL);
-    await prisma.$executeRawUnsafe(CREATE_PULL_REQUEST_INDEX_SQL);
+    if (schemaEnsured) {
+        return;
+    }
+
+    if (!ensureSchemaPromise) {
+        ensureSchemaPromise = (async () => {
+            await prisma.$executeRawUnsafe(CREATE_CONTEXT_ENUM_SQL);
+            await prisma.$executeRawUnsafe(CREATE_DIRECT_MESSAGE_TABLE_SQL);
+            await prisma.$executeRawUnsafe(ADD_CONTEXT_COLUMN_SQL);
+            await prisma.$executeRawUnsafe(ADD_PULL_REQUEST_COLUMN_SQL);
+            await prisma.$executeRawUnsafe(CREATE_RECIPIENT_INDEX_SQL);
+            await prisma.$executeRawUnsafe(CREATE_SENDER_INDEX_SQL);
+            await prisma.$executeRawUnsafe(CREATE_PULL_REQUEST_INDEX_SQL);
+            schemaEnsured = true;
+        })()
+            .catch((error) => {
+                schemaEnsured = false;
+                throw error;
+            })
+            .finally(() => {
+                ensureSchemaPromise = null;
+            });
+    }
+
+    await ensureSchemaPromise;
 }
 
 export async function ensureDirectMessageCapacity(): Promise<void> {
