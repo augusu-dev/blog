@@ -1,16 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { ensureUserIdSchema } from "@/lib/userId";
 
 // GET: 記事一覧取得（公開記事のみ、未認証でもOK）
 export async function GET() {
     try {
+        await ensureUserIdSchema();
         const posts = await prisma.post.findMany({
             where: { published: true },
             orderBy: { createdAt: "desc" },
             include: {
                 author: {
-                    select: { id: true, name: true, email: true, image: true },
+                    select: { id: true, userId: true, name: true, email: true, image: true },
                 },
             },
         });

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db";
+import { reserveAvailableUserId } from "@/lib/userId";
 
 export async function POST(request: NextRequest) {
     try {
@@ -34,12 +35,15 @@ export async function POST(request: NextRequest) {
 
         // パスワードをハッシュ化して保存
         const hashedPassword = await bcrypt.hash(password, 12);
+        const baseUserId = (name || email.split("@")[0] || "").toString();
+        const userId = await reserveAvailableUserId(baseUserId);
 
         const user = await prisma.user.create({
             data: {
                 name: name || email.split("@")[0],
                 email,
                 password: hashedPassword,
+                userId,
             },
         });
 

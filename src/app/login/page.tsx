@@ -19,20 +19,21 @@ export default function LoginPage() {
     const [error, setError] = useState("");
     const [googleEnabled, setGoogleEnabled] = useState(false);
 
-    const buildMyPageHref = (rawUserId?: string | null) => {
-        const userId = typeof rawUserId === "string" ? rawUserId.trim() : "";
-        return userId ? `/user/${encodeURIComponent(userId)}` : "/settings";
+    const buildMyPageHref = (rawPublicUserId?: string | null) => {
+        const publicUserId = typeof rawPublicUserId === "string" ? rawPublicUserId.trim() : "";
+        return publicUserId ? `/user/${encodeURIComponent(publicUserId)}` : "/settings";
     };
 
     const resolveMyPageHref = async () => {
-        if (session?.user?.id) {
-            return buildMyPageHref(session.user.id);
+        const sessionUser = session?.user as { userId?: string | null } | undefined;
+        if (sessionUser?.userId) {
+            return buildMyPageHref(sessionUser.userId);
         }
         try {
             const res = await fetch("/api/auth/session", { cache: "no-store" });
             if (res.ok) {
-                const payload = (await res.json()) as { user?: { id?: string | null } };
-                return buildMyPageHref(payload.user?.id);
+                const payload = (await res.json()) as { user?: { userId?: string | null } };
+                return buildMyPageHref(payload.user?.userId);
             }
         } catch {
             // noop
@@ -42,8 +43,9 @@ export default function LoginPage() {
 
     useEffect(() => {
         if (status !== "authenticated") return;
-        router.replace(buildMyPageHref(session?.user?.id));
-    }, [router, session?.user?.id, status]);
+        const sessionUser = session?.user as { userId?: string | null } | undefined;
+        router.replace(buildMyPageHref(sessionUser?.userId));
+    }, [router, session, status]);
 
     useEffect(() => {
         let active = true;

@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { DirectMessageContext, PullRequestStatus } from "@prisma/client";
 import { ensureDirectMessageCapacity } from "@/lib/directMessages";
+import { ensureUserIdSchema } from "@/lib/userId";
 
 type DmSetting = "OPEN" | "PR_ONLY" | "CLOSED";
 const DEFAULT_DM_SETTING: DmSetting = "OPEN";
@@ -109,6 +110,7 @@ export async function POST(request: NextRequest) {
     }
 
     try {
+        await ensureUserIdSchema();
         const body = await request.json();
         const recipientIdInput = normalizeString(body.recipientId);
         const recipientQuery = normalizeString(body.recipientQuery || body.recipientName);
@@ -147,6 +149,7 @@ export async function POST(request: NextRequest) {
             where: {
                 OR: [
                     { id: recipientLookup },
+                    { userId: recipientLookup.toLowerCase() },
                     { name: { equals: recipientLookup, mode: "insensitive" } },
                 ],
             },

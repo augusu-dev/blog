@@ -29,6 +29,7 @@ interface SocialLink {
 
 interface UserProfile {
     id: string;
+    userId?: string | null;
     name: string;
     email: string;
     image?: string | null;
@@ -100,7 +101,7 @@ export default function UserPage() {
     const [overlayMeta, setOverlayMeta] = useState<{
         date: string;
         tags: string[];
-        author: { id: string; name: string | null; email: string | null; image: string | null } | null;
+        author: { id: string; userId?: string | null; name: string | null; email: string | null; image: string | null } | null;
     }>({ date: "", tags: [], author: null });
 
     // Blog pagination
@@ -194,6 +195,7 @@ export default function UserPage() {
             author: user
                 ? {
                       id: user.id,
+                      userId: user.userId || null,
                       name: user.name || null,
                       email: user.email || null,
                       image: user.image || null,
@@ -243,6 +245,12 @@ export default function UserPage() {
         const handler = (e: KeyboardEvent) => { if (e.key === "Escape") closeOverlay(); };
         document.addEventListener("keydown", handler);
         return () => document.removeEventListener("keydown", handler);
+    }, []);
+
+    useEffect(() => {
+        return () => {
+            document.body.style.overflow = "";
+        };
     }, []);
 
     /* ─── Computed ─── */
@@ -558,7 +566,7 @@ export default function UserPage() {
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                             {overlayMeta.author?.id && (
                                 <Link
-                                    href={`/user/${encodeURIComponent(overlayMeta.author.id)}`}
+                                    href={`/user/${encodeURIComponent(overlayMeta.author.userId || overlayMeta.author.id)}`}
                                     style={{ textDecoration: "none" }}
                                     title="ページに飛ぶ"
                                 >

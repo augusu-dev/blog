@@ -15,7 +15,7 @@ interface Post {
   excerpt?: string;
   tags: string[];
   createdAt: string;
-  author?: { id: string; name: string | null; email: string | null; image?: string | null };
+  author?: { id: string; userId?: string | null; name: string | null; email: string | null; image?: string | null };
 }
 
 const TAG_COLORS: Record<string, string> = {
@@ -89,6 +89,12 @@ export default function HomePage() {
   };
 
   useEffect(() => {
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, []);
+
+  useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape") closeOverlay(); };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
@@ -130,10 +136,13 @@ export default function HomePage() {
     setIsTranslating(false);
   };
 
-  const myPageHref = session?.user?.id
-    ? `/user/${encodeURIComponent(session.user.id)}`
-    : "/settings";
-  const currentUserId = (session?.user as { id?: string } | undefined)?.id ?? null;
+  const sessionUser = session?.user as { id?: string; userId?: string | null } | undefined;
+  const myPageHref = sessionUser?.userId
+    ? `/user/${encodeURIComponent(sessionUser.userId)}`
+    : sessionUser?.id
+      ? `/user/${encodeURIComponent(sessionUser.id)}`
+      : "/settings";
+  const currentUserId = sessionUser?.id ?? null;
 
   return (
     <>
@@ -233,7 +242,7 @@ export default function HomePage() {
                     <div style={{ fontSize: 12, color: "var(--azuki-light)", marginTop: 8 }}>
                       by{" "}
                       <Link
-                        href={p.author?.id ? `/user/${encodeURIComponent(p.author.id)}` : "#"}
+                        href={p.author?.id ? `/user/${encodeURIComponent(p.author.userId || p.author.id)}` : "#"}
                         style={{ color: "var(--azuki)", textDecoration: "none" }}
                         onClick={(e) => e.stopPropagation()}
                       >
@@ -287,7 +296,7 @@ export default function HomePage() {
             <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
               {overlayMeta.author?.id && (
                 <Link
-                  href={`/user/${encodeURIComponent(overlayMeta.author.id)}`}
+                  href={`/user/${encodeURIComponent(overlayMeta.author.userId || overlayMeta.author.id)}`}
                   style={{ textDecoration: "none" }}
                   title="ページに飛ぶ"
                 >

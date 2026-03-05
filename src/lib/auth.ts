@@ -4,6 +4,7 @@ import Google from "next-auth/providers/google";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import bcrypt from "bcryptjs";
 import { prisma } from "./db";
+import { ensureUserIdForUser } from "./userId";
 
 const googleEnabled =
     typeof process.env.GOOGLE_CLIENT_ID === "string" &&
@@ -50,6 +51,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                     id: user.id,
                     email: user.email,
                     name: user.name,
+                    userId: await ensureUserIdForUser(user.id),
                 };
             },
         }),
@@ -61,15 +63,19 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         signIn: "/login",
     },
     callbacks: {
-        jwt({ token, user }) {
+        async jwt({ token, user }) {
             if (user) {
                 token.id = user.id;
+            }
+            if (token.id) {
+                token.userId = await ensureUserIdForUser(token.id as string);
             }
             return token;
         },
         session({ session, token }) {
             if (session.user && token.id) {
                 session.user.id = token.id as string;
+                session.user.userId = token.userId as string;
             }
             return session;
         },

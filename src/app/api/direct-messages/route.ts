@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { DirectMessageContext } from "@prisma/client";
 import { ensureDirectMessageCapacity } from "@/lib/directMessages";
+import { ensureUserIdSchema } from "@/lib/userId";
 
 type DmSetting = "OPEN" | "PR_ONLY" | "CLOSED";
 const DEFAULT_DM_SETTING: DmSetting = "OPEN";
@@ -34,6 +35,24 @@ function unpackDmSettingFromLinks(raw: string | null | undefined): DmSetting {
     return DEFAULT_DM_SETTING;
 }
 
+async function resolveUserPrimaryId(userRef: string): Promise<string | null> {
+    const normalized = normalizeString(userRef);
+    if (!normalized) return null;
+
+    const matched = await prisma.user.findFirst({
+        where: {
+            OR: [
+                { id: normalized },
+                { userId: normalized.toLowerCase() },
+                { name: { equals: normalized, mode: "insensitive" } },
+            ],
+        },
+        select: { id: true },
+    });
+
+    return matched?.id || null;
+}
+
 export async function GET(request: NextRequest) {
     const session = await auth();
     const userId = session?.user?.id;
@@ -53,26 +72,32 @@ export async function GET(request: NextRequest) {
     const targetUserId = normalizeString(request.nextUrl.searchParams.get("userId"));
 
     try {
+        await ensureUserIdSchema();
         if (mode === "thread") {
             if (!targetUserId) {
                 return NextResponse.json({ error: "userId is required for thread mode" }, { status: 400 });
             }
 
+            const resolvedTargetUserId = await resolveUserPrimaryId(targetUserId);
+            if (!resolvedTargetUserId) {
+                return NextResponse.json({ error: "Target user not found" }, { status: 404 });
+            }
+
             const messages = await prisma.directMessage.findMany({
                 where: {
                     OR: [
-                        { senderId: userId, recipientId: targetUserId },
-                        { senderId: targetUserId, recipientId: userId },
+                        { senderId: userId, recipientId: resolvedTargetUserId },
+                        { senderId: resolvedTargetUserId, recipientId: userId },
                     ],
                 },
                 orderBy: { createdAt: "asc" },
                 include: {
-                    sender: { select: { id: true, name: true, email: true, image: true } },
-                    recipient: { select: { id: true, name: true, email: true, image: true } },
+                    sender: { select: { id: true, userId: true, name: true, email: true, image: true } },
+                    recipient: { select: { id: true, userId: true, name: true, email: true, image: true } },
                 },
             });
 
-            return NextResponse.json({ mode, userId: targetUserId, messages });
+            return NextResponse.json({ mode, userId: resolvedTargetUserId, messages });
         }
 
         if (mode === "threads") {
@@ -82,8 +107,8 @@ export async function GET(request: NextRequest) {
                 },
                 orderBy: { createdAt: "desc" },
                 include: {
-                    sender: { select: { id: true, name: true, email: true, image: true } },
-                    recipient: { select: { id: true, name: true, email: true, image: true } },
+                    sender: { select: { id: true, userId: true, name: true, email: true, image: true } },
+                    recipient: { select: { id: true, userId: true, name: true, email: true, image: true } },
                 },
             });
 
@@ -91,7 +116,7 @@ export async function GET(request: NextRequest) {
                 string,
                 {
                     id: string;
-                    user: { id: string; name: string | null; email: string | null; image: string | null };
+                    user: { id: string; userId: string | null; name: string | null; email: string | null; image: string | null };
                     lastMessage: {
                         id: string;
                         content: string;
@@ -129,7 +154,7 @@ export async function GET(request: NextRequest) {
                 },
                 orderBy: { createdAt: "desc" },
                 include: {
-                    recipient: { select: { id: true, name: true, email: true, image: true } },
+                    recipient: { select: { id: true, userId: true, name: true, email: true, image: true } },
                 },
             });
             return NextResponse.json({ mode, messages });
@@ -142,7 +167,7 @@ export async function GET(request: NextRequest) {
             },
             orderBy: { createdAt: "desc" },
             include: {
-                sender: { select: { id: true, name: true, email: true, image: true } },
+                sender: { select: { id: true, userId: true, name: true, email: true, image: true } },
             },
         });
 
@@ -161,12 +186,18 @@ export async function POST(request: NextRequest) {
     }
 
     try {
+        await ensureUserIdSchema();
         const body = await request.json();
-        const recipientId = normalizeString(body.recipientId);
+        const recipientRef = normalizeString(body.recipientId);
         const content = normalizeString(body.content);
 
-        if (!recipientId) {
+        if (!recipientRef) {
             return NextResponse.json({ error: "recipientId is required" }, { status: 400 });
+        }
+
+        const recipientId = await resolveUserPrimaryId(recipientRef);
+        if (!recipientId) {
+            return NextResponse.json({ error: "Recipient not found" }, { status: 404 });
         }
 
         if (recipientId === userId) {
@@ -209,8 +240,8 @@ export async function POST(request: NextRequest) {
                 context: DirectMessageContext.GENERAL,
             },
             include: {
-                sender: { select: { id: true, name: true, email: true, image: true } },
-                recipient: { select: { id: true, name: true, email: true, image: true } },
+                sender: { select: { id: true, userId: true, name: true, email: true, image: true } },
+                recipient: { select: { id: true, userId: true, name: true, email: true, image: true } },
             },
         });
 

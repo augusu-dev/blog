@@ -1,12 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import {
+    ensureUserIdForUser,
+    isValidUserId,
+    normalizeUserIdInput,
+} from "@/lib/userId";
 
 type DmSetting = "OPEN" | "PR_ONLY" | "CLOSED";
 const DEFAULT_DM_SETTING: DmSetting = "OPEN";
 
 const USER_SETTINGS_SELECT = {
     id: true,
+    userId: true,
     name: true,
     email: true,
     image: true,
@@ -67,6 +73,8 @@ export async function GET() {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    await ensureUserIdForUser(userId);
+
     const user = await prisma.user.findUnique({
         where: { id: userId },
         select: USER_SETTINGS_SELECT,
@@ -88,8 +96,11 @@ export async function PUT(request: NextRequest) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { name, bio, aboutMe, links, image, headerImage, dmSetting } = await request.json();
+    await ensureUserIdForUser(userId);
+
+    const { name, bio, aboutMe, links, image, headerImage, dmSetting, userId: userIdInput } = await request.json();
     const parsedDmSetting = parseDmSetting(dmSetting);
+    const normalizedUserId = userIdInput === undefined ? undefined : normalizeUserIdInput(userIdInput);
 
     if (dmSetting !== undefined && !parsedDmSetting) {
         return NextResponse.json(
@@ -98,10 +109,35 @@ export async function PUT(request: NextRequest) {
         );
     }
 
+    if (userIdInput !== undefined && !isValidUserId(normalizedUserId || "")) {
+        return NextResponse.json(
+            { error: "Invalid userId. Use 3-32 chars: lowercase letters, numbers, underscore." },
+            { status: 400 }
+        );
+    }
+
     const current = await prisma.user.findUnique({
         where: { id: userId },
-        select: { links: true },
+        select: { links: true, userId: true },
     });
+
+    if (!current) {
+        return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+
+    if (normalizedUserId && normalizedUserId !== current.userId) {
+        const existing = await prisma.user.findFirst({
+            where: {
+                userId: normalizedUserId,
+                NOT: { id: userId },
+            },
+            select: { id: true },
+        });
+
+        if (existing) {
+            return NextResponse.json({ error: "This userId is already in use." }, { status: 409 });
+        }
+    }
 
     const currentUnpacked = unpackLinks(current?.links);
     const nextLinks = Array.isArray(links) ? links : currentUnpacked.links;
@@ -115,6 +151,7 @@ export async function PUT(request: NextRequest) {
             ...(aboutMe !== undefined && { aboutMe }),
             ...(image !== undefined && { image }),
             ...(headerImage !== undefined && { headerImage }),
+            ...(normalizedUserId !== undefined && { userId: normalizedUserId }),
             links: packLinks(nextLinks, nextDmSetting),
         },
         select: USER_SETTINGS_SELECT,

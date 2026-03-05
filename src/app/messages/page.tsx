@@ -8,6 +8,7 @@ import Link from "next/link";
 
 type ThreadUser = {
     id: string;
+    userId: string | null;
     name: string | null;
     email: string | null;
     image: string | null;
@@ -133,6 +134,7 @@ export default function MessagesPage() {
                     if (!active) return;
                     setSelectedUser({
                         id: profile.id,
+                        userId: profile.userId || null,
                         name: profile.name || null,
                         email: profile.email || null,
                         image: profile.image || null,
@@ -265,7 +267,7 @@ export default function MessagesPage() {
                         <div style={{ padding: "10px 12px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                                 {selectedUser?.id ? (
-                                    <Link href={`/user/${encodeURIComponent(selectedUser.id)}`} style={{ textDecoration: "none" }}>
+                                    <Link href={`/user/${encodeURIComponent(selectedUser.userId || selectedUser.id)}`} style={{ textDecoration: "none" }}>
                                         <div
                                             style={{
                                                 width: 24,

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { ensureUserIdForUser, ensureUserIdSchema } from "@/lib/userId";
 
 type DmSetting = "OPEN" | "PR_ONLY" | "CLOSED";
 const DEFAULT_DM_SETTING: DmSetting = "OPEN";
@@ -47,17 +48,21 @@ export async function GET(
 ) {
     const { name } = await params;
     const userRef = typeof name === "string" ? name.trim() : "";
+    const userRefLower = userRef.toLowerCase();
 
     try {
+        await ensureUserIdSchema();
         const user = await prisma.user.findFirst({
             where: {
                 OR: [
+                    { userId: userRefLower },
                     { id: userRef },
                     { name: { equals: userRef, mode: "insensitive" } },
                 ],
             },
             select: {
                 id: true,
+                userId: true,
                 name: true,
                 email: true,
                 image: true,
@@ -77,9 +82,11 @@ export async function GET(
         }
 
         const unpacked = unpackLinks(user.links);
+        const ensuredUserId = await ensureUserIdForUser(user.id);
 
         return NextResponse.json({
             ...user,
+            userId: ensuredUserId,
             links: unpacked.links,
             dmSetting: unpacked.dmSetting,
         });

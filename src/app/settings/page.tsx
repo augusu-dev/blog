@@ -26,6 +26,7 @@ export default function SettingsPage() {
     const { language, setLanguage, t } = useLanguage();
 
     const [name, setName] = useState("");
+    const [userId, setUserId] = useState("");
     const [email, setEmail] = useState("");
     const [image, setImage] = useState("");
     const [headerImage, setHeaderImage] = useState("");
@@ -47,6 +48,7 @@ export default function SettingsPage() {
                 .then((r) => r.json())
                 .then((data) => {
                     setName(data.name || "");
+                    setUserId(data.userId || "");
                     setImage(data.image || "");
                     setHeaderImage(data.headerImage || "");
                     setBio(data.bio || "");
@@ -68,10 +70,11 @@ export default function SettingsPage() {
             const res = await fetch("/api/user/settings", {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ name, bio, aboutMe, links, image, headerImage }),
+                body: JSON.stringify({ name, userId, bio, aboutMe, links, image, headerImage }),
             });
+            const payload = await res.json().catch(() => ({}));
             if (res.ok) setMessage("✅ " + t("設定を保存しました。"));
-            else setMessage("❌ " + t("保存に失敗しました。"));
+            else setMessage(`❌ ${payload.error || t("保存に失敗しました。")}`);
         } catch {
             setMessage("❌ " + t("エラーが発生しました。"));
         } finally {
@@ -212,6 +215,19 @@ export default function SettingsPage() {
 
                     <label className="settings-label">{t("ユーザー名")}</label>
                     <input type="text" className="login-input" value={name} onChange={(e) => setName(e.target.value)} placeholder={t("ユーザー名")} style={{ marginBottom: 16 }} />
+
+                    <label className="settings-label">ユーザーID</label>
+                    <input
+                        type="text"
+                        className="login-input"
+                        value={userId}
+                        onChange={(e) => setUserId(e.target.value)}
+                        placeholder="user_id"
+                        style={{ marginBottom: 4 }}
+                    />
+                    <p style={{ fontSize: 11, color: "var(--azuki-light)", marginBottom: 16 }}>
+                        3〜32文字: 半角小文字・数字・アンダースコアのみ。URLに反映されます。
+                    </p>
 
                     <label className="settings-label">{t("プロフィール画像")}</label>
                     <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 16 }}>
