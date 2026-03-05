@@ -130,7 +130,7 @@ export default function RichEditor({
                             onChange={(e) => onAiGeneratedChange(e.target.checked)}
                             style={{ margin: 0 }}
                         />
-                        AIで作成した
+                        AIで作成
                     </label>
                 )}
             </div>

@@ -1606,13 +1606,16 @@ body {
 .reaction-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 9px;
   border: 1px solid var(--border);
   background: var(--card);
   color: var(--text-soft);
   border-radius: 999px;
-  font-size: 12px;
-  padding: 4px 10px;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1;
+  min-height: 38px;
+  padding: 9px 16px;
   cursor: pointer;
   transition: transform 0.18s ease, background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
 }

@@ -51,9 +51,10 @@ const TAG_COLORS: Record<string, string> = {
 
 function Tag({ label }: { label: string }) {
     const c = TAG_COLORS[label] || "#9b6b6b";
+    const displayLabel = label === "ai-generated" ? "AIで作成" : label;
     return (
         <span className="tag" style={{ color: c, background: c + "18", border: `1px solid ${c}30` }}>
-            {label}
+            {displayLabel}
         </span>
     );
 }

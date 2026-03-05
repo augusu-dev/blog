@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { DirectMessageContext } from "@prisma/client";
-import { ensureDirectMessageCapacity } from "@/lib/directMessages";
+import {
+    ensureDirectMessageSchema,
+    ensureDirectMessageCapacity,
+    withDirectMessageTable,
+} from "@/lib/directMessages";
 
 type DmSetting = "OPEN" | "PR_ONLY" | "CLOSED";
 const DEFAULT_DM_SETTING: DmSetting = "OPEN";
@@ -81,6 +85,8 @@ export async function GET(request: NextRequest) {
     const targetUserId = normalizeString(request.nextUrl.searchParams.get("userId"));
 
     try {
+        await ensureDirectMessageSchema();
+
         if (mode === "thread") {
             if (!targetUserId) {
                 return NextResponse.json({ error: "userId is required for thread mode" }, { status: 400 });
@@ -91,34 +97,38 @@ export async function GET(request: NextRequest) {
                 return NextResponse.json({ error: "Target user not found" }, { status: 404 });
             }
 
-            const messages = await prisma.directMessage.findMany({
-                where: {
-                    OR: [
-                        { senderId: userId, recipientId: resolvedTargetUserId },
-                        { senderId: resolvedTargetUserId, recipientId: userId },
-                    ],
-                },
-                orderBy: { createdAt: "asc" },
-                include: {
-                    sender: { select: { id: true, name: true, email: true, image: true } },
-                    recipient: { select: { id: true, name: true, email: true, image: true } },
-                },
-            });
+            const messages = await withDirectMessageTable(() =>
+                prisma.directMessage.findMany({
+                    where: {
+                        OR: [
+                            { senderId: userId, recipientId: resolvedTargetUserId },
+                            { senderId: resolvedTargetUserId, recipientId: userId },
+                        ],
+                    },
+                    orderBy: { createdAt: "asc" },
+                    include: {
+                        sender: { select: { id: true, name: true, email: true, image: true } },
+                        recipient: { select: { id: true, name: true, email: true, image: true } },
+                    },
+                })
+            );
 
             return NextResponse.json({ mode, userId: resolvedTargetUserId, messages });
         }
 
         if (mode === "threads") {
-            const messages = await prisma.directMessage.findMany({
-                where: {
-                    OR: [{ senderId: userId }, { recipientId: userId }],
-                },
-                orderBy: { createdAt: "desc" },
-                include: {
-                    sender: { select: { id: true, name: true, email: true, image: true } },
-                    recipient: { select: { id: true, name: true, email: true, image: true } },
-                },
-            });
+            const messages = await withDirectMessageTable(() =>
+                prisma.directMessage.findMany({
+                    where: {
+                        OR: [{ senderId: userId }, { recipientId: userId }],
+                    },
+                    orderBy: { createdAt: "desc" },
+                    include: {
+                        sender: { select: { id: true, name: true, email: true, image: true } },
+                        recipient: { select: { id: true, name: true, email: true, image: true } },
+                    },
+                })
+            );
 
             const threadMap = new Map<
                 string,
@@ -155,33 +165,46 @@ export async function GET(request: NextRequest) {
         }
 
         if (mode === "sent") {
-            const messages = await prisma.directMessage.findMany({
+            const messages = await withDirectMessageTable(() =>
+                prisma.directMessage.findMany({
+                    where: {
+                        senderId: userId,
+                        context: DirectMessageContext.GENERAL,
+                    },
+                    orderBy: { createdAt: "desc" },
+                    include: {
+                        recipient: { select: { id: true, name: true, email: true, image: true } },
+                    },
+                })
+            );
+            return NextResponse.json({ mode, messages });
+        }
+
+        const messages = await withDirectMessageTable(() =>
+            prisma.directMessage.findMany({
                 where: {
-                    senderId: userId,
+                    recipientId: userId,
                     context: DirectMessageContext.GENERAL,
                 },
                 orderBy: { createdAt: "desc" },
                 include: {
-                    recipient: { select: { id: true, name: true, email: true, image: true } },
+                    sender: { select: { id: true, name: true, email: true, image: true } },
                 },
-            });
-            return NextResponse.json({ mode, messages });
-        }
-
-        const messages = await prisma.directMessage.findMany({
-            where: {
-                recipientId: userId,
-                context: DirectMessageContext.GENERAL,
-            },
-            orderBy: { createdAt: "desc" },
-            include: {
-                sender: { select: { id: true, name: true, email: true, image: true } },
-            },
-        });
+            })
+        );
 
         return NextResponse.json({ mode, messages });
     } catch (error) {
         console.error("Failed to fetch direct messages:", error);
+        if (mode === "threads") {
+            return NextResponse.json({ mode, threads: [] });
+        }
+        if (mode === "thread") {
+            return NextResponse.json({ mode, userId: targetUserId, messages: [] });
+        }
+        if (mode === "sent" || mode === "inbox") {
+            return NextResponse.json({ mode, messages: [] });
+        }
         return NextResponse.json({ error: "Failed to fetch direct messages" }, { status: 500 });
     }
 }
@@ -194,6 +217,8 @@ export async function POST(request: NextRequest) {
     }
 
     try {
+        await ensureDirectMessageSchema();
+
         const body = await request.json();
         const recipientRef = normalizeString(body.recipientId);
         const content = normalizeString(body.content);
@@ -239,18 +264,20 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        const message = await prisma.directMessage.create({
-            data: {
-                senderId: userId,
-                recipientId,
-                content,
-                context: DirectMessageContext.GENERAL,
-            },
-            include: {
-                sender: { select: { id: true, name: true, email: true, image: true } },
-                recipient: { select: { id: true, name: true, email: true, image: true } },
-            },
-        });
+        const message = await withDirectMessageTable(() =>
+            prisma.directMessage.create({
+                data: {
+                    senderId: userId,
+                    recipientId,
+                    content,
+                    context: DirectMessageContext.GENERAL,
+                },
+                include: {
+                    sender: { select: { id: true, name: true, email: true, image: true } },
+                    recipient: { select: { id: true, name: true, email: true, image: true } },
+                },
+            })
+        );
 
         return NextResponse.json(message, { status: 201 });
     } catch (error) {

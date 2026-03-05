@@ -36,7 +36,7 @@ const REACTIONS: Array<{ key: ReactionType; icon: string; label: string }> = [
     { key: "ROCKET", icon: "🚀", label: "ロケット" },
 ];
 
-const EMPTY_REACTION_COUNTS: ReactionCounts = {
+const EMPTY_COUNTS: ReactionCounts = {
     GOOD: 0,
     SURPRISED: 0,
     SMIRK: 0,
@@ -64,6 +64,7 @@ type LocaleText = {
     delete: string;
     deleteConfirm: string;
     reactionFailed: string;
+    reactionOne: string;
 };
 
 const TEXT: Record<"ja" | "en" | "zh", LocaleText> = {
@@ -87,6 +88,7 @@ const TEXT: Record<"ja" | "en" | "zh", LocaleText> = {
         delete: "削除",
         deleteConfirm: "このコメントを削除しますか？",
         reactionFailed: "リアクションの送信に失敗しました。",
+        reactionOne: "1人1つまで",
     },
     en: {
         title: "Comments",
@@ -108,6 +110,7 @@ const TEXT: Record<"ja" | "en" | "zh", LocaleText> = {
         delete: "Delete",
         deleteConfirm: "Delete this comment?",
         reactionFailed: "Failed to send reaction.",
+        reactionOne: "One per user",
     },
     zh: {
         title: "Comments",
@@ -129,6 +132,7 @@ const TEXT: Record<"ja" | "en" | "zh", LocaleText> = {
         delete: "删除",
         deleteConfirm: "要删除这条评论吗？",
         reactionFailed: "发送反应失败。",
+        reactionOne: "每人一个",
     },
 };
 
@@ -142,8 +146,8 @@ export default function PostComments({ postId, isSignedIn, currentUserId = null 
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState("");
 
-    const [reactionCounts, setReactionCounts] = useState<ReactionCounts>(EMPTY_REACTION_COUNTS);
-    const [myReactions, setMyReactions] = useState<ReactionType[]>([]);
+    const [reactionCounts, setReactionCounts] = useState<ReactionCounts>(EMPTY_COUNTS);
+    const [myReaction, setMyReaction] = useState<ReactionType | null>(null);
     const [reacting, setReacting] = useState(false);
     const [burstReaction, setBurstReaction] = useState<ReactionType | null>(null);
 
@@ -155,8 +159,8 @@ export default function PostComments({ postId, isSignedIn, currentUserId = null 
     useEffect(() => {
         if (!postId) {
             setComments([]);
-            setReactionCounts(EMPTY_REACTION_COUNTS);
-            setMyReactions([]);
+            setReactionCounts(EMPTY_COUNTS);
+            setMyReaction(null);
             setNewComment("");
             setError("");
             setEditingId(null);
@@ -168,14 +172,9 @@ export default function PostComments({ postId, isSignedIn, currentUserId = null 
         setLoading(true);
         setError("");
 
-        Promise.all([
-            fetch(`/api/posts/${postId}/comments`),
-            fetch(`/api/posts/${postId}/reactions`),
-        ])
+        Promise.all([fetch(`/api/posts/${postId}/comments`), fetch(`/api/posts/${postId}/reactions`)])
             .then(async ([commentRes, reactionRes]) => {
-                if (!commentRes.ok) {
-                    throw new Error("Failed to fetch comments");
-                }
+                if (!commentRes.ok) throw new Error("Failed to fetch comments");
 
                 const commentData = await commentRes.json();
                 if (!active) return;
@@ -184,8 +183,8 @@ export default function PostComments({ postId, isSignedIn, currentUserId = null 
                 if (reactionRes.ok) {
                     const reactionData = await reactionRes.json();
                     if (!active) return;
-                    setReactionCounts({ ...EMPTY_REACTION_COUNTS, ...(reactionData.counts || {}) });
-                    setMyReactions(Array.isArray(reactionData.myReactions) ? reactionData.myReactions : []);
+                    setReactionCounts({ ...EMPTY_COUNTS, ...(reactionData.counts || {}) });
+                    setMyReaction((reactionData.myReaction as ReactionType | null) || null);
                 }
             })
             .catch(() => {
@@ -202,18 +201,14 @@ export default function PostComments({ postId, isSignedIn, currentUserId = null 
 
     const submitReaction = async (reaction: ReactionType) => {
         if (!postId || reacting) return;
-
         if (!isSignedIn) {
             setError(locale.loginRequired);
             return;
         }
 
-        if (myReactions.includes(reaction)) {
-            return;
-        }
-
         setReacting(true);
         setError("");
+
         try {
             const res = await fetch(`/api/posts/${postId}/reactions`, {
                 method: "POST",
@@ -226,10 +221,12 @@ export default function PostComments({ postId, isSignedIn, currentUserId = null 
                 return;
             }
 
-            setReactionCounts({ ...EMPTY_REACTION_COUNTS, ...(payload.counts || {}) });
-            setMyReactions(Array.isArray(payload.myReactions) ? payload.myReactions : []);
+            setReactionCounts({ ...EMPTY_COUNTS, ...(payload.counts || {}) });
+            setMyReaction((payload.myReaction as ReactionType | null) || null);
             setBurstReaction(reaction);
-            setTimeout(() => setBurstReaction((current) => (current === reaction ? null : current)), 260);
+            setTimeout(() => {
+                setBurstReaction((current) => (current === reaction ? null : current));
+            }, 260);
         } catch {
             setError(locale.reactionFailed);
         } finally {
@@ -240,12 +237,10 @@ export default function PostComments({ postId, isSignedIn, currentUserId = null 
     const submitComment = async () => {
         const content = newComment.trim();
         if (!postId || submitting) return;
-
         if (!isSignedIn) {
             setError(locale.loginRequired);
             return;
         }
-
         if (!content || content.length > COMMENT_LIMIT) {
             setError(locale.invalidLength);
             return;
@@ -260,13 +255,11 @@ export default function PostComments({ postId, isSignedIn, currentUserId = null 
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ content }),
             });
-
             const payload = await res.json().catch(() => ({}));
             if (!res.ok) {
                 setError(payload.error || locale.submitFailed);
                 return;
             }
-
             setComments((prev) => [payload, ...prev]);
             setNewComment("");
         } catch {
@@ -289,7 +282,6 @@ export default function PostComments({ postId, isSignedIn, currentUserId = null 
 
     const saveEdit = async (commentId: string) => {
         if (!postId || savingEditId) return;
-
         const content = editingContent.trim();
         if (!content || content.length > COMMENT_LIMIT) {
             setError(locale.invalidLength);
@@ -305,14 +297,12 @@ export default function PostComments({ postId, isSignedIn, currentUserId = null 
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ content }),
             });
-
             const payload = await res.json().catch(() => ({}));
             if (!res.ok) {
                 setError(payload.error || locale.updateFailed);
                 return;
             }
-
-            setComments((prev) => prev.map((comment) => (comment.id === commentId ? payload : comment)));
+            setComments((prev) => prev.map((c) => (c.id === commentId ? payload : c)));
             setEditingId(null);
             setEditingContent("");
         } catch {
@@ -331,14 +321,12 @@ export default function PostComments({ postId, isSignedIn, currentUserId = null 
 
         try {
             const res = await fetch(`/api/posts/${postId}/comments/${commentId}`, { method: "DELETE" });
-
             const payload = await res.json().catch(() => ({}));
             if (!res.ok) {
                 setError(payload.error || locale.deleteFailed);
                 return;
             }
-
-            setComments((prev) => prev.filter((comment) => comment.id !== commentId));
+            setComments((prev) => prev.filter((c) => c.id !== commentId));
             if (editingId === commentId) {
                 setEditingId(null);
                 setEditingContent("");
@@ -358,16 +346,16 @@ export default function PostComments({ postId, isSignedIn, currentUserId = null 
                 <h3 style={{ fontFamily: "var(--serif)", fontSize: 22, fontWeight: 400 }}>{locale.title}</h3>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
                     {REACTIONS.map((reaction) => {
-                        const clicked = myReactions.includes(reaction.key);
+                        const active = myReaction === reaction.key;
                         const burst = burstReaction === reaction.key;
                         return (
                             <button
                                 key={reaction.key}
                                 type="button"
-                                className={`reaction-btn ${clicked ? "active" : ""} ${burst ? "burst" : ""}`}
+                                className={`reaction-btn ${active ? "active" : ""} ${burst ? "burst" : ""}`}
                                 onClick={() => void submitReaction(reaction.key)}
-                                disabled={reacting || clicked}
-                                title={`${reaction.label}: 1人1回`}
+                                disabled={reacting}
+                                title={`${reaction.label} (${locale.reactionOne})`}
                             >
                                 <span>{reaction.icon}</span>
                                 <span>{reactionCounts[reaction.key] || 0}</span>
@@ -387,7 +375,6 @@ export default function PostComments({ postId, isSignedIn, currentUserId = null 
                         rows={4}
                         style={{ resize: "vertical", marginBottom: 10, fontFamily: "var(--sans)" }}
                     />
-
                     <div style={{ display: "flex", justifyContent: "flex-end" }}>
                         <button
                             type="button"
@@ -538,7 +525,9 @@ export default function PostComments({ postId, isSignedIn, currentUserId = null 
                                         </div>
                                     </div>
                                 ) : (
-                                    <p style={{ whiteSpace: "pre-wrap", fontSize: 14, lineHeight: 1.7, margin: 0 }}>{comment.content}</p>
+                                    <p style={{ whiteSpace: "pre-wrap", fontSize: 14, lineHeight: 1.7, margin: 0 }}>
+                                        {comment.content}
+                                    </p>
                                 )}
                             </article>
                         );

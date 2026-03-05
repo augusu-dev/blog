@@ -78,12 +78,13 @@ export default function EditorPage() {
             fetch(`/api/posts/${editId}`)
                 .then((res) => res.json())
                 .then((post) => {
+                    const loadedTags = Array.isArray(post.tags) ? post.tags : [];
                     setTitle(post.title || "");
                     setContent(post.content || "");
                     setExcerpt(post.excerpt || "");
-                    setTags(post.tags || []);
-                    setAiGenerated((post.tags || []).includes(AI_TAG));
-                    if (post.tags?.includes("product")) setPostType("product");
+                    setTags(loadedTags.filter((tag: string) => tag !== AI_TAG));
+                    setAiGenerated(loadedTags.includes(AI_TAG));
+                    if (loadedTags.includes("product")) setPostType("product");
                     contentKeyRef.current += 1;
                     setLastFetchedId(editId);
                     setIsLoaded(true);

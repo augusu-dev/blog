@@ -22,6 +22,27 @@ CREATE UNIQUE INDEX IF NOT EXISTS "PostReaction_postId_userId_reaction_key"
 ON "PostReaction"("postId", "userId", "reaction")
 `;
 
+const DELETE_POST_REACTION_DUPLICATES_SQL = `
+WITH ranked AS (
+  SELECT
+    "id",
+    ROW_NUMBER() OVER (
+      PARTITION BY "postId", "userId"
+      ORDER BY "createdAt" DESC, "id" DESC
+    ) AS rn
+  FROM "PostReaction"
+)
+DELETE FROM "PostReaction"
+WHERE "id" IN (
+  SELECT "id" FROM ranked WHERE rn > 1
+)
+`;
+
+const CREATE_POST_REACTION_USER_UNIQUE_SQL = `
+CREATE UNIQUE INDEX IF NOT EXISTS "PostReaction_postId_userId_key"
+ON "PostReaction"("postId", "userId")
+`;
+
 const CREATE_POST_REACTION_INDEX_SQL = `
 CREATE INDEX IF NOT EXISTS "PostReaction_postId_createdAt_idx"
 ON "PostReaction"("postId", "createdAt")
@@ -38,6 +59,8 @@ export function isReactionType(value: string): value is ReactionType {
 export async function ensurePostReactionTable(): Promise<void> {
     await prisma.$executeRawUnsafe(CREATE_POST_REACTION_TABLE_SQL);
     await prisma.$executeRawUnsafe(CREATE_POST_REACTION_UNIQUE_SQL);
+    await prisma.$executeRawUnsafe(DELETE_POST_REACTION_DUPLICATES_SQL);
+    await prisma.$executeRawUnsafe(CREATE_POST_REACTION_USER_UNIQUE_SQL);
     await prisma.$executeRawUnsafe(CREATE_POST_REACTION_INDEX_SQL);
 }
 

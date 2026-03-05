@@ -33,6 +33,8 @@ async function getReactionPayload(postId: string, currentUserId?: string | null)
             ? withPostReactionTable(() =>
                   prisma.postReaction.findMany({
                       where: { postId, userId: currentUserId },
+                      orderBy: { createdAt: "desc" },
+                      take: 1,
                       select: { reaction: true },
                   })
               )
@@ -46,11 +48,10 @@ async function getReactionPayload(postId: string, currentUserId?: string | null)
         }
     }
 
-    const myReactions = myRows
-        .map((row) => row.reaction)
-        .filter((reaction): reaction is ReactionType => isReactionType(reaction));
+    const myReactionRaw = myRows[0]?.reaction;
+    const myReaction = myReactionRaw && isReactionType(myReactionRaw) ? myReactionRaw : null;
 
-    return { counts, myReactions };
+    return { counts, myReaction };
 }
 
 export async function GET(
@@ -103,20 +104,26 @@ export async function POST(
         }
 
         await withPostReactionTable(() =>
-            prisma.postReaction.upsert({
-                where: {
-                    postId_userId_reaction: {
+            prisma.$transaction(async (tx) => {
+                const existing = await tx.postReaction.findFirst({
+                    where: { postId, userId: currentUserId },
+                    orderBy: { createdAt: "desc" },
+                    select: { id: true, reaction: true },
+                });
+
+                if (existing?.reaction === reactionRaw) {
+                    await tx.postReaction.delete({ where: { id: existing.id } });
+                    return;
+                }
+
+                await tx.postReaction.deleteMany({ where: { postId, userId: currentUserId } });
+                await tx.postReaction.create({
+                    data: {
                         postId,
                         userId: currentUserId,
                         reaction: reactionRaw,
                     },
-                },
-                update: {},
-                create: {
-                    postId,
-                    userId: currentUserId,
-                    reaction: reactionRaw,
-                },
+                });
             })
         );
 

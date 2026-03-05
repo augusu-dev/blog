@@ -24,6 +24,10 @@ const TAG_COLORS: Record<string, string> = {
   "社会": "#6b8a7a", "作品": "#7a8a6b", "ツール": "#6b8a8a",
 };
 
+function renderTagLabel(tag: string): string {
+  return tag === "ai-generated" ? "AIで作成" : tag;
+}
+
 function fmtDate(d: string) {
   if (!d) return "";
   try {
@@ -246,7 +250,7 @@ export default function HomePage() {
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                         {(p.tags || []).filter(t => t !== "product").map((t) => {
                           const c = TAG_COLORS[t] || "#9b6b6b";
-                          return <span key={t} className="tag" style={{ color: c, background: c + "18", border: `1px solid ${c}30` }}>{t}</span>;
+                          return <span key={t} className="tag" style={{ color: c, background: c + "18", border: `1px solid ${c}30` }}>{renderTagLabel(t)}</span>;
                         })}
                       </div>
                     </div>
@@ -357,7 +361,7 @@ export default function HomePage() {
                 <div>
                   {overlayMeta.tags.filter(t => t !== "product").map((t) => {
                     const c = TAG_COLORS[t] || "#9b6b6b";
-                    return <span key={t} className="tag" style={{ color: c, background: c + "18", border: `1px solid ${c}30` }}>{t}</span>;
+                    return <span key={t} className="tag" style={{ color: c, background: c + "18", border: `1px solid ${c}30` }}>{renderTagLabel(t)}</span>;
                   })}
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
