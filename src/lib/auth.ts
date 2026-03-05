@@ -4,6 +4,7 @@ import Google from "next-auth/providers/google";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import bcrypt from "bcryptjs";
 import { prisma } from "./db";
+import { getTableColumns } from "./tableSchema";
 
 const googleEnabled =
     typeof process.env.GOOGLE_CLIENT_ID === "string" &&
@@ -50,44 +51,66 @@ async function findCredentialsUserByEmail(email: string) {
         };
     } catch (error) {
         if (!isUserIdColumnMissing(error)) {
+            const fallback = await findCredentialsUserByEmailRaw(email);
+            if (fallback) {
+                return fallback;
+            }
             throw error;
         }
     }
 
-    const user = await prisma.user.findFirst({
-        where: {
-            email: {
-                equals: email,
-                mode: "insensitive",
+    try {
+        const user = await prisma.user.findFirst({
+            where: {
+                email: {
+                    equals: email,
+                    mode: "insensitive",
+                },
             },
-        },
-        select: {
-            id: true,
-            email: true,
-            name: true,
-            password: true,
-        },
-    });
+            select: {
+                id: true,
+                email: true,
+                name: true,
+                password: true,
+            },
+        });
 
-    return {
-        user,
-        hasUserIdColumn: false as const,
-    };
+        return {
+            user,
+            hasUserIdColumn: false as const,
+        };
+    } catch (error) {
+        const fallback = await findCredentialsUserByEmailRaw(email);
+        if (fallback) {
+            return fallback;
+        }
+        throw error;
+    }
 }
 
-async function verifyPassword(password: string, storedPassword: string, userId: string): Promise<boolean> {
-    try {
-        if (await bcrypt.compare(password, storedPassword)) {
-            return true;
-        }
-    } catch {
-        // Fall through to legacy plain-text compatibility.
+type CredentialsLookupUser = {
+    id: string;
+    email: string | null;
+    name: string | null;
+    password: string | null;
+    userId?: string | null;
+};
+
+function normalizeNullableString(value: unknown): string | null {
+    return typeof value === "string" ? value : null;
+}
+
+function normalizePasswordHashVariants(storedPassword: string): string[] {
+    const variants = new Set([storedPassword]);
+
+    if (storedPassword.startsWith("$2y$") || storedPassword.startsWith("$2x$")) {
+        variants.add(`$2a$${storedPassword.slice(4)}`);
     }
 
-    if (password !== storedPassword) {
-        return false;
-    }
+    return [...variants];
+}
 
+async function migratePasswordHash(userId: string, password: string): Promise<void> {
     try {
         const hashedPassword = await bcrypt.hash(password, 12);
         await prisma.user.update({
@@ -97,6 +120,74 @@ async function verifyPassword(password: string, storedPassword: string, userId: 
     } catch (error) {
         console.error("Failed to migrate legacy password hash:", error);
     }
+}
+
+async function findCredentialsUserByEmailRaw(email: string) {
+    try {
+        const columns = await getTableColumns("User");
+        if (!columns.has("id") || !columns.has("email")) {
+            return null;
+        }
+
+        const hasUserIdColumn = columns.has("userId");
+        const select = [
+            `"id"::text AS "id"`,
+            `"email"::text AS "email"`,
+            columns.has("name") ? `"name"::text AS "name"` : `NULL::text AS "name"`,
+            columns.has("password") ? `"password"::text AS "password"` : `NULL::text AS "password"`,
+            hasUserIdColumn ? `"userId"::text AS "userId"` : `NULL::text AS "userId"`,
+        ];
+
+        const rows = await prisma.$queryRawUnsafe<Record<string, unknown>[]>(
+            `
+                SELECT ${select.join(", ")}
+                FROM "User"
+                WHERE LOWER(COALESCE("email"::text, '')) = LOWER($1)
+                ORDER BY "email" ASC NULLS LAST
+                LIMIT 1
+            `,
+            email
+        );
+
+        const row = rows[0];
+        const user: CredentialsLookupUser | null = row
+            ? {
+                  id: String(row.id || ""),
+                  email: normalizeNullableString(row.email),
+                  name: normalizeNullableString(row.name),
+                  password: normalizeNullableString(row.password),
+                  userId: normalizeNullableString(row.userId),
+              }
+            : null;
+
+        return {
+            user,
+            hasUserIdColumn: hasUserIdColumn as boolean,
+        };
+    } catch {
+        return null;
+    }
+}
+
+async function verifyPassword(password: string, storedPassword: string, userId: string): Promise<boolean> {
+    for (const candidateHash of normalizePasswordHashVariants(storedPassword)) {
+        try {
+            if (await bcrypt.compare(password, candidateHash)) {
+                if (candidateHash !== storedPassword) {
+                    await migratePasswordHash(userId, password);
+                }
+                return true;
+            }
+        } catch {
+            // Fall through to the next legacy variant.
+        }
+    }
+
+    if (password !== storedPassword) {
+        return false;
+    }
+
+    await migratePasswordHash(userId, password);
 
     return true;
 }
@@ -119,36 +210,41 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                 password: { label: "Password", type: "password" },
             },
             async authorize(credentials) {
-                if (!credentials?.email || !credentials?.password) {
+                try {
+                    if (!credentials?.email || !credentials?.password) {
+                        return null;
+                    }
+
+                    const email = String(credentials.email).trim().toLowerCase();
+                    const password = credentials.password as string;
+
+                    const { user, hasUserIdColumn } = await findCredentialsUserByEmail(email);
+
+                    if (!user || !user.password) {
+                        return null;
+                    }
+
+                    const isValid = await verifyPassword(password, user.password, user.id);
+                    if (!isValid) {
+                        return null;
+                    }
+
+                    return {
+                        id: user.id,
+                        email: user.email,
+                        name: user.name,
+                        userId:
+                            hasUserIdColumn &&
+                            "userId" in user &&
+                            typeof user.userId === "string" &&
+                            user.userId.trim()
+                                ? user.userId
+                                : user.id,
+                    };
+                } catch (error) {
+                    console.error("Credentials authorize failed:", error);
                     return null;
                 }
-
-                const email = String(credentials.email).trim().toLowerCase();
-                const password = credentials.password as string;
-
-                const { user, hasUserIdColumn } = await findCredentialsUserByEmail(email);
-
-                if (!user || !user.password) {
-                    return null;
-                }
-
-                const isValid = await verifyPassword(password, user.password, user.id);
-                if (!isValid) {
-                    return null;
-                }
-
-                return {
-                    id: user.id,
-                    email: user.email,
-                    name: user.name,
-                    userId:
-                        hasUserIdColumn &&
-                        "userId" in user &&
-                        typeof user.userId === "string" &&
-                        user.userId.trim()
-                            ? user.userId
-                            : user.id,
-                };
             },
         }),
     ],

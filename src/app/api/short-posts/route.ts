@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { withShortPostTable } from "@/lib/shortPosts";
 import { resolveSessionUserId } from "@/lib/sessionUser";
+import { getShortPostsFallback } from "@/lib/publicContentFallback";
 
 const SHORT_POST_LIMIT = 300;
 const LIST_LIMIT = 30;
@@ -46,7 +47,7 @@ export async function GET() {
             | Array<{
                   id: string;
                   content: string;
-                  createdAt: Date;
+                  createdAt: string | Date;
                   authorId: string;
                   author: {
                       id: string;
@@ -81,28 +82,17 @@ export async function GET() {
         }
 
         if (!posts) {
-            posts = await withShortPostTable(() =>
-                prisma.shortPost.findMany({
-                    orderBy: { createdAt: "desc" },
-                    take: LIST_LIMIT,
-                    include: {
-                        author: {
-                            select: {
-                                id: true,
-                                name: true,
-                                email: true,
-                                image: true,
-                            },
-                        },
-                    },
-                })
-            );
+            posts = await getShortPostsFallback(LIST_LIMIT);
         }
 
         return NextResponse.json(posts);
     } catch (error) {
-        if (isShortPostUnavailableError(error)) {
-            return NextResponse.json([]);
+        try {
+            return NextResponse.json(await getShortPostsFallback(LIST_LIMIT));
+        } catch (fallbackError) {
+            if (isShortPostUnavailableError(error) || isShortPostUnavailableError(fallbackError)) {
+                return NextResponse.json([]);
+            }
         }
         console.error("Failed to fetch short posts:", error);
         return NextResponse.json({ error: "Failed to fetch short posts" }, { status: 500 });

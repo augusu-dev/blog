@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { resolveSessionUserId } from "@/lib/sessionUser";
 import { tryEnsureProfileAndPostSchema } from "@/lib/schemaCompat";
+import { getPublicPostsFallback } from "@/lib/publicContentFallback";
 
 function isSchemaMismatchError(error: unknown): boolean {
     if (error && typeof error === "object" && "code" in error) {
@@ -50,35 +51,14 @@ export async function GET() {
             if (!isSchemaMismatchError(error)) throw error;
         }
 
-        const minimalPosts = await prisma.post.findMany({
-            orderBy: { createdAt: "desc" },
-            take: 300,
-            select: {
-                id: true,
-                title: true,
-                content: true,
-                createdAt: true,
-                authorId: true,
-                author: {
-                    select: { id: true, name: true, email: true, image: true },
-                },
-            },
-        });
-
-        return NextResponse.json(
-            minimalPosts.map((post) => ({
-                ...post,
-                excerpt: "",
-                headerImage: null,
-                tags: [] as string[],
-                published: true,
-                pinned: false,
-                updatedAt: post.createdAt,
-            }))
-        );
+        return NextResponse.json(await getPublicPostsFallback(300));
     } catch (error) {
-        if (isSchemaMismatchError(error)) {
-            return NextResponse.json([]);
+        try {
+            return NextResponse.json(await getPublicPostsFallback(300));
+        } catch (fallbackError) {
+            if (isSchemaMismatchError(error) || isSchemaMismatchError(fallbackError)) {
+                return NextResponse.json([]);
+            }
         }
         console.error("Failed to fetch posts:", error);
         return NextResponse.json({ error: "Failed to fetch posts" }, { status: 500 });
