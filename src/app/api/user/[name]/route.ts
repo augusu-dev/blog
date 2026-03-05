@@ -41,7 +41,7 @@ function unpackLinks(raw: string | null | undefined): { links: unknown[]; dmSett
     return { links: [], dmSetting: DEFAULT_DM_SETTING };
 }
 
-// GET: Fetch public profile by user ID (fallback: user name for compatibility)
+// GET: Fetch public profile by user ID only
 export async function GET(
     request: NextRequest,
     { params }: { params: Promise<{ name: string }> }
@@ -54,11 +54,7 @@ export async function GET(
         await ensureUserIdSchema();
         const user = await prisma.user.findFirst({
             where: {
-                OR: [
-                    { userId: userRefLower },
-                    { id: userRef },
-                    { name: { equals: userRef, mode: "insensitive" } },
-                ],
+                OR: [{ userId: userRefLower }, { id: userRef }],
             },
             select: {
                 id: true,

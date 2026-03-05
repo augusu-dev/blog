@@ -105,6 +105,8 @@ export default function UserPage() {
         tags: string[];
         author: { id: string; userId?: string | null; name: string | null; email: string | null; image: string | null } | null;
     }>({ date: "", tags: [], author: null });
+    const [isPinned, setIsPinned] = useState(false);
+    const [pinLoading, setPinLoading] = useState(false);
 
     // Blog pagination
     const BLOG_PER_PAGE = 7;
@@ -136,6 +138,32 @@ export default function UserPage() {
         }
         if (userName) loadUser();
     }, [userName]);
+
+    useEffect(() => {
+        async function loadPinState() {
+            if (!session?.user || !user?.id) {
+                setIsPinned(false);
+                return;
+            }
+            const myId = (session.user as { id?: string }).id;
+            if (myId && myId === user.id) {
+                setIsPinned(false);
+                return;
+            }
+
+            try {
+                const res = await fetch(`/api/pins?userId=${encodeURIComponent(user.id)}`);
+                const payload = await res.json().catch(() => ({} as { pinned?: boolean }));
+                if (res.ok) {
+                    setIsPinned(!!payload.pinned);
+                }
+            } catch {
+                // ignore pin state fetch errors
+            }
+        }
+
+        void loadPinState();
+    }, [session?.user, user?.id]);
 
     /* ─── Scroll tracking ─── */
     const SECTIONS = ["home", "blog", "product", "about"];
@@ -287,6 +315,33 @@ export default function UserPage() {
         if (el) el.scrollIntoView({ behavior: "smooth" });
     };
 
+    const togglePinUser = async () => {
+        if (!session?.user || !user?.id || pinLoading) return;
+        const myId = (session.user as { id?: string }).id;
+        if (myId && myId === user.id) return;
+
+        if (isPinned && !confirm("このユーザーのピンを外しますか？")) {
+            return;
+        }
+
+        setPinLoading(true);
+        try {
+            const res = isPinned
+                ? await fetch(`/api/pins?userId=${encodeURIComponent(user.id)}`, { method: "DELETE" })
+                : await fetch("/api/pins", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ userId: user.id }),
+                  });
+
+            if (res.ok) {
+                setIsPinned(!isPinned);
+            }
+        } finally {
+            setPinLoading(false);
+        }
+    };
+
     if (loading) {
         return (
             <div className="login-container">
@@ -312,6 +367,7 @@ export default function UserPage() {
     const isOwnProfile = !!session?.user && (session.user as { id?: string }).id === user.id;
     const currentUserId = (session?.user as { id?: string } | undefined)?.id ?? null;
     const canShowAboutDmButton = !isOwnProfile && (user.dmSetting || "OPEN") === "OPEN";
+    const canShowPinButton = !!session?.user && !isOwnProfile;
 
     return (
         <>
@@ -342,6 +398,26 @@ export default function UserPage() {
                 <div className="nav-auth">
                     {session ? (
                         <>
+                            {canShowPinButton && (
+                                <button
+                                    type="button"
+                                    className="nav-auth-btn nav-user-btn"
+                                    onClick={() => void togglePinUser()}
+                                    disabled={pinLoading}
+                                    title={isPinned ? "ピンを外す" : "ピンする"}
+                                    style={
+                                        isPinned
+                                            ? {
+                                                  background: "rgba(146,92,92,0.14)",
+                                                  borderColor: "rgba(146,92,92,0.35)",
+                                                  color: "var(--azuki-deep)",
+                                              }
+                                            : undefined
+                                    }
+                                >
+                                    {pinLoading ? "..." : "📌"}
+                                </button>
+                            )}
                             <Link href="/editor" className="nav-auth-btn nav-write-btn">✏ 記事を書く</Link>
                             <Link href="/settings" className="nav-auth-btn nav-user-btn" style={{ textDecoration: "none" }}>⚙</Link>
                             <UnreadDmButton className="nav-auth-btn nav-user-btn" />

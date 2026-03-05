@@ -1,3 +1,4 @@
+﻿/* eslint-disable @next/next/no-img-element */
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -24,14 +25,6 @@ interface PullRequestItem {
         createdAt: string;
         sender: { id: string; name: string | null; email: string | null };
     }>;
-}
-
-interface DirectMessageItem {
-    id: string;
-    content: string;
-    createdAt: string;
-    sender?: { id: string; name: string | null; email: string | null };
-    recipient?: { id: string; name: string | null; email: string | null };
 }
 
 type UiText = {
@@ -167,7 +160,6 @@ export default function CollaborationSettingsPage() {
 
     const [receivedPullRequests, setReceivedPullRequests] = useState<PullRequestItem[]>([]);
     const [sentPullRequests, setSentPullRequests] = useState<PullRequestItem[]>([]);
-    const [inboxMessages, setInboxMessages] = useState<DirectMessageItem[]>([]);
     const [loadingData, setLoadingData] = useState(true);
 
     useEffect(() => {
@@ -181,10 +173,9 @@ export default function CollaborationSettingsPage() {
 
         setLoadingData(true);
         try {
-            const [settingsRes, pullRes, dmRes] = await Promise.all([
+            const [settingsRes, pullRes] = await Promise.all([
                 fetch("/api/user/settings"),
                 fetch("/api/pull-requests"),
-                fetch("/api/direct-messages"),
             ]);
 
             if (settingsRes.ok) {
@@ -196,11 +187,6 @@ export default function CollaborationSettingsPage() {
                 const payload = await pullRes.json();
                 setReceivedPullRequests(Array.isArray(payload.received) ? payload.received : []);
                 setSentPullRequests(Array.isArray(payload.sent) ? payload.sent : []);
-            }
-
-            if (dmRes.ok) {
-                const payload = await dmRes.json();
-                setInboxMessages(Array.isArray(payload.messages) ? payload.messages : []);
             }
         } catch {
             setMessage(text.loadFailed);
@@ -337,26 +323,6 @@ export default function CollaborationSettingsPage() {
                                         <summary style={{ cursor: "pointer", fontSize: 12, color: "var(--azuki)" }}>{text.viewContent}</summary>
                                         <div style={{ marginTop: 8, whiteSpace: "pre-wrap", fontSize: 13, lineHeight: 1.7 }}>{pr.content}</div>
                                     </details>
-                                </article>
-                            ))}
-                        </div>
-                    )}
-                </section>
-
-                <section style={{ marginBottom: 32 }}>
-                    <h2 className="settings-section-title">{text.incomingDmTitle}</h2>
-                    {loadingData ? (
-                        <p style={{ fontSize: 13, color: "var(--text-soft)" }}>{text.loading}</p>
-                    ) : inboxMessages.length === 0 ? (
-                        <p style={{ fontSize: 13, color: "var(--text-soft)" }}>{text.incomingDmEmpty}</p>
-                    ) : (
-                        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                            {inboxMessages.map((dm) => (
-                                <article key={dm.id} style={{ border: "1px solid var(--border)", borderRadius: 12, background: "var(--card)", padding: 14 }}>
-                                    <p style={{ fontSize: 12, color: "var(--text-soft)", marginBottom: 6 }}>
-                                        {text.from} {dm.sender?.name || dm.sender?.email || text.unknown} ・ {new Date(dm.createdAt).toLocaleString("ja-JP")}
-                                    </p>
-                                    <p style={{ whiteSpace: "pre-wrap", fontSize: 14, lineHeight: 1.7 }}>{dm.content}</p>
                                 </article>
                             ))}
                         </div>

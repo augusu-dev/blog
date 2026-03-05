@@ -8,6 +8,7 @@ import Link from "next/link";
 import { useLanguage } from "@/contexts/LanguageContext";
 import PostComments from "@/components/PostComments";
 import UnreadDmButton from "@/components/UnreadDmButton";
+import HomeShortPosts from "@/components/HomeShortPosts";
 
 interface Post {
   id: string;
@@ -165,10 +166,22 @@ export default function HomePage() {
     <>
       {/* ─── Navbar ─── */}
       <nav className="navbar" id="navbar" style={{ justifyContent: "space-between" }}>
-        <Link href="/" className="nav-logo" style={{ textDecoration: "none" }}>
-          <img src="/images/a.png" alt="Next Blog" className="nav-logo-img" />
-          {t("Next Blog")} <span className="beta-badge">β</span>
-        </Link>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <Link href="/" className="nav-logo" style={{ textDecoration: "none" }}>
+            <img src="/images/a.png" alt="Next Blog" className="nav-logo-img" />
+            {t("Next Blog")} <span className="beta-badge">β</span>
+          </Link>
+          {session ? (
+            <Link
+              href="/pins"
+              className="nav-auth-btn nav-user-btn"
+              style={{ textDecoration: "none", padding: "4px 10px", fontSize: 13 }}
+              title="ピンしたユーザーの新着"
+            >
+              👥
+            </Link>
+          ) : null}
+        </div>
         <div className="nav-auth">
           {session ? (
             <>
@@ -224,6 +237,8 @@ export default function HomePage() {
             </form>
           </div>
         </section>
+
+        <HomeShortPosts />
 
         <div className="section-divider" />
 

@@ -6,6 +6,7 @@ import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { ThemeName, useTheme } from "@/contexts/ThemeContext";
 
 interface SocialLink {
     label: string;
@@ -20,10 +21,24 @@ interface Post {
     published: boolean;
 }
 
+const THEME_OPTIONS: ThemeName[] = ["default", "lightblue", "sand", "apricot", "white", "black", "custom"];
+
+const THEME_LABELS: Record<ThemeName, Record<"ja" | "en" | "zh", string>> = {
+    default: { ja: "デフォルト", en: "Default", zh: "默认" },
+    lightblue: { ja: "薄水色", en: "Light Blue", zh: "浅蓝" },
+    sand: { ja: "砂色", en: "Sand", zh: "砂色" },
+    apricot: { ja: "杏子色", en: "Apricot", zh: "杏色" },
+    white: { ja: "白", en: "White", zh: "白色" },
+    black: { ja: "黒", en: "Black", zh: "黑色" },
+    custom: { ja: "カスタム", en: "Custom", zh: "自定义" },
+};
+
 export default function SettingsPage() {
     const { data: session, status, update } = useSession();
     const router = useRouter();
     const { language, setLanguage, t } = useLanguage();
+    const { theme, setTheme, customColor, setCustomColor } = useTheme();
+    const locale = language as "ja" | "en" | "zh";
 
     const [name, setName] = useState("");
     const [userId, setUserId] = useState("");
@@ -36,6 +51,16 @@ export default function SettingsPage() {
     const [myPosts, setMyPosts] = useState<Post[]>([]);
     const [saving, setSaving] = useState(false);
     const [message, setMessage] = useState("");
+
+    const themeTitle = locale === "en" ? "Site Color" : locale === "zh" ? "站点颜色" : "サイトカラー";
+    const themeDescription =
+        locale === "en"
+            ? "Choose a color theme for Next Blog."
+            : locale === "zh"
+              ? "选择 Next Blog 的主题颜色。"
+              : "Next Blog の配色を変更できます。";
+    const customColorLabel =
+        locale === "en" ? "Custom color" : locale === "zh" ? "自定义颜色" : "カスタムカラー";
 
     useEffect(() => {
         if (status === "unauthenticated") router.push("/login");
@@ -210,6 +235,46 @@ export default function SettingsPage() {
                         >
                             中文
                         </button>
+                    </div>
+                </section>
+
+                <section style={{ marginBottom: 40 }}>
+                    <h2 className="settings-section-title">{themeTitle}</h2>
+                    <p style={{ fontSize: 12, color: "var(--text-soft)", marginBottom: 12 }}>
+                        {themeDescription}
+                    </p>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+                        {THEME_OPTIONS.map((option) => (
+                            <button
+                                key={option}
+                                type="button"
+                                className={`editor-btn ${theme === option ? "editor-btn-primary" : "editor-btn-secondary"}`}
+                                style={{ padding: "8px 14px" }}
+                                onClick={() => setTheme(option)}
+                            >
+                                {THEME_LABELS[option][locale]}
+                            </button>
+                        ))}
+                    </div>
+                    <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                        <span style={{ fontSize: 12, color: "var(--text-soft)" }}>{customColorLabel}</span>
+                        <input
+                            type="color"
+                            value={customColor}
+                            onChange={(e) => setCustomColor(e.target.value)}
+                            style={{ width: 36, height: 28, border: "none", background: "transparent", cursor: "pointer" }}
+                            aria-label={customColorLabel}
+                        />
+                        {theme !== "custom" ? (
+                            <button
+                                type="button"
+                                className="editor-btn editor-btn-secondary"
+                                style={{ padding: "6px 12px", fontSize: 12 }}
+                                onClick={() => setTheme("custom")}
+                            >
+                                {locale === "en" ? "Apply custom" : locale === "zh" ? "应用自定义" : "カスタムを適用"}
+                            </button>
+                        ) : null}
                     </div>
                 </section>
 

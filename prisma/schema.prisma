@@ -56,6 +56,9 @@ model User {
   receivedPullRequests ArticlePullRequest[] @relation("PullRequestRecipient")
   sentMessages         DirectMessage[]      @relation("DirectMessageSender")
   receivedMessages     DirectMessage[]      @relation("DirectMessageRecipient")
+  shortPosts           ShortPost[]
+  pinnedUsers          PinnedUser[]         @relation("PinnedUserOwner")
+  pinnedByUsers        PinnedUser[]         @relation("PinnedUserTarget")
 }
 
 model VerificationToken {
@@ -173,4 +176,30 @@ model DirectMessage {
   @@index([recipientId, createdAt])
   @@index([senderId, createdAt])
   @@index([pullRequestId])
+}
+
+model ShortPost {
+  id        String   @id @default(cuid())
+  content   String   @db.VarChar(300)
+  createdAt DateTime @default(now())
+
+  author   User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  authorId String
+
+  @@index([createdAt])
+  @@index([authorId, createdAt])
+}
+
+model PinnedUser {
+  id           String   @id @default(cuid())
+  createdAt    DateTime @default(now())
+
+  owner      User   @relation("PinnedUserOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  ownerId    String
+  pinnedUser User   @relation("PinnedUserTarget", fields: [pinnedUserId], references: [id], onDelete: Cascade)
+  pinnedUserId String
+
+  @@unique([ownerId, pinnedUserId])
+  @@index([ownerId, createdAt])
+  @@index([pinnedUserId, createdAt])
 }

@@ -17,8 +17,8 @@ html {
 
 body {
   font-family: 'Zen Kaku Gothic New', sans-serif;
-  background: #faf5f3;
-  color: #4a3535;
+  background: var(--bg);
+  color: var(--text);
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
 }
@@ -27,6 +27,7 @@ body {
   --bg: #fdfaf8;
   --bg-soft: #f4efed;
   --card: rgba(255, 255, 255, 0.85);
+  --bg-card: rgba(255, 255, 255, 0.85);
   --azuki: #925c5c;
   --azuki-light: #c29999;
   --azuki-pale: #eed8d3;
@@ -176,6 +177,50 @@ body {
   padding: 0 4px;
   font-weight: 700;
   pointer-events: none;
+}
+
+.short-post-fab {
+  position: fixed;
+  left: 16px;
+  bottom: 20px;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: #111723;
+  color: #f4f5f7;
+  font-size: 24px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 90;
+  box-shadow: 0 10px 26px rgba(15, 20, 30, 0.34);
+}
+
+.short-post-fab:hover {
+  transform: translateY(-1px);
+}
+
+.short-post-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(18, 15, 16, 0.4);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 16px;
+}
+
+.short-post-modal {
+  width: min(560px, 100%);
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  padding: 14px;
 }
 
 .nav-login-btn {
