@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { auth } from "@/lib/auth";
-import { ensureUserIdForUser, ensureUserIdSchema } from "@/lib/userId";
 
 type DmSetting = "OPEN" | "PR_ONLY" | "CLOSED";
 const DEFAULT_DM_SETTING: DmSetting = "OPEN";
@@ -195,12 +194,6 @@ export async function GET(
     const userRefLower = userRef.toLowerCase();
 
     try {
-        try {
-            await ensureUserIdSchema();
-        } catch (schemaError) {
-            console.error("Failed to ensure userId schema in profile route:", schemaError);
-        }
-
         const user = await findUserProfileByRef(userRef, userRefLower);
         const fallbackUser = user || (await findCurrentSessionUserFallback(userRef));
         if (!fallbackUser) {
@@ -209,15 +202,10 @@ export async function GET(
 
         const unpacked = unpackLinks(fallbackUser.links);
 
-        let ensuredUserId =
+        const ensuredUserId =
             ("userId" in fallbackUser && typeof fallbackUser.userId === "string" && fallbackUser.userId.trim())
                 ? fallbackUser.userId.trim()
                 : fallbackUser.id;
-        try {
-            ensuredUserId = await ensureUserIdForUser(fallbackUser.id);
-        } catch (ensureError) {
-            console.error("Failed to ensure userId in profile route:", ensureError);
-        }
 
         return NextResponse.json({
             ...fallbackUser,

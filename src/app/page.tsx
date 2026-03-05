@@ -66,12 +66,17 @@ export default function HomePage() {
 
   useEffect(() => {
     let active = true;
-    const loadPosts = async () => {
+    const loadPosts = async (attempt = 0): Promise<void> => {
       setPostsError("");
       try {
         const res = await fetch("/api/posts", { cache: "no-store" });
         const data = await res.json().catch(() => []);
         if (!res.ok || !Array.isArray(data)) {
+          if (attempt < 1) {
+            await new Promise((resolve) => setTimeout(resolve, 350));
+            await loadPosts(attempt + 1);
+            return;
+          }
           throw new Error("Failed to fetch posts");
         }
         if (!active) return;

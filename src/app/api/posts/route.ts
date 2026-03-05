@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { auth } from "@/lib/auth";
-import { ensureUserIdSchema } from "@/lib/userId";
 
 function isUserIdColumnMissing(error: unknown): boolean {
     if (error && typeof error === "object" && "code" in error) {
@@ -19,12 +18,6 @@ function isUserIdColumnMissing(error: unknown): boolean {
 
 export async function GET() {
     try {
-        try {
-            await ensureUserIdSchema();
-        } catch (schemaError) {
-            console.error("Failed to ensure userId schema in posts route:", schemaError);
-        }
-
         try {
             const posts = await prisma.post.findMany({
                 where: { published: true },

@@ -4,24 +4,12 @@ import Google from "next-auth/providers/google";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import bcrypt from "bcryptjs";
 import { prisma } from "./db";
-import { ensureUserIdForUser } from "./userId";
 
 const googleEnabled =
     typeof process.env.GOOGLE_CLIENT_ID === "string" &&
     process.env.GOOGLE_CLIENT_ID.length > 0 &&
     typeof process.env.GOOGLE_CLIENT_SECRET === "string" &&
     process.env.GOOGLE_CLIENT_SECRET.length > 0;
-
-async function resolveUserIdSafely(userId: string, fallback?: string | null): Promise<string> {
-    try {
-        return await ensureUserIdForUser(userId);
-    } catch (error) {
-        console.error("Failed to ensure userId for auth flow:", error);
-        const fallbackValue = typeof fallback === "string" ? fallback.trim() : "";
-        if (fallbackValue) return fallbackValue;
-        return userId;
-    }
-}
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
     adapter: PrismaAdapter(prisma),
@@ -62,7 +50,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                     id: user.id,
                     email: user.email,
                     name: user.name,
-                    userId: await resolveUserIdSafely(user.id, user.userId),
+                    userId: (typeof user.userId === "string" && user.userId.trim()) ? user.userId : user.id,
                 };
             },
         }),
@@ -91,10 +79,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
             if (tokenPrimaryId) {
                 token.id = tokenPrimaryId;
-                token.userId = await resolveUserIdSafely(
-                    tokenPrimaryId,
-                    typeof token.userId === "string" ? token.userId : undefined
-                );
+                if (typeof token.userId !== "string" || !token.userId.trim()) {
+                    token.userId = tokenPrimaryId;
+                }
             }
             return token;
         },

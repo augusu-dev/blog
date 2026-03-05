@@ -4,7 +4,6 @@ import { prisma } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import { resolveSessionUserId } from "@/lib/sessionUser";
 import {
-    ensureUserIdForUser,
     isValidUserId,
     normalizeUserIdInput,
 } from "@/lib/userId";
@@ -177,14 +176,6 @@ function isUserIdColumnMissing(error: unknown): boolean {
     return false;
 }
 
-async function tryEnsureUserId(userId: string): Promise<void> {
-    try {
-        await ensureUserIdForUser(userId);
-    } catch (error) {
-        console.error("Failed to ensure userId in user settings route:", error);
-    }
-}
-
 async function fetchUserSettingsRecord(userId: string) {
     try {
         const user = await prisma.user.findUnique({
@@ -228,8 +219,6 @@ export async function GET() {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    await tryEnsureUserId(userId);
-
     try {
         const { user } = await fetchUserSettingsRecord(userId);
         if (!user) {
@@ -262,8 +251,6 @@ export async function PUT(request: NextRequest) {
     if (!userId) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-
-    await tryEnsureUserId(userId);
 
     const {
         name,

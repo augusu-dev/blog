@@ -85,17 +85,28 @@ export default function HomeShortPosts() {
 
     const remaining = useMemo(() => SHORT_POST_LIMIT - content.length, [content.length]);
 
-    const loadPosts = useCallback(async () => {
+    const loadPosts = useCallback(async (attempt = 0): Promise<void> => {
         setLoading(true);
         try {
-            const res = await fetch("/api/short-posts");
+            const res = await fetch("/api/short-posts", { cache: "no-store" });
             const payload = await res.json().catch(() => []);
             if (!res.ok) {
+                if (attempt < 1) {
+                    await new Promise((resolve) => setTimeout(resolve, 350));
+                    await loadPosts(attempt + 1);
+                    return;
+                }
                 setError("短文ポストの読み込みに失敗しました。");
                 return;
             }
             setPosts(Array.isArray(payload) ? payload.slice(0, 30) : []);
+            setError("");
         } catch {
+            if (attempt < 1) {
+                await new Promise((resolve) => setTimeout(resolve, 350));
+                await loadPosts(attempt + 1);
+                return;
+            }
             setError("短文ポストの読み込みに失敗しました。");
         } finally {
             setLoading(false);

@@ -82,14 +82,19 @@ export default function PinsPage() {
         }
     }, [status, router]);
 
-    const loadFeed = useCallback(async () => {
+    const loadFeed = useCallback(async (attempt = 0): Promise<void> => {
         if (!session?.user) return;
         setLoading(true);
         setError("");
         try {
-            const res = await fetch("/api/pins/feed");
+            const res = await fetch("/api/pins/feed", { cache: "no-store" });
             const data = (await res.json().catch(() => ({}))) as Partial<FeedPayload & { error: string }>;
             if (!res.ok) {
+                if (attempt < 1) {
+                    await new Promise((resolve) => setTimeout(resolve, 400));
+                    await loadFeed(attempt + 1);
+                    return;
+                }
                 setError(data.error || "ピン新着の読み込みに失敗しました。");
                 return;
             }
@@ -98,7 +103,13 @@ export default function PinsPage() {
                 pinnedUsers: Array.isArray(data.pinnedUsers) ? (data.pinnedUsers as PinUser[]) : [],
                 posts: Array.isArray(data.posts) ? (data.posts as PinFeedPost[]) : [],
             });
+            setError("");
         } catch {
+            if (attempt < 1) {
+                await new Promise((resolve) => setTimeout(resolve, 400));
+                await loadFeed(attempt + 1);
+                return;
+            }
             setError("ピン新着の読み込みに失敗しました。");
         } finally {
             setLoading(false);

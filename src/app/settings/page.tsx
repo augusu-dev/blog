@@ -92,27 +92,38 @@ export default function SettingsPage() {
     useEffect(() => {
         if (session) {
             setEmail(session.user?.email || "");
-            fetch("/api/user/settings")
-                .then(async (r) => {
-                    const data = await r.json().catch(() => ({}));
-                    if (!r.ok || !data || typeof data !== "object") {
-                        setMessage("❌ 設定情報の取得に失敗しました。");
-                        await hydrateFromPublicProfile();
+            setName(session.user?.name || "");
+            setImage((session.user as { image?: string | null } | undefined)?.image || "");
+
+            const loadSettings = async (attempt = 0): Promise<void> => {
+                const res = await fetch("/api/user/settings", { cache: "no-store" });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok || !data || typeof data !== "object") {
+                    if (attempt < 1) {
+                        await new Promise((resolve) => setTimeout(resolve, 400));
+                        await loadSettings(attempt + 1);
                         return;
                     }
-                    setName(data.name || "");
-                    setUserId(data.userId || "");
-                    setImage(data.image || "");
-                    setHeaderImage(data.headerImage || "");
-                    setBio(data.bio || "");
-                    setAboutMe(data.aboutMe || "");
-                    setLinks(Array.isArray(data.links) ? data.links : []);
-                })
-                .catch(async () => {
                     setMessage("❌ 設定情報の取得に失敗しました。");
                     await hydrateFromPublicProfile();
-                });
-            fetch("/api/posts/my")
+                    return;
+                }
+                setName(data.name || "");
+                setUserId(data.userId || "");
+                setImage(data.image || "");
+                setHeaderImage(data.headerImage || "");
+                setBio(data.bio || "");
+                setAboutMe(data.aboutMe || "");
+                setLinks(Array.isArray(data.links) ? data.links : []);
+                setMessage("");
+            };
+
+            void loadSettings().catch(async () => {
+                setMessage("❌ 設定情報の取得に失敗しました。");
+                await hydrateFromPublicProfile();
+            });
+
+            void fetch("/api/posts/my", { cache: "no-store" })
                 .then(async (r) => {
                     const posts = await r.json().catch(() => []);
                     if (!r.ok || !Array.isArray(posts)) {
