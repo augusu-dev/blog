@@ -388,7 +388,9 @@ export default function UserPage() {
                                             )}
                                             <div className="product-info">
                                                 <h3 style={{ fontSize: 16 }}>{p.title}</h3>
-                                                <p style={{ fontSize: 13 }}>{p.excerpt || "詳細がありません。"}</p>
+                                                {p.excerpt ? (
+                                                    <p style={{ fontSize: 13 }}>{p.excerpt}</p>
+                                                ) : null}
                                             </div>
                                         </div>
                                     ))}
@@ -646,3 +648,4 @@ export default function UserPage() {
         </>
     );
 }
+

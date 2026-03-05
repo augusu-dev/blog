@@ -3,7 +3,6 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { DirectMessageContext } from "@prisma/client";
 import {
-    ensureDirectMessageSchema,
     ensureDirectMessageCapacity,
     withDirectMessageTable,
 } from "@/lib/directMessages";
@@ -85,8 +84,6 @@ export async function GET(request: NextRequest) {
     const targetUserId = normalizeString(request.nextUrl.searchParams.get("userId"));
 
     try {
-        await ensureDirectMessageSchema();
-
         if (mode === "thread") {
             if (!targetUserId) {
                 return NextResponse.json({ error: "userId is required for thread mode" }, { status: 400 });
@@ -217,8 +214,6 @@ export async function POST(request: NextRequest) {
     }
 
     try {
-        await ensureDirectMessageSchema();
-
         const body = await request.json();
         const recipientRef = normalizeString(body.recipientId);
         const content = normalizeString(body.content);

@@ -35,6 +35,7 @@ type DirectMessage = {
     recipientId: string;
     sender: ThreadUser;
     recipient: ThreadUser;
+    pending?: boolean;
 };
 
 export default function MessagesPage() {
@@ -49,10 +50,44 @@ export default function MessagesPage() {
     const [loadingThreads, setLoadingThreads] = useState(false);
     const [loadingMessages, setLoadingMessages] = useState(false);
     const [sending, setSending] = useState(false);
+    const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
     const [error, setError] = useState("");
     const [presetTarget, setPresetTarget] = useState("");
 
     const currentUserId = (session?.user as { id?: string } | undefined)?.id ?? "";
+    const sessionUser = session?.user as {
+        id?: string;
+        userId?: string | null;
+        name?: string | null;
+        email?: string | null;
+        image?: string | null;
+    } | undefined;
+
+    const syncThreadFromMessage = useCallback(
+        (nextMessage: DirectMessage) => {
+            const otherUser =
+                nextMessage.senderId === currentUserId ? nextMessage.recipient : nextMessage.sender;
+            if (!otherUser?.id) return;
+
+            const nextThread: Thread = {
+                id: otherUser.id,
+                user: otherUser,
+                lastMessage: {
+                    id: nextMessage.id,
+                    content: nextMessage.content,
+                    createdAt: nextMessage.createdAt,
+                    senderId: nextMessage.senderId,
+                    recipientId: nextMessage.recipientId,
+                },
+            };
+
+            setThreads((prev) => [nextThread, ...prev.filter((thread) => thread.id !== otherUser.id)]);
+            if (!selectedUser) {
+                setSelectedUser(otherUser);
+            }
+        },
+        [currentUserId, selectedUser]
+    );
 
     useEffect(() => {
         if (typeof window === "undefined") return;
@@ -162,6 +197,18 @@ export default function MessagesPage() {
         };
     }, [selectedUserId, threads]);
 
+    const refreshCurrentThread = useCallback(async () => {
+        if (!selectedUserId) return;
+        try {
+            const res = await fetch(`/api/direct-messages?mode=thread&userId=${encodeURIComponent(selectedUserId)}`);
+            const payload = await res.json().catch(() => ({}));
+            if (!res.ok) return;
+            setMessages(Array.isArray(payload.messages) ? payload.messages : []);
+        } catch {
+            // silent refresh failure
+        }
+    }, [selectedUserId]);
+
     const sendMessage = async () => {
         const content = draft.trim();
         if (!selectedUserId || !content || sending) return;
@@ -170,6 +217,39 @@ export default function MessagesPage() {
             setError("Message must be 10000 characters or fewer.");
             return;
         }
+
+        const recipientFromThread =
+            selectedUser || threads.find((thread) => thread.id === selectedUserId)?.user || null;
+        const fallbackRecipient: ThreadUser = recipientFromThread || {
+            id: selectedUserId,
+            userId: null,
+            name: null,
+            email: null,
+            image: null,
+        };
+        const senderUser: ThreadUser = {
+            id: currentUserId,
+            userId: sessionUser?.userId ?? null,
+            name: sessionUser?.name ?? null,
+            email: sessionUser?.email ?? null,
+            image: sessionUser?.image ?? null,
+        };
+
+        const optimisticId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const optimisticMessage: DirectMessage = {
+            id: optimisticId,
+            content,
+            createdAt: new Date().toISOString(),
+            senderId: currentUserId,
+            recipientId: selectedUserId,
+            sender: senderUser,
+            recipient: fallbackRecipient,
+            pending: true,
+        };
+
+        setDraft("");
+        setMessages((prev) => [...prev, optimisticMessage]);
+        syncThreadFromMessage(optimisticMessage);
 
         setSending(true);
         setError("");
@@ -181,44 +261,64 @@ export default function MessagesPage() {
             });
             const payload = await res.json().catch(() => ({}));
             if (!res.ok) {
+                setMessages((prev) => prev.filter((message) => message.id !== optimisticId));
+                setDraft((prev) => (prev ? prev : content));
                 setError(payload.error || "Failed to send message.");
+                void loadThreads();
                 return;
             }
 
-            setDraft("");
             if (payload && typeof payload === "object" && typeof payload.id === "string") {
                 const nextMessage = payload as DirectMessage;
-                setMessages((prev) => [...prev, nextMessage]);
-
-                const otherUser = nextMessage.senderId === currentUserId ? nextMessage.recipient : nextMessage.sender;
-                if (otherUser?.id) {
-                    setThreads((prev) => {
-                        const nextThread: Thread = {
-                            id: otherUser.id,
-                            user: otherUser,
-                            lastMessage: {
-                                id: nextMessage.id,
-                                content: nextMessage.content,
-                                createdAt: nextMessage.createdAt,
-                                senderId: nextMessage.senderId,
-                                recipientId: nextMessage.recipientId,
-                            },
-                        };
-                        return [nextThread, ...prev.filter((thread) => thread.id !== otherUser.id)];
-                    });
-
-                    if (!selectedUser) {
-                        setSelectedUser(otherUser);
-                    }
-                }
+                setMessages((prev) =>
+                    prev.map((message) => (message.id === optimisticId ? nextMessage : message))
+                );
+                syncThreadFromMessage(nextMessage);
+            } else {
+                setMessages((prev) => prev.filter((message) => message.id !== optimisticId));
+                await refreshCurrentThread();
             }
 
             markDmPrSeen();
             void loadThreads();
         } catch {
+            setMessages((prev) => prev.filter((message) => message.id !== optimisticId));
+            setDraft((prev) => (prev ? prev : content));
             setError("Failed to send message.");
+            void loadThreads();
         } finally {
             setSending(false);
+        }
+    };
+
+    const deleteMessage = async (messageId: string) => {
+        if (!messageId || deletingMessageId) return;
+        if (!confirm("このメッセージを取り消しますか？")) return;
+
+        if (messageId.startsWith("temp-")) {
+            setMessages((prev) => prev.filter((message) => message.id !== messageId));
+            return;
+        }
+
+        setDeletingMessageId(messageId);
+        setError("");
+        try {
+            const res = await fetch(`/api/direct-messages/${encodeURIComponent(messageId)}`, {
+                method: "DELETE",
+            });
+            const payload = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                setError(payload.error || "Failed to delete message.");
+                return;
+            }
+
+            setMessages((prev) => prev.filter((message) => message.id !== messageId));
+            await refreshCurrentThread();
+            void loadThreads();
+        } catch {
+            setError("Failed to delete message.");
+        } finally {
+            setDeletingMessageId(null);
         }
     };
 
@@ -338,6 +438,8 @@ export default function MessagesPage() {
                             ) : (
                                 messages.map((message) => {
                                     const mine = message.senderId === currentUserId;
+                                    const isPending = !!message.pending || message.id.startsWith("temp-");
+                                    const deletingThis = deletingMessageId === message.id;
                                     return (
                                         <div key={message.id} style={{ alignSelf: mine ? "flex-end" : "flex-start", maxWidth: "78%" }}>
                                             <div
@@ -353,8 +455,31 @@ export default function MessagesPage() {
                                             >
                                                 {message.content}
                                             </div>
-                                            <div style={{ fontSize: 10, color: "var(--text-soft)", marginTop: 2, textAlign: mine ? "right" : "left" }}>
-                                                {new Date(message.createdAt).toLocaleString("ja-JP")}
+                                            <div
+                                                style={{
+                                                    display: "flex",
+                                                    alignItems: "center",
+                                                    justifyContent: mine ? "flex-end" : "flex-start",
+                                                    gap: 8,
+                                                    marginTop: 2,
+                                                }}
+                                            >
+                                                <span style={{ fontSize: 10, color: "var(--text-soft)" }}>
+                                                    {isPending
+                                                        ? "送信中..."
+                                                        : new Date(message.createdAt).toLocaleString("ja-JP")}
+                                                </span>
+                                                {mine && !isPending ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => void deleteMessage(message.id)}
+                                                        disabled={deletingThis}
+                                                        className="editor-btn editor-btn-secondary"
+                                                        style={{ padding: "1px 6px", fontSize: 10 }}
+                                                    >
+                                                        {deletingThis ? "取消中..." : "取り消し"}
+                                                    </button>
+                                                ) : null}
                                             </div>
                                         </div>
                                     );
