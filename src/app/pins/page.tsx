@@ -49,6 +49,24 @@ function authorHref(author: { id: string; userId?: string | null }): string {
     return `/user/${encodeURIComponent(author.userId || author.id)}`;
 }
 
+function postHref(post: PinFeedPost): string {
+    return `/user/${encodeURIComponent(post.author.userId || post.author.id)}?post=${encodeURIComponent(post.id)}`;
+}
+
+function formatDateTime(value: string): string {
+    try {
+        return new Intl.DateTimeFormat("ja-JP", {
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+        }).format(new Date(value));
+    } catch {
+        return value;
+    }
+}
+
 export default function PinsPage() {
     const { data: session, status } = useSession();
     const router = useRouter();
@@ -152,12 +170,6 @@ export default function PinsPage() {
             </nav>
 
             <div className="editor-container" style={{ maxWidth: 920 }}>
-                <h1 style={{ fontFamily: "var(--serif)", fontSize: 30, fontWeight: 400, marginBottom: 16 }}>
-                    ピンしたユーザーの新着
-                </h1>
-                <p style={{ marginBottom: 16, color: "var(--text-soft)", fontSize: 13 }}>
-                    ピン中の人数: {payload.pinnedCount}
-                </p>
 
                 {error && <div className="login-message login-error" style={{ marginBottom: 12 }}>{error}</div>}
 
@@ -198,6 +210,9 @@ export default function PinsPage() {
                             ))}
                         </div>
                     )}
+                    <p style={{ marginTop: 10, color: "var(--text-soft)", fontSize: 13 }}>
+                        ピン中の人数: {payload.pinnedCount}
+                    </p>
                 </section>
 
                 <section>
@@ -211,35 +226,39 @@ export default function PinsPage() {
                             {payload.posts.map((post) => (
                                 <article
                                     key={post.id}
+                                    onClick={() => router.push(postHref(post))}
                                     style={{
                                         border: "1px solid var(--border)",
                                         borderRadius: 12,
                                         background: "var(--card)",
                                         padding: 14,
+                                        cursor: "pointer",
                                     }}
                                 >
-                                    <h3 style={{ marginBottom: 6, fontSize: 18 }}>{post.title}</h3>
+                                    <h3 style={{ marginBottom: 6, fontSize: 18 }}>
+                                        <Link
+                                            href={postHref(post)}
+                                            style={{ textDecoration: "none", color: "var(--text)" }}
+                                            onClick={(e) => e.stopPropagation()}
+                                        >
+                                            {post.title}
+                                        </Link>
+                                    </h3>
                                     <p style={{ marginBottom: 6, fontSize: 12, color: "var(--text-soft)" }}>
                                         by{" "}
-                                        <Link href={authorHref(post.author)} style={{ textDecoration: "none", color: "var(--azuki)" }}>
+                                        <Link
+                                            href={authorHref(post.author)}
+                                            style={{ textDecoration: "none", color: "var(--azuki)" }}
+                                            onClick={(e) => e.stopPropagation()}
+                                        >
                                             {authorLabel(post.author)}
                                         </Link>
                                         {" ・ "}
-                                        {new Date(post.createdAt).toLocaleString("ja-JP")}
+                                        {formatDateTime(post.createdAt)}
                                     </p>
                                     {post.excerpt ? (
                                         <p style={{ marginBottom: 8, whiteSpace: "pre-wrap", fontSize: 14 }}>{post.excerpt}</p>
                                     ) : null}
-                                    <details>
-                                        <summary style={{ cursor: "pointer", fontSize: 12, color: "var(--azuki)" }}>
-                                            本文を見る
-                                        </summary>
-                                        <div
-                                            className="md-content"
-                                            style={{ marginTop: 8 }}
-                                            dangerouslySetInnerHTML={{ __html: post.content }}
-                                        />
-                                    </details>
                                 </article>
                             ))}
                         </div>

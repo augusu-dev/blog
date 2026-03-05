@@ -3,7 +3,7 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useSession } from "next-auth/react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useLanguage } from "@/contexts/LanguageContext";
 import PostComments from "@/components/PostComments";
@@ -87,7 +87,9 @@ function shuffle<T>(arr: T[]): T[] {
 export default function UserPage() {
     const { data: session } = useSession();
     const params = useParams();
+    const searchParams = useSearchParams();
     const userName = params.name as string;
+    const requestedPostId = (searchParams.get("post") || "").trim();
 
     const { language, t } = useLanguage();
     const [user, setUser] = useState<UserProfile | null>(null);
@@ -113,6 +115,7 @@ export default function UserPage() {
     const [blogPage, setBlogPage] = useState(0);
 
     const sectionsRef = useRef<HTMLElement[]>([]);
+    const autoOpenedPostRef = useRef<string | null>(null);
 
     /* ─── Fetch user data ─── */
     useEffect(() => {
@@ -308,6 +311,21 @@ export default function UserPage() {
             }
         });
     }, [overlayOpen, overlayContent, translatedContent]);
+
+    useEffect(() => {
+        if (!requestedPostId) {
+            autoOpenedPostRef.current = null;
+            return;
+        }
+        if (!user) return;
+        if (autoOpenedPostRef.current === requestedPostId) return;
+
+        const target = [...posts, ...products].find((post) => post.id === requestedPostId);
+        if (!target) return;
+
+        autoOpenedPostRef.current = requestedPostId;
+        openPost(target);
+    }, [requestedPostId, user, posts, products]);
 
     /* ─── Computed ─── */
     const blogTotalPages = Math.ceil(posts.length / BLOG_PER_PAGE);
