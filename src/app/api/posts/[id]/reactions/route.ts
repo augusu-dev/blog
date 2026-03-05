@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { resolveSessionUserId } from "@/lib/sessionUser";
 import {
     REACTION_TYPES,
     ReactionType,
@@ -59,7 +60,7 @@ export async function GET(
     { params }: { params: Promise<{ id: string }> }
 ) {
     const session = await auth();
-    const currentUserId = session?.user?.id ?? null;
+    const currentUserId = (await resolveSessionUserId(session)) ?? null;
     const { id: postId } = await params;
 
     try {
@@ -81,7 +82,7 @@ export async function POST(
     { params }: { params: Promise<{ id: string }> }
 ) {
     const session = await auth();
-    const currentUserId = session?.user?.id;
+    const currentUserId = await resolveSessionUserId(session);
     if (!currentUserId) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

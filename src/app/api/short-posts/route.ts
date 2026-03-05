@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { withShortPostTable } from "@/lib/shortPosts";
+import { resolveSessionUserId } from "@/lib/sessionUser";
 
 const SHORT_POST_LIMIT = 300;
 const LIST_LIMIT = 30;
@@ -16,6 +17,21 @@ function isUserIdColumnMissing(error: unknown): boolean {
     }
     if (error instanceof Error) {
         return /userId|unknown arg `userId`|column .*userId/i.test(error.message);
+    }
+    return false;
+}
+
+function isShortPostUnavailableError(error: unknown): boolean {
+    if (error && typeof error === "object" && "code" in error) {
+        const code = String((error as { code?: unknown }).code || "");
+        if (code === "P2021" || code === "P2022") {
+            return true;
+        }
+    }
+    if (error instanceof Error) {
+        return /ShortPost|relation .*ShortPost.* does not exist|permission denied|must be owner/i.test(
+            error.message
+        );
     }
     return false;
 }
@@ -85,6 +101,9 @@ export async function GET() {
 
         return NextResponse.json(posts);
     } catch (error) {
+        if (isShortPostUnavailableError(error)) {
+            return NextResponse.json([]);
+        }
         console.error("Failed to fetch short posts:", error);
         return NextResponse.json({ error: "Failed to fetch short posts" }, { status: 500 });
     }
@@ -92,7 +111,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
     const session = await auth();
-    const userId = session?.user?.id;
+    const userId = await resolveSessionUserId(session);
     if (!userId) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

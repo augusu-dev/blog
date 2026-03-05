@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { put } from "@vercel/blob";
+import { resolveSessionUserId } from "@/lib/sessionUser";
 
 export async function POST(request: NextRequest) {
     const session = await auth();
-    if (!session?.user?.id) {
+    const userId = await resolveSessionUserId(session);
+    if (!userId) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -24,7 +26,7 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: "File size must be under 4.5MB" }, { status: 400 });
         }
 
-        const blob = await put(`uploads/${session.user.id}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.\-_]/g, '')}`, file, {
+        const blob = await put(`uploads/${userId}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.\-_]/g, '')}`, file, {
             access: "public",
         });
 

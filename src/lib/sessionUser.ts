@@ -21,11 +21,36 @@ function isUserIdColumnMissing(error: unknown): boolean {
 
 export async function resolveSessionUserId(session: Session | null): Promise<string | null> {
     const sessionUserId = normalizeString(session?.user?.id);
+    const sessionPublicUserId = normalizeString((session?.user as { userId?: string } | undefined)?.userId).toLowerCase();
+
     if (sessionUserId) {
-        return sessionUserId;
+        try {
+            const byPrimaryId = await prisma.user.findUnique({
+                where: { id: sessionUserId },
+                select: { id: true },
+            });
+            if (byPrimaryId?.id) {
+                return byPrimaryId.id;
+            }
+        } catch {
+            // Fall through to alternate resolution paths.
+        }
+
+        try {
+            const byMaybePublicId = await prisma.user.findFirst({
+                where: { userId: sessionUserId.toLowerCase() },
+                select: { id: true },
+            });
+            if (byMaybePublicId?.id) {
+                return byMaybePublicId.id;
+            }
+        } catch (error) {
+            if (!isUserIdColumnMissing(error)) {
+                return null;
+            }
+        }
     }
 
-    const sessionPublicUserId = normalizeString((session?.user as { userId?: string } | undefined)?.userId).toLowerCase();
     if (sessionPublicUserId) {
         try {
             const byPublicId = await prisma.user.findFirst({

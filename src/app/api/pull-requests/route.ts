@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { DirectMessageContext, PullRequestStatus } from "@prisma/client";
 import { ensureDirectMessageCapacity } from "@/lib/directMessages";
 import { ensureUserIdSchema } from "@/lib/userId";
+import { resolveSessionUserId } from "@/lib/sessionUser";
 
 type DmSetting = "OPEN" | "PR_ONLY" | "CLOSED";
 const DEFAULT_DM_SETTING: DmSetting = "OPEN";
@@ -46,7 +47,7 @@ function unpackDmSettingFromLinks(raw: string | null | undefined): DmSetting {
 
 export async function GET() {
     const session = await auth();
-    const userId = session?.user?.id;
+    const userId = await resolveSessionUserId(session);
     if (!userId) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -104,7 +105,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
     const session = await auth();
-    const userId = session?.user?.id;
+    const userId = await resolveSessionUserId(session);
     if (!userId) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

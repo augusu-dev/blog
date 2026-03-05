@@ -21,16 +21,15 @@ const USER_PUBLIC_SELECT_LEGACY = {
     image: true,
 } as const;
 
-function isUserIdColumnMissing(error: unknown): boolean {
+function isSchemaCompatibilityError(error: unknown): boolean {
     if (error && typeof error === "object" && "code" in error) {
         const code = String((error as { code?: unknown }).code || "");
-        if (code === "P2022") {
-            const column = String((error as { meta?: { column?: unknown } }).meta?.column || "");
-            return !column || column.includes("userId");
-        }
+        if (code === "P2021" || code === "P2022") return true;
     }
     if (error instanceof Error) {
-        return /userId|unknown arg `userId`|column .*userId/i.test(error.message);
+        return /unknown arg|column .* does not exist|relation .* does not exist|permission denied|must be owner/i.test(
+            error.message
+        );
     }
     return false;
 }
@@ -63,7 +62,7 @@ async function fetchUsersByIds(userIds: string[]) {
             select: USER_PUBLIC_SELECT_WITH_USER_ID,
         });
     } catch (error) {
-        if (!isUserIdColumnMissing(error)) {
+        if (!isSchemaCompatibilityError(error)) {
             throw error;
         }
     }
@@ -91,24 +90,58 @@ async function fetchPinnedPosts(pinnedUserIds: string[]) {
         });
         return posts;
     } catch (error) {
-        if (!isUserIdColumnMissing(error)) {
+        if (!isSchemaCompatibilityError(error)) {
             throw error;
         }
     }
 
-    return prisma.post.findMany({
+    try {
+        return await prisma.post.findMany({
+            where: {
+                published: true,
+                authorId: { in: pinnedUserIds },
+            },
+            orderBy: { createdAt: "desc" },
+            take: FEED_LIMIT,
+            include: {
+                author: {
+                    select: USER_PUBLIC_SELECT_LEGACY,
+                },
+            },
+        });
+    } catch (error) {
+        if (!isSchemaCompatibilityError(error)) {
+            throw error;
+        }
+    }
+
+    const minimalPosts = await prisma.post.findMany({
         where: {
-            published: true,
             authorId: { in: pinnedUserIds },
         },
         orderBy: { createdAt: "desc" },
         take: FEED_LIMIT,
-        include: {
+        select: {
+            id: true,
+            title: true,
+            content: true,
+            createdAt: true,
+            authorId: true,
             author: {
                 select: USER_PUBLIC_SELECT_LEGACY,
             },
         },
     });
+
+    return minimalPosts.map((post) => ({
+        ...post,
+        excerpt: "",
+        headerImage: null,
+        tags: [] as string[],
+        published: true,
+        pinned: false,
+        updatedAt: post.createdAt,
+    }));
 }
 
 export async function GET() {
@@ -154,6 +187,9 @@ export async function GET() {
             posts,
         });
     } catch (error) {
+        if (isSchemaCompatibilityError(error)) {
+            return NextResponse.json({ pinnedCount: 0, pinnedUsers: [], posts: [] });
+        }
         console.error("Failed to fetch pin feed:", error);
         return NextResponse.json({ error: "Failed to fetch pin feed" }, { status: 500 });
     }

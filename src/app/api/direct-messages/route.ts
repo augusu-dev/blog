@@ -6,6 +6,7 @@ import {
     ensureDirectMessageCapacity,
     withDirectMessageTable,
 } from "@/lib/directMessages";
+import { resolveSessionUserId } from "@/lib/sessionUser";
 
 type DmSetting = "OPEN" | "PR_ONLY" | "CLOSED";
 const DEFAULT_DM_SETTING: DmSetting = "OPEN";
@@ -67,7 +68,7 @@ async function resolveUserPrimaryId(userRef: string): Promise<string | null> {
 
 export async function GET(request: NextRequest) {
     const session = await auth();
-    const userId = session?.user?.id;
+    const userId = await resolveSessionUserId(session);
     if (!userId) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -208,7 +209,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
     const session = await auth();
-    const userId = session?.user?.id;
+    const userId = await resolveSessionUserId(session);
     if (!userId) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

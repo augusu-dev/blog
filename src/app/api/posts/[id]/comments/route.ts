@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { COMMENT_AUTHOR_SELECT, withPostCommentTable } from "@/lib/postComments";
+import { resolveSessionUserId } from "@/lib/sessionUser";
 
 function validateContent(content: unknown): string | null {
     if (typeof content !== "string") return null;
@@ -46,7 +47,7 @@ export async function POST(
     { params }: { params: Promise<{ id: string }> }
 ) {
     const session = await auth();
-    const userId = session?.user?.id;
+    const userId = await resolveSessionUserId(session);
     if (!userId) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

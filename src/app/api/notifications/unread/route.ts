@@ -3,6 +3,7 @@ import { DirectMessageContext } from "@prisma/client";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { withDirectMessageTable } from "@/lib/directMessages";
+import { resolveSessionUserId } from "@/lib/sessionUser";
 
 function parseSince(raw: string | null): Date {
     if (!raw) return new Date(0);
@@ -13,7 +14,7 @@ function parseSince(raw: string | null): Date {
 
 export async function GET(request: NextRequest) {
     const session = await auth();
-    const userId = session?.user?.id;
+    const userId = await resolveSessionUserId(session);
     if (!userId) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

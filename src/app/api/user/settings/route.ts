@@ -38,6 +38,25 @@ const USER_SETTINGS_SELECT_LEGACY = {
     links: true,
 } as const;
 
+const USER_SETTINGS_SELECT_MINIMAL = {
+    id: true,
+    name: true,
+    email: true,
+    image: true,
+} as const;
+
+type UserSettingsPayload = {
+    id: string;
+    userId?: string | null;
+    name?: string | null;
+    email?: string | null;
+    image?: string | null;
+    headerImage?: string | null;
+    bio?: string | null;
+    aboutMe?: string | null;
+    links?: string | null;
+};
+
 function parseDmSetting(value: unknown): DmSetting | undefined {
     if (value === undefined) return undefined;
     if (value === "OPEN" || value === "PR_ONLY" || value === "CLOSED") {
@@ -162,16 +181,15 @@ function packLinks(
     });
 }
 
-function isUserIdColumnMissing(error: unknown): boolean {
+function isUserSchemaCompatibilityError(error: unknown): boolean {
     if (error && typeof error === "object" && "code" in error) {
         const code = String((error as { code?: unknown }).code || "");
-        if (code === "P2022") {
-            const column = String((error as { meta?: { column?: unknown } }).meta?.column || "");
-            return !column || column.includes("userId");
-        }
+        if (code === "P2021" || code === "P2022") return true;
     }
     if (error instanceof Error) {
-        return /userId|unknown arg `userId`|column .*userId/i.test(error.message);
+        return /unknown arg|column .* does not exist|relation .* does not exist|permission denied|must be owner/i.test(
+            error.message
+        );
     }
     return false;
 }
@@ -184,12 +202,22 @@ async function fetchUserSettingsRecord(userId: string) {
         });
         return { user, hasUserIdColumn: true as const };
     } catch (error) {
-        if (!isUserIdColumnMissing(error)) throw error;
+        if (!isUserSchemaCompatibilityError(error)) throw error;
+    }
+
+    try {
+        const user = await prisma.user.findUnique({
+            where: { id: userId },
+            select: USER_SETTINGS_SELECT_LEGACY,
+        });
+        return { user, hasUserIdColumn: false as const };
+    } catch (error) {
+        if (!isUserSchemaCompatibilityError(error)) throw error;
     }
 
     const user = await prisma.user.findUnique({
         where: { id: userId },
-        select: USER_SETTINGS_SELECT_LEGACY,
+        select: USER_SETTINGS_SELECT_MINIMAL,
     });
     return { user, hasUserIdColumn: false as const };
 }
@@ -202,12 +230,22 @@ async function fetchCurrentLinksAndUserId(userId: string) {
         });
         return { current, hasUserIdColumn: true as const };
     } catch (error) {
-        if (!isUserIdColumnMissing(error)) throw error;
+        if (!isUserSchemaCompatibilityError(error)) throw error;
+    }
+
+    try {
+        const current = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { links: true },
+        });
+        return { current, hasUserIdColumn: false as const };
+    } catch (error) {
+        if (!isUserSchemaCompatibilityError(error)) throw error;
     }
 
     const current = await prisma.user.findUnique({
         where: { id: userId },
-        select: { links: true },
+        select: { id: true },
     });
     return { current, hasUserIdColumn: false as const };
 }
@@ -225,15 +263,21 @@ export async function GET() {
             return NextResponse.json({ error: "User not found" }, { status: 404 });
         }
 
-        const unpacked = unpackLinks(user.links);
+        const unpacked = unpackLinks(("links" in user ? user.links : null) as string | null | undefined);
         const publicUserId =
             ("userId" in user && typeof user.userId === "string" && user.userId.trim())
                 ? user.userId.trim()
                 : user.id;
 
         return NextResponse.json({
-            ...user,
+            id: user.id,
             userId: publicUserId,
+            name: ("name" in user ? user.name : null) ?? null,
+            email: ("email" in user ? user.email : null) ?? null,
+            image: ("image" in user ? user.image : null) ?? null,
+            headerImage: ("headerImage" in user ? user.headerImage : null) ?? null,
+            bio: ("bio" in user ? user.bio : null) ?? null,
+            aboutMe: ("aboutMe" in user ? user.aboutMe : null) ?? null,
             links: unpacked.links,
             dmSetting: unpacked.dmSetting,
             theme: unpacked.theme,
@@ -307,7 +351,12 @@ export async function PUT(request: NextRequest) {
             return NextResponse.json({ error: "User not found" }, { status: 404 });
         }
 
-        if (normalizedUserId && hasUserIdColumn && normalizedUserId !== current.userId) {
+        if (
+            normalizedUserId &&
+            hasUserIdColumn &&
+            "userId" in current &&
+            normalizedUserId !== (current.userId || "")
+        ) {
             const existing = await prisma.user.findFirst({
                 where: {
                     userId: normalizedUserId,
@@ -321,7 +370,9 @@ export async function PUT(request: NextRequest) {
             }
         }
 
-        const currentUnpacked = unpackLinks(current.links);
+        const currentUnpacked = unpackLinks(
+            ("links" in current ? current.links : null) as string | null | undefined
+        );
         const nextLinks = Array.isArray(links) ? links : currentUnpacked.links;
         const nextDmSetting = parsedDmSetting || currentUnpacked.dmSetting;
         const nextTheme = parsedTheme || currentUnpacked.theme;
@@ -341,19 +392,7 @@ export async function PUT(request: NextRequest) {
             updateData.userId = normalizedUserId;
         }
 
-        let updatedUser:
-            | {
-                  id: string;
-                  userId?: string | null;
-                  name: string | null;
-                  email: string | null;
-                  image: string | null;
-                  headerImage: string | null;
-                  bio: string | null;
-                  aboutMe: string | null;
-                  links: string | null;
-              }
-            | null = null;
+        let updatedUser: UserSettingsPayload | null = null;
 
         if (hasUserIdColumn) {
             try {
@@ -363,7 +402,7 @@ export async function PUT(request: NextRequest) {
                     select: USER_SETTINGS_SELECT_WITH_USER_ID,
                 });
             } catch (error) {
-                if (!isUserIdColumnMissing(error)) throw error;
+                if (!isUserSchemaCompatibilityError(error)) throw error;
             }
         }
 
@@ -373,19 +412,27 @@ export async function PUT(request: NextRequest) {
             updatedUser = await prisma.user.update({
                 where: { id: userId },
                 data: legacyUpdateData,
-                select: USER_SETTINGS_SELECT_LEGACY,
+                select: USER_SETTINGS_SELECT_MINIMAL,
             });
         }
 
-        const unpacked = unpackLinks(updatedUser.links);
+        const unpacked = unpackLinks(
+            ("links" in updatedUser ? updatedUser.links : null) as string | null | undefined
+        );
         const publicUserId =
             ("userId" in updatedUser && typeof updatedUser.userId === "string" && updatedUser.userId.trim())
                 ? updatedUser.userId.trim()
                 : updatedUser.id;
 
         return NextResponse.json({
-            ...updatedUser,
+            id: updatedUser.id,
             userId: publicUserId,
+            name: ("name" in updatedUser ? updatedUser.name : null) ?? null,
+            email: ("email" in updatedUser ? updatedUser.email : null) ?? null,
+            image: ("image" in updatedUser ? updatedUser.image : null) ?? null,
+            headerImage: ("headerImage" in updatedUser ? updatedUser.headerImage : null) ?? null,
+            bio: ("bio" in updatedUser ? updatedUser.bio : null) ?? null,
+            aboutMe: ("aboutMe" in updatedUser ? updatedUser.aboutMe : null) ?? null,
             links: unpacked.links,
             dmSetting: unpacked.dmSetting,
             theme: unpacked.theme,

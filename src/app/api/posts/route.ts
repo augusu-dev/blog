@@ -1,17 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { auth } from "@/lib/auth";
+import { resolveSessionUserId } from "@/lib/sessionUser";
 
-function isUserIdColumnMissing(error: unknown): boolean {
+function isSchemaMismatchError(error: unknown): boolean {
     if (error && typeof error === "object" && "code" in error) {
         const code = String((error as { code?: unknown }).code || "");
-        if (code === "P2022") {
-            const column = String((error as { meta?: { column?: unknown } }).meta?.column || "");
-            return !column || column.includes("userId");
-        }
+        if (code === "P2021" || code === "P2022") return true;
     }
     if (error instanceof Error) {
-        return /userId|unknown arg `userId`|column .*userId/i.test(error.message);
+        return /userId|unknown arg|column .* does not exist|relation .* does not exist|permission denied|must be owner/i.test(
+            error.message
+        );
     }
     return false;
 }
@@ -30,20 +30,54 @@ export async function GET() {
             });
             return NextResponse.json(posts);
         } catch (error) {
-            if (!isUserIdColumnMissing(error)) throw error;
+            if (!isSchemaMismatchError(error)) throw error;
         }
 
-        const posts = await prisma.post.findMany({
-            where: { published: true },
+        try {
+            const posts = await prisma.post.findMany({
+                where: { published: true },
+                orderBy: { createdAt: "desc" },
+                include: {
+                    author: {
+                        select: { id: true, name: true, email: true, image: true },
+                    },
+                },
+            });
+            return NextResponse.json(posts);
+        } catch (error) {
+            if (!isSchemaMismatchError(error)) throw error;
+        }
+
+        const minimalPosts = await prisma.post.findMany({
             orderBy: { createdAt: "desc" },
-            include: {
+            take: 300,
+            select: {
+                id: true,
+                title: true,
+                content: true,
+                createdAt: true,
+                authorId: true,
                 author: {
                     select: { id: true, name: true, email: true, image: true },
                 },
             },
         });
-        return NextResponse.json(posts);
+
+        return NextResponse.json(
+            minimalPosts.map((post) => ({
+                ...post,
+                excerpt: "",
+                headerImage: null,
+                tags: [] as string[],
+                published: true,
+                pinned: false,
+                updatedAt: post.createdAt,
+            }))
+        );
     } catch (error) {
+        if (isSchemaMismatchError(error)) {
+            return NextResponse.json([]);
+        }
         console.error("Failed to fetch posts:", error);
         return NextResponse.json({ error: "Failed to fetch posts" }, { status: 500 });
     }
@@ -51,7 +85,8 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
     const session = await auth();
-    if (!session?.user?.id) {
+    const userId = await resolveSessionUserId(session);
+    if (!userId) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -74,7 +109,7 @@ export async function POST(request: NextRequest) {
                 headerImage: headerImage || null,
                 tags: tags || [],
                 published: published ?? false,
-                authorId: session.user.id,
+                authorId: userId,
             },
         });
 

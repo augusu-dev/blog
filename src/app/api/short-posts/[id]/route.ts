@@ -2,13 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { withShortPostTable } from "@/lib/shortPosts";
+import { resolveSessionUserId } from "@/lib/sessionUser";
 
 export async function DELETE(
     _request: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ) {
     const session = await auth();
-    const currentUserId = session?.user?.id;
+    const currentUserId = await resolveSessionUserId(session);
     if (!currentUserId) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
