@@ -12,6 +12,17 @@ const googleEnabled =
     typeof process.env.GOOGLE_CLIENT_SECRET === "string" &&
     process.env.GOOGLE_CLIENT_SECRET.length > 0;
 
+async function resolveUserIdSafely(userId: string, fallback?: string | null): Promise<string> {
+    try {
+        return await ensureUserIdForUser(userId);
+    } catch (error) {
+        console.error("Failed to ensure userId for auth flow:", error);
+        const fallbackValue = typeof fallback === "string" ? fallback.trim() : "";
+        if (fallbackValue) return fallbackValue;
+        return userId;
+    }
+}
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
     adapter: PrismaAdapter(prisma),
     providers: [
@@ -51,7 +62,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                     id: user.id,
                     email: user.email,
                     name: user.name,
-                    userId: await ensureUserIdForUser(user.id),
+                    userId: await resolveUserIdSafely(user.id, user.userId),
                 };
             },
         }),
@@ -66,9 +77,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         async jwt({ token, user }) {
             if (user) {
                 token.id = user.id;
+                if (typeof user.userId === "string" && user.userId.trim()) {
+                    token.userId = user.userId;
+                }
             }
             if (token.id) {
-                token.userId = await ensureUserIdForUser(token.id as string);
+                token.userId = await resolveUserIdSafely(
+                    token.id as string,
+                    typeof token.userId === "string" ? token.userId : undefined
+                );
             }
             return token;
         },

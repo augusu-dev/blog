@@ -142,6 +142,14 @@ function packLinks(
     });
 }
 
+async function tryEnsureUserId(userId: string): Promise<void> {
+    try {
+        await ensureUserIdForUser(userId);
+    } catch (error) {
+        console.error("Failed to ensure userId in user settings route:", error);
+    }
+}
+
 export async function GET() {
     const session = await auth();
     const userId = session?.user?.id;
@@ -149,7 +157,7 @@ export async function GET() {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    await ensureUserIdForUser(userId);
+    await tryEnsureUserId(userId);
 
     const user = await prisma.user.findUnique({
         where: { id: userId },
@@ -174,7 +182,7 @@ export async function PUT(request: NextRequest) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    await ensureUserIdForUser(userId);
+    await tryEnsureUserId(userId);
 
     const {
         name,

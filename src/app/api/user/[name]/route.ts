@@ -51,7 +51,11 @@ export async function GET(
     const userRefLower = userRef.toLowerCase();
 
     try {
-        await ensureUserIdSchema();
+        try {
+            await ensureUserIdSchema();
+        } catch (schemaError) {
+            console.error("Failed to ensure userId schema in profile route:", schemaError);
+        }
         const user = await prisma.user.findFirst({
             where: {
                 OR: [{ userId: userRefLower }, { id: userRef }],
@@ -78,7 +82,12 @@ export async function GET(
         }
 
         const unpacked = unpackLinks(user.links);
-        const ensuredUserId = await ensureUserIdForUser(user.id);
+        let ensuredUserId = user.userId || user.id;
+        try {
+            ensuredUserId = await ensureUserIdForUser(user.id);
+        } catch (ensureError) {
+            console.error("Failed to ensure userId in profile route:", ensureError);
+        }
 
         return NextResponse.json({
             ...user,
