@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { resolveSessionUserId } from "@/lib/sessionUser";
+import { tryEnsureProfileAndPostSchema } from "@/lib/schemaCompat";
 
 function isSchemaMismatchError(error: unknown): boolean {
     if (error && typeof error === "object" && "code" in error) {
@@ -18,6 +19,7 @@ function isSchemaMismatchError(error: unknown): boolean {
 
 export async function GET() {
     try {
+        await tryEnsureProfileAndPostSchema();
         try {
             const posts = await prisma.post.findMany({
                 where: { published: true },
@@ -91,6 +93,7 @@ export async function POST(request: NextRequest) {
     }
 
     try {
+        await tryEnsureProfileAndPostSchema();
         const body = await request.json();
         const { title, content, excerpt, headerImage, tags, published } = body;
 

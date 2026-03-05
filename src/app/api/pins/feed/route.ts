@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { withPinnedUserTable } from "@/lib/pinnedUsers";
 import { resolveSessionUserId } from "@/lib/sessionUser";
+import { tryEnsureProfileAndPostSchema } from "@/lib/schemaCompat";
 
 const FEED_LIMIT = 120;
 
@@ -152,6 +153,7 @@ export async function GET() {
     }
 
     try {
+        await tryEnsureProfileAndPostSchema();
         const pinnedRows = await fetchPinnedRows(ownerId);
 
         const pinnedUserIds = pinnedRows.map((row) => row.pinnedUserId);

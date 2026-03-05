@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { resolveSessionUserId } from "@/lib/sessionUser";
+import { tryEnsureProfileAndPostSchema } from "@/lib/schemaCompat";
 
 type DmSetting = "OPEN" | "PR_ONLY" | "CLOSED";
 const DEFAULT_DM_SETTING: DmSetting = "OPEN";
@@ -308,9 +309,20 @@ async function findCurrentSessionUserFallback(userRef: string) {
     const sessionUserId = await resolveSessionUserId(session);
     const sessionPublicUserId =
         typeof session?.user?.userId === "string" ? session.user.userId.trim() : "";
+    const normalizedUserRef = userRef.trim().toLowerCase();
+    const sessionPrimaryRef = sessionUserId ? sessionUserId.trim().toLowerCase() : "";
+    const sessionPublicRef = sessionPublicUserId.toLowerCase();
 
-    if (!sessionUserId || !sessionPublicUserId || sessionPublicUserId !== userRef) {
+    if (
+        !sessionUserId ||
+        (normalizedUserRef !== sessionPrimaryRef && normalizedUserRef !== sessionPublicRef)
+    ) {
         return null;
+    }
+
+    const fallbackFromProfile = await findUserProfileByRef(sessionUserId, sessionUserId.toLowerCase());
+    if (fallbackFromProfile) {
+        return fallbackFromProfile;
     }
 
     try {
@@ -325,10 +337,40 @@ async function findCurrentSessionUserFallback(userRef: string) {
         }
     }
 
-    return prisma.user.findUnique({
+    try {
+        const legacyUser = await prisma.user.findUnique({
+            where: { id: sessionUserId },
+            select: USER_PUBLIC_SELECT_LEGACY,
+        });
+        if (legacyUser) {
+            return legacyUser;
+        }
+    } catch (error) {
+        if (!isUserSchemaCompatibilityError(error)) {
+            throw error;
+        }
+    }
+
+    const minimalUser = await prisma.user.findUnique({
         where: { id: sessionUserId },
-        select: USER_PUBLIC_SELECT_LEGACY,
+        select: USER_PUBLIC_SELECT_MINIMAL,
     });
+
+    if (!minimalUser) {
+        return null;
+    }
+
+    return {
+        id: minimalUser.id,
+        name: minimalUser.name,
+        email: minimalUser.email,
+        image: minimalUser.image,
+        headerImage: null,
+        bio: null,
+        aboutMe: null,
+        links: null,
+        posts: [],
+    };
 }
 
 export async function GET(
@@ -340,6 +382,7 @@ export async function GET(
     const userRefLower = userRef.toLowerCase();
 
     try {
+        await tryEnsureProfileAndPostSchema();
         const user = await findUserProfileByRef(userRef, userRefLower);
         const fallbackUser = user || (await findCurrentSessionUserFallback(userRef));
         if (!fallbackUser) {

@@ -7,6 +7,7 @@ import {
     isValidUserId,
     normalizeUserIdInput,
 } from "@/lib/userId";
+import { tryEnsureProfileAndPostSchema } from "@/lib/schemaCompat";
 
 type DmSetting = "OPEN" | "PR_ONLY" | "CLOSED";
 type ThemeName = "default" | "lightblue" | "sand" | "apricot" | "white" | "black" | "custom";
@@ -258,6 +259,7 @@ export async function GET() {
     }
 
     try {
+        await tryEnsureProfileAndPostSchema();
         const { user } = await fetchUserSettingsRecord(userId);
         if (!user) {
             return NextResponse.json({ error: "User not found" }, { status: 404 });
@@ -345,6 +347,7 @@ export async function PUT(request: NextRequest) {
     }
 
     try {
+        await tryEnsureProfileAndPostSchema();
         const { current, hasUserIdColumn } = await fetchCurrentLinksAndUserId(userId);
 
         if (!current) {

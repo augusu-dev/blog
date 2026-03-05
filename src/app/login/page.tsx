@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { signIn, useSession } from "next-auth/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -28,28 +28,50 @@ export default function LoginPage() {
         return userId ? `/user/${encodeURIComponent(userId)}` : "/settings";
     };
 
-    const resolveMyPageHref = async () => {
-        const sessionUser = session?.user as { id?: string | null; userId?: string | null } | undefined;
-        if (sessionUser?.userId) {
+    const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    const resolveMyPageHref = useCallback(async (expectedEmail?: string) => {
+        const sessionUser = session?.user as { id?: string | null; userId?: string | null; email?: string | null } | undefined;
+        const normalizedExpectedEmail =
+            typeof expectedEmail === "string" ? expectedEmail.trim().toLowerCase() : "";
+        const normalizedSessionEmail =
+            typeof sessionUser?.email === "string" ? sessionUser.email.trim().toLowerCase() : "";
+
+        if (sessionUser?.userId && (!normalizedExpectedEmail || normalizedSessionEmail === normalizedExpectedEmail)) {
             return buildMyPageHref(sessionUser.userId, sessionUser.id);
         }
-        try {
-            const res = await fetch("/api/auth/session", { cache: "no-store" });
-            if (res.ok) {
-                const payload = (await res.json()) as { user?: { id?: string | null; userId?: string | null } };
-                return buildMyPageHref(payload.user?.userId, payload.user?.id);
+
+        for (let attempt = 0; attempt < 6; attempt += 1) {
+            try {
+                const res = await fetch("/api/auth/session", { cache: "no-store" });
+                if (res.ok) {
+                    const payload = (await res.json()) as {
+                        user?: { id?: string | null; userId?: string | null; email?: string | null };
+                    };
+                    const resolvedEmail =
+                        typeof payload.user?.email === "string"
+                            ? payload.user.email.trim().toLowerCase()
+                            : "";
+                    if (!normalizedExpectedEmail || resolvedEmail === normalizedExpectedEmail) {
+                        return buildMyPageHref(payload.user?.userId, payload.user?.id);
+                    }
+                }
+            } catch {
+                // retry until the auth cookie becomes visible to the session endpoint
             }
-        } catch {
-            // noop
+
+            await wait(200 * (attempt + 1));
         }
+
         return "/settings";
-    };
+    }, [session]);
 
     useEffect(() => {
         if (status !== "authenticated") return;
-        const sessionUser = session?.user as { id?: string | null; userId?: string | null } | undefined;
-        router.replace(buildMyPageHref(sessionUser?.userId, sessionUser?.id));
-    }, [router, session, status]);
+        void resolveMyPageHref().then((destination) => {
+            router.replace(destination);
+        });
+    }, [resolveMyPageHref, router, status]);
 
     useEffect(() => {
         let active = true;
@@ -90,7 +112,7 @@ export default function LoginPage() {
             if (result?.error) {
                 setError("メールアドレスまたはパスワードが間違っています。");
             } else {
-                const destination = await resolveMyPageHref();
+                const destination = await resolveMyPageHref(email);
                 router.push(destination);
             }
         } catch {
@@ -131,7 +153,7 @@ export default function LoginPage() {
                 setError("アカウントは作成されましたが、ログインに失敗しました。ログインし直してください。");
                 setIsSignup(false);
             } else {
-                const destination = await resolveMyPageHref();
+                const destination = await resolveMyPageHref(email);
                 router.push(destination);
             }
         } catch {

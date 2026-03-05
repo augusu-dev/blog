@@ -120,25 +120,41 @@ export default function UserPage() {
     /* ─── Fetch user data ─── */
     useEffect(() => {
         async function loadUser() {
-            const sessionUser = session?.user as { id?: string; userId?: string | null } | undefined;
+            const sessionUser = session?.user as {
+                id?: string;
+                userId?: string | null;
+                name?: string | null;
+                email?: string | null;
+                image?: string | null;
+            } | undefined;
             const normalizedUserName = typeof userName === "string" ? userName.trim() : "";
+            const normalizedSessionUserId = typeof sessionUser?.id === "string" ? sessionUser.id.trim() : "";
+            const normalizedSessionPublicUserId =
+                typeof sessionUser?.userId === "string" ? sessionUser.userId.trim() : "";
 
-            try {
-                let res = await fetch(`/api/user/${userName}`);
-                if (
-                    !res.ok &&
-                    sessionUser?.id &&
-                    sessionUser.userId &&
-                    sessionUser.userId.trim() === normalizedUserName
-                ) {
-                    res = await fetch(`/api/user/${encodeURIComponent(sessionUser.id)}`);
+            const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+            const fetchJsonWithRetry = async (url: string, maxAttempts = 4) => {
+                for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+                    try {
+                        const res = await fetch(url, { cache: "no-store" });
+                        const data = await res.json().catch(() => ({}));
+                        if (res.ok) {
+                            return { ok: true as const, data };
+                        }
+                    } catch {
+                        // retry
+                    }
+
+                    if (attempt < maxAttempts - 1) {
+                        await wait(250 * (attempt + 1));
+                    }
                 }
 
-                if (!res.ok) {
-                    return;
-                }
+                return { ok: false as const, data: null };
+            };
 
-                const data: UserProfile = await res.json();
+            const applyUserProfile = (data: UserProfile) => {
                 setUser(data);
                 const allPosts = data.posts.map((p) => ({
                     ...p,
@@ -147,6 +163,74 @@ export default function UserPage() {
                 }));
                 setPosts(allPosts.filter((p) => !p.tags?.includes("product")));
                 setProducts(allPosts.filter((p) => p.tags?.includes("product")));
+            };
+
+            const loadOwnProfileFallback = async () => {
+                const isOwnRequestedPage =
+                    !!normalizedUserName &&
+                    (!!normalizedSessionUserId || !!normalizedSessionPublicUserId) &&
+                    (normalizedUserName === normalizedSessionUserId ||
+                        normalizedUserName === normalizedSessionPublicUserId);
+
+                if (!isOwnRequestedPage || !normalizedSessionUserId) {
+                    return false;
+                }
+
+                const [settingsResult, myPostsResult] = await Promise.all([
+                    fetchJsonWithRetry("/api/user/settings", 4),
+                    fetchJsonWithRetry("/api/posts/my", 4),
+                ]);
+
+                if (!settingsResult.ok || !settingsResult.data || typeof settingsResult.data !== "object") {
+                    return false;
+                }
+
+                const settings = settingsResult.data as Record<string, any>;
+                const fallbackPosts = Array.isArray(myPostsResult.data) ? (myPostsResult.data as Post[]) : [];
+
+                applyUserProfile({
+                    id: String(settings.id || normalizedSessionUserId),
+                    userId:
+                        typeof settings.userId === "string"
+                            ? settings.userId
+                            : normalizedSessionPublicUserId || normalizedSessionUserId,
+                    name: String(settings.name || sessionUser?.name || ""),
+                    email: String(settings.email || sessionUser?.email || ""),
+                    image: typeof settings.image === "string" ? settings.image : sessionUser?.image || null,
+                    headerImage: typeof settings.headerImage === "string" ? settings.headerImage : null,
+                    bio: String(settings.bio || ""),
+                    aboutMe: String(settings.aboutMe || ""),
+                    links: Array.isArray(settings.links) ? settings.links : [],
+                    dmSetting:
+                        settings.dmSetting === "OPEN" || settings.dmSetting === "PR_ONLY" || settings.dmSetting === "CLOSED"
+                            ? settings.dmSetting
+                            : "OPEN",
+                    posts: fallbackPosts,
+                });
+
+                return true;
+            };
+
+            try {
+                let result = await fetchJsonWithRetry(`/api/user/${encodeURIComponent(userName)}`, 3);
+                if (
+                    !result.ok &&
+                    normalizedSessionUserId &&
+                    normalizedSessionPublicUserId &&
+                    normalizedSessionPublicUserId === normalizedUserName
+                ) {
+                    result = await fetchJsonWithRetry(`/api/user/${encodeURIComponent(normalizedSessionUserId)}`, 3);
+                }
+
+                if (!result.ok) {
+                    const loadedOwnFallback = await loadOwnProfileFallback();
+                    if (loadedOwnFallback) {
+                        return;
+                    }
+                    return;
+                }
+
+                applyUserProfile(result.data as UserProfile);
             } catch (e) {
                 console.warn("Failed to load user:", e);
             } finally {

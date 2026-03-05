@@ -62,19 +62,52 @@ export default function SettingsPage() {
     const customColorLabel =
         locale === "en" ? "Custom color" : locale === "zh" ? "自定义颜色" : "カスタムカラー";
 
+    const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    const loadJsonWithRetry = async (url: string, maxAttempts = 4) => {
+        for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+            try {
+                const res = await fetch(url, { cache: "no-store" });
+                const data = await res.json().catch(() => ({}));
+                if (res.ok) {
+                    return { ok: true as const, data };
+                }
+            } catch {
+                // retry
+            }
+
+            if (attempt < maxAttempts - 1) {
+                await wait(300 * (attempt + 1));
+            }
+        }
+
+        return { ok: false as const, data: null };
+    };
+
     const hydrateFromPublicProfile = async () => {
         try {
             const sessionRes = await fetch("/api/auth/session", { cache: "no-store" });
-            const sessionPayload = await sessionRes.json().catch(() => ({} as { user?: { id?: string; userId?: string } }));
-            const ref = sessionPayload.user?.userId || sessionPayload.user?.id;
-            if (!sessionRes.ok || !ref) return;
+            const sessionPayload = await sessionRes
+                .json()
+                .catch(() => ({} as { user?: { id?: string; userId?: string } }));
+            const refs = [sessionPayload.user?.userId, sessionPayload.user?.id].filter(
+                (value, index, array): value is string =>
+                    typeof value === "string" && value.trim().length > 0 && array.indexOf(value) === index
+            );
+            if (!sessionRes.ok || refs.length === 0) return;
 
-            const profileRes = await fetch(`/api/user/${encodeURIComponent(ref)}`);
-            const profile = await profileRes.json().catch(() => ({}));
-            if (!profileRes.ok || !profile || typeof profile !== "object") return;
+            let profile: Record<string, any> | null = null;
+            for (const ref of refs) {
+                const result = await loadJsonWithRetry(`/api/user/${encodeURIComponent(ref)}`, 3);
+                if (result.ok && result.data && typeof result.data === "object") {
+                    profile = result.data as Record<string, any>;
+                    break;
+                }
+            }
+            if (!profile) return;
 
             setName(profile.name || "");
-            setUserId(profile.userId || ref);
+            setUserId(profile.userId || refs[0] || "");
             setImage(profile.image || "");
             setHeaderImage(profile.headerImage || "");
             setBio(profile.bio || "");
@@ -95,15 +128,10 @@ export default function SettingsPage() {
             setName(session.user?.name || "");
             setImage((session.user as { image?: string | null } | undefined)?.image || "");
 
-            const loadSettings = async (attempt = 0): Promise<void> => {
-                const res = await fetch("/api/user/settings", { cache: "no-store" });
-                const data = await res.json().catch(() => ({}));
-                if (!res.ok || !data || typeof data !== "object") {
-                    if (attempt < 1) {
-                        await new Promise((resolve) => setTimeout(resolve, 400));
-                        await loadSettings(attempt + 1);
-                        return;
-                    }
+            const loadSettings = async (): Promise<void> => {
+                const result = await loadJsonWithRetry("/api/user/settings", 4);
+                const data = result.data;
+                if (!result.ok || !data || typeof data !== "object") {
                     setMessage("❌ 設定情報の取得に失敗しました。");
                     await hydrateFromPublicProfile();
                     return;
@@ -123,14 +151,13 @@ export default function SettingsPage() {
                 await hydrateFromPublicProfile();
             });
 
-            void fetch("/api/posts/my", { cache: "no-store" })
-                .then(async (r) => {
-                    const posts = await r.json().catch(() => []);
-                    if (!r.ok || !Array.isArray(posts)) {
+            void loadJsonWithRetry("/api/posts/my", 4)
+                .then((result) => {
+                    if (!result.ok || !Array.isArray(result.data)) {
                         setMyPosts([]);
                         return;
                     }
-                    setMyPosts(posts);
+                    setMyPosts(result.data);
                 })
                 .catch(() => { });
         }

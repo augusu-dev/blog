@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { withPinnedUserTable } from "@/lib/pinnedUsers";
 import { resolveSessionUserId } from "@/lib/sessionUser";
+import { tryEnsureProfileAndPostSchema } from "@/lib/schemaCompat";
 
 const PINNED_USER_PUBLIC_SELECT_WITH_USER_ID = {
     id: true,
@@ -147,6 +148,7 @@ export async function GET(request: NextRequest) {
     const targetRef = normalizeString(request.nextUrl.searchParams.get("userId"));
 
     try {
+        await tryEnsureProfileAndPostSchema();
         if (targetRef) {
             const targetUserId = await resolveTargetUserId(targetRef);
             if (!targetUserId) {
@@ -180,6 +182,7 @@ export async function POST(request: NextRequest) {
     }
 
     try {
+        await tryEnsureProfileAndPostSchema();
         const body = await request.json();
         const targetRef = normalizeString(body.pinnedUserId || body.userId || body.targetUserId);
         const pinnedUserId = await resolveTargetUserId(targetRef);
@@ -233,6 +236,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     try {
+        await tryEnsureProfileAndPostSchema();
         const existing = await withPinnedUserTable(() =>
             prisma.pinnedUser.findFirst({
                 where: { ownerId, pinnedUserId },

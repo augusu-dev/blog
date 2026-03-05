@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { resolveSessionUserId } from "@/lib/sessionUser";
+import { tryEnsureProfileAndPostSchema } from "@/lib/schemaCompat";
 
 function isSchemaMismatchError(error: unknown): boolean {
     if (error && typeof error === "object" && "code" in error) {
@@ -24,6 +25,7 @@ export async function GET() {
     }
 
     try {
+        await tryEnsureProfileAndPostSchema();
         try {
             const posts = await prisma.post.findMany({
                 where: { authorId: userId },
