@@ -22,11 +22,8 @@ export default function LoginPage() {
 
     const buildMyPageHref = (rawPublicUserId?: string | null, rawUserId?: string | null) => {
         const publicUserId = typeof rawPublicUserId === "string" ? rawPublicUserId.trim() : "";
-        if (publicUserId) {
-            return `/user/${encodeURIComponent(publicUserId)}`;
-        }
         const userId = typeof rawUserId === "string" ? rawUserId.trim() : "";
-        return userId ? `/user/${encodeURIComponent(userId)}` : "/settings";
+        return publicUserId || userId ? "/user/me" : "/settings";
     };
 
     const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));

@@ -85,7 +85,7 @@ function shuffle<T>(arr: T[]): T[] {
 }
 
 export default function UserPage() {
-    const { data: session } = useSession();
+    const { data: session, status } = useSession();
     const params = useParams();
     const searchParams = useSearchParams();
     const userName = params.name as string;
@@ -128,6 +128,12 @@ export default function UserPage() {
                 image?: string | null;
             } | undefined;
             const normalizedUserName = typeof userName === "string" ? userName.trim() : "";
+            const normalizedUserNameLower = normalizedUserName.toLowerCase();
+
+            if (normalizedUserNameLower === "me" && status === "loading") {
+                return;
+            }
+
             const normalizedSessionUserId = typeof sessionUser?.id === "string" ? sessionUser.id.trim() : "";
             const normalizedSessionPublicUserId =
                 typeof sessionUser?.userId === "string" ? sessionUser.userId.trim() : "";
@@ -179,7 +185,8 @@ export default function UserPage() {
                     ].filter(Boolean)
                 );
                 const isOwnRequestedPage =
-                    !!normalizedUserName && ownRefs.has(normalizedUserName.toLowerCase());
+                    normalizedUserNameLower === "me" ||
+                    (!!normalizedUserName && ownRefs.has(normalizedUserNameLower));
 
                 if (!isOwnRequestedPage) {
                     return false;
@@ -247,7 +254,7 @@ export default function UserPage() {
             }
         }
         if (userName) loadUser();
-    }, [session?.user, userName]);
+    }, [session?.user, status, userName]);
 
     useEffect(() => {
         async function loadPinState() {
