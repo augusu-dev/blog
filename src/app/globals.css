@@ -2094,6 +2094,108 @@ body {
   white-space: nowrap;
 }
 
+@media (max-width: 640px) {
+  .profile-navbar {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    min-height: 60px;
+    align-items: center;
+  }
+
+  .profile-navbar-brand {
+    gap: 6px;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .profile-navbar .nav-logo {
+    max-width: 100%;
+    white-space: nowrap;
+    font-size: 14px;
+    line-height: 1;
+    letter-spacing: 0.03em;
+  }
+
+  .profile-navbar .nav-logo-img,
+  .profile-navbar .beta-badge {
+    flex-shrink: 0;
+  }
+
+  .profile-navbar-tabs {
+    display: none;
+  }
+
+  .profile-navbar-actions {
+    gap: 4px;
+  }
+
+  .profile-navbar-actions .nav-auth-btn {
+    min-width: 32px;
+    min-height: 32px;
+    padding: 0 8px;
+    justify-content: center;
+  }
+
+  .profile-mobile-tabs {
+    position: fixed;
+    top: 60px;
+    left: 0;
+    right: 0;
+    z-index: 99;
+    display: flex;
+    justify-content: center;
+    padding: 7px 12px;
+    background: rgba(253, 250, 248, 0.72);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
+  }
+
+  .profile-mobile-tabs-track {
+    width: 100%;
+    justify-content: center;
+    gap: 4px;
+  }
+
+  .profile-tab-btn {
+    min-width: 32px;
+    min-height: 32px;
+    padding: 5px 8px;
+  }
+
+  .profile-tab-btn.active {
+    padding-inline: 10px;
+  }
+
+  .profile-tab-label {
+    font-size: 11px;
+  }
+
+  .profile-mobile-tabs .profile-tab-btn {
+    padding: 4px 7px;
+    font-size: 11px;
+    border-radius: 9px;
+  }
+
+  .profile-mobile-tabs .profile-tab-btn.active {
+    padding-inline: 9px;
+  }
+
+  .profile-mobile-tabs .profile-tab-btn svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  .profile-mobile-tabs + .page-dots {
+    top: 104px;
+  }
+
+  .main-content.profile-main-content {
+    padding: 148px 16px 0;
+  }
+}
+
 /* ========================================
    POST REACTIONS
    ======================================== */
