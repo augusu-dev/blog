@@ -8,8 +8,8 @@ export async function DELETE(
     _request: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ) {
-    const session = await auth();
-    const currentUserId = await resolveSessionUserId(session);
+    const session = await auth(req as any) /* eslint-disable-line @typescript-eslint/no-explicit-any */;
+    const currentUserId = await resolveSessionUserId(session as any) /* eslint-disable-line @typescript-eslint/no-explicit-any */;
     if (!currentUserId) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

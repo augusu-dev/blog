@@ -71,8 +71,8 @@ function unpackLinks(raw: string | null | undefined): { links: unknown[]; dmSett
             const links = Array.isArray(candidate.items)
                 ? candidate.items
                 : Array.isArray(candidate.links)
-                  ? candidate.links
-                  : [];
+                    ? candidate.links
+                    : [];
             const dmSetting = parseDmSetting(candidate.dmSetting) || DEFAULT_DM_SETTING;
             return { links, dmSetting };
         }
@@ -187,11 +187,11 @@ async function findUserProfileByRef(userRef: string, userRefLower: string) {
 
     let basicUser:
         | {
-              id: string;
-              name: string | null;
-              email: string | null;
-              image: string | null;
-          }
+            id: string;
+            name: string | null;
+            email: string | null;
+            image: string | null;
+        }
         | null = null;
 
     try {
@@ -220,18 +220,18 @@ async function findUserProfileByRef(userRef: string, userRefLower: string) {
 
     let posts:
         | Array<{
-              id: string;
-              title: string;
-              content: string;
-              excerpt: string | null;
-              headerImage: string | null;
-              tags: string[];
-              published: boolean;
-              pinned: boolean;
-              createdAt: Date;
-              updatedAt: Date;
-              authorId: string;
-          }>
+            id: string;
+            title: string;
+            content: string;
+            excerpt: string | null;
+            headerImage: string | null;
+            tags: string[];
+            published: boolean;
+            pinned: boolean;
+            createdAt: Date;
+            updatedAt: Date;
+            authorId: string;
+        }>
         | null = null;
 
     try {
@@ -306,8 +306,8 @@ async function findUserProfileByRef(userRef: string, userRefLower: string) {
     };
 }
 
-async function findCurrentSessionUserFallback(userRef: string) {
-    const session = await auth();
+async function findCurrentSessionUserFallback(req: Request, userRef: string) {
+    const session = await auth(req);
     const sessionUserId = await resolveSessionUserId(session);
     const sessionPublicUserId =
         typeof session?.user?.userId === "string" ? session.user.userId.trim() : "";
@@ -420,9 +420,7 @@ function mergeUserProfileCandidates(
     };
 }
 
-export async function GET(
-    _request: Request,
-    { params }: { params: Promise<{ name: string }> }
+export async function GET(req: Request, { params }: { params: Promise<{ name: string }> }
 ) {
     const { name } = await params;
     const userRef = typeof name === "string" ? name.trim() : "";
@@ -431,7 +429,7 @@ export async function GET(
     try {
         const prismaUser = await findUserProfileByRef(userRef, userRefLower);
         const rawUser = await getUserProfileByRefFallback(userRef);
-        const sessionUser = await findCurrentSessionUserFallback(userRef);
+        const sessionUser = await findCurrentSessionUserFallback(_request, userRef);
         const resolvedUser = mergeUserProfileCandidates(
             mergeUserProfileCandidates(prismaUser, rawUser),
             sessionUser

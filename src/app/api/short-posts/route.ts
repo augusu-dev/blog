@@ -62,7 +62,7 @@ async function attachPublicUserIds<
     })) as T;
 }
 
-export async function GET() {
+export async function GET(_req: Request) {
     try {
         let posts:
             | Array<{
@@ -121,8 +121,8 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-    const session = await auth();
-    const userId = await resolveSessionUserId(session);
+    const session = await auth(req as any) /* eslint-disable-line @typescript-eslint/no-explicit-any */;
+    const userId = await resolveSessionUserId(session as any) /* eslint-disable-line @typescript-eslint/no-explicit-any */;
     if (!userId) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

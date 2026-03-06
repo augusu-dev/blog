@@ -13,8 +13,8 @@ function parseSince(raw: string | null): Date {
 }
 
 export async function GET(request: NextRequest) {
-    const session = await auth();
-    const userId = await resolveSessionUserId(session);
+    const session = await auth(req as any) /* eslint-disable-line @typescript-eslint/no-explicit-any */;
+    const userId = await resolveSessionUserId(session as any) /* eslint-disable-line @typescript-eslint/no-explicit-any */;
     if (!userId) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
