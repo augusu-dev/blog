@@ -67,6 +67,8 @@ function formatDateTime(value: string): string {
     }
 }
 
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 export default function PinsPage() {
     const { data: session, status } = useSession();
     const router = useRouter();
@@ -82,45 +84,57 @@ export default function PinsPage() {
         }
     }, [status, router]);
 
-    const loadFeed = useCallback(async (attempt = 0): Promise<void> => {
-        if (!session?.user) return;
-        setLoading(true);
-        setError("");
-        try {
-            const res = await fetch("/api/pins/feed", { cache: "no-store" });
-            const data = (await res.json().catch(() => ({}))) as Partial<FeedPayload & { error: string }>;
-            if (!res.ok) {
+    const loadFeed = useCallback(
+        async (attempt = 0): Promise<void> => {
+            if (status !== "authenticated" || !session?.user) return;
+
+            setLoading(true);
+            setError("");
+
+            try {
+                const res = await fetch("/api/pins/feed", { cache: "no-store" });
+                const data = (await res.json().catch(() => ({}))) as Partial<FeedPayload>;
+
+                if (!res.ok) {
+                    if (res.status === 401 && attempt < 2) {
+                        await wait(350 * (attempt + 1));
+                        await loadFeed(attempt + 1);
+                        return;
+                    }
+                    if (attempt < 1) {
+                        await wait(400);
+                        await loadFeed(attempt + 1);
+                        return;
+                    }
+                    setError("ピン新着の読み込みに失敗しました。");
+                    return;
+                }
+
+                setPayload({
+                    pinnedCount: Number(data.pinnedCount || 0),
+                    pinnedUsers: Array.isArray(data.pinnedUsers) ? (data.pinnedUsers as PinUser[]) : [],
+                    posts: Array.isArray(data.posts) ? (data.posts as PinFeedPost[]) : [],
+                });
+                setError("");
+            } catch {
                 if (attempt < 1) {
-                    await new Promise((resolve) => setTimeout(resolve, 400));
+                    await wait(400);
                     await loadFeed(attempt + 1);
                     return;
                 }
-                setError(data.error || "ピン新着の読み込みに失敗しました。");
-                return;
+                setError("ピン新着の読み込みに失敗しました。");
+            } finally {
+                setLoading(false);
             }
-            setPayload({
-                pinnedCount: Number(data.pinnedCount || 0),
-                pinnedUsers: Array.isArray(data.pinnedUsers) ? (data.pinnedUsers as PinUser[]) : [],
-                posts: Array.isArray(data.posts) ? (data.posts as PinFeedPost[]) : [],
-            });
-            setError("");
-        } catch {
-            if (attempt < 1) {
-                await new Promise((resolve) => setTimeout(resolve, 400));
-                await loadFeed(attempt + 1);
-                return;
-            }
-            setError("ピン新着の読み込みに失敗しました。");
-        } finally {
-            setLoading(false);
-        }
-    }, [session?.user]);
+        },
+        [session?.user, status]
+    );
 
     useEffect(() => {
-        if (session?.user) {
+        if (status === "authenticated" && session?.user) {
             void loadFeed();
         }
-    }, [session?.user, loadFeed]);
+    }, [session?.user, status, loadFeed]);
 
     const unpinUser = async (targetUserId: string) => {
         if (!targetUserId || deletingPinId) return;
@@ -181,8 +195,7 @@ export default function PinsPage() {
             </nav>
 
             <div className="editor-container" style={{ maxWidth: 920 }}>
-
-                {error && <div className="login-message login-error" style={{ marginBottom: 12 }}>{error}</div>}
+                {error ? <div className="login-message login-error" style={{ marginBottom: 12 }}>{error}</div> : null}
 
                 <section style={{ marginBottom: 22 }}>
                     <h2 className="settings-section-title">ピン中ユーザー</h2>
@@ -250,7 +263,7 @@ export default function PinsPage() {
                                         <Link
                                             href={postHref(post)}
                                             style={{ textDecoration: "none", color: "var(--text)" }}
-                                            onClick={(e) => e.stopPropagation()}
+                                            onClick={(event) => event.stopPropagation()}
                                         >
                                             {post.title}
                                         </Link>
@@ -260,7 +273,7 @@ export default function PinsPage() {
                                         <Link
                                             href={authorHref(post.author)}
                                             style={{ textDecoration: "none", color: "var(--azuki)" }}
-                                            onClick={(e) => e.stopPropagation()}
+                                            onClick={(event) => event.stopPropagation()}
                                         >
                                             {authorLabel(post.author)}
                                         </Link>

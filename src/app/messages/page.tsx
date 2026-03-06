@@ -85,6 +85,27 @@ export default function MessagesPage() {
         email?: string | null;
         image?: string | null;
     } | undefined;
+    const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    const fetchWithAuthRetry = useCallback(
+        async (input: string, init?: RequestInit, attempts = 3): Promise<Response> => {
+            let lastResponse: Response | null = null;
+
+            for (let attempt = 0; attempt < attempts; attempt += 1) {
+                const response = await fetch(input, init);
+                lastResponse = response;
+
+                if (response.status !== 401 || status !== "authenticated" || attempt === attempts - 1) {
+                    return response;
+                }
+
+                await wait(300 * (attempt + 1));
+            }
+
+            return lastResponse as Response;
+        },
+        [status]
+    );
 
     const syncThreadFromMessage = useCallback(
         (nextMessage: DirectMessage) => {
@@ -137,15 +158,15 @@ export default function MessagesPage() {
     }, [threadDrawerOpen]);
 
     const loadThreads = useCallback(async () => {
-        if (!currentUserId) return;
+        if (status !== "authenticated" || !currentUserId) return;
 
         setError("");
         setLoadingThreads(true);
         try {
-            const res = await fetch("/api/direct-messages?mode=threads");
+            const res = await fetchWithAuthRetry("/api/direct-messages?mode=threads");
             const payload = await res.json().catch(() => ({}));
             if (!res.ok) {
-                setError(payload.error || "Failed to load conversations.");
+                setError("DM一覧の読み込みに失敗しました。");
                 return;
             }
 
@@ -158,16 +179,16 @@ export default function MessagesPage() {
                 setSelectedUserId((current) => current || nextThreads[0].id);
             }
         } catch {
-            setError("Failed to load conversations.");
+            setError("DM一覧の読み込みに失敗しました。");
         } finally {
             setLoadingThreads(false);
         }
-    }, [currentUserId, presetTarget]);
+    }, [currentUserId, fetchWithAuthRetry, presetTarget, status]);
 
     useEffect(() => {
-        if (!currentUserId) return;
+        if (status !== "authenticated" || !currentUserId) return;
         void loadThreads();
-    }, [currentUserId, loadThreads]);
+    }, [currentUserId, loadThreads, status]);
 
     useEffect(() => {
         if (!currentUserId) return;
@@ -204,13 +225,13 @@ export default function MessagesPage() {
         setError("");
 
         Promise.all([
-            fetch(`/api/direct-messages?mode=thread&userId=${encodeURIComponent(selectedUserId)}`),
+            fetchWithAuthRetry(`/api/direct-messages?mode=thread&userId=${encodeURIComponent(selectedUserId)}`),
             fetch(`/api/user/${encodeURIComponent(selectedUserId)}`),
         ])
             .then(async ([threadRes, userRes]) => {
                 const threadPayload = await threadRes.json().catch(() => ({}));
                 if (!threadRes.ok) {
-                    throw new Error(threadPayload.error || "Failed to load message history.");
+                    throw new Error("DMの読み込みに失敗しました。");
                 }
 
                 if (!active) return;
@@ -231,7 +252,7 @@ export default function MessagesPage() {
             .catch((err: unknown) => {
                 if (!active) return;
                 setMessages([]);
-                setError(err instanceof Error ? err.message : "Failed to load message history.");
+                setError(err instanceof Error ? err.message : "DMの読み込みに失敗しました。");
             })
             .finally(() => {
                 if (active) setLoadingMessages(false);
@@ -240,19 +261,19 @@ export default function MessagesPage() {
         return () => {
             active = false;
         };
-    }, [currentUserId, selectedUserId, status]);
+    }, [currentUserId, fetchWithAuthRetry, selectedUserId, status]);
 
     const refreshCurrentThread = useCallback(async () => {
         if (!selectedUserId) return;
         try {
-            const res = await fetch(`/api/direct-messages?mode=thread&userId=${encodeURIComponent(selectedUserId)}`);
+            const res = await fetchWithAuthRetry(`/api/direct-messages?mode=thread&userId=${encodeURIComponent(selectedUserId)}`);
             const payload = await res.json().catch(() => ({}));
             if (!res.ok) return;
             setMessages(Array.isArray(payload.messages) ? payload.messages : []);
         } catch {
             // ignore silent refresh failures
         }
-    }, [selectedUserId]);
+    }, [fetchWithAuthRetry, selectedUserId]);
 
     const sendMessage = async () => {
         const content = draft.trim();
@@ -300,7 +321,7 @@ export default function MessagesPage() {
         syncThreadFromMessage(optimisticMessage);
 
         try {
-            const res = await fetch("/api/direct-messages", {
+            const res = await fetchWithAuthRetry("/api/direct-messages", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ recipientId: selectedUserId, content }),
@@ -309,7 +330,7 @@ export default function MessagesPage() {
             if (!res.ok) {
                 setMessages((prev) => prev.filter((message) => message.id !== optimisticId));
                 setDraft((prev) => (prev ? prev : content));
-                setError(payload.error || "Failed to send message.");
+                setError(payload.error || "メッセージの送信に失敗しました。");
                 void loadThreads();
                 return;
             }
@@ -330,7 +351,7 @@ export default function MessagesPage() {
         } catch {
             setMessages((prev) => prev.filter((message) => message.id !== optimisticId));
             setDraft((prev) => (prev ? prev : content));
-            setError("Failed to send message.");
+            setError("メッセージの送信に失敗しました。");
             void loadThreads();
         }
     };

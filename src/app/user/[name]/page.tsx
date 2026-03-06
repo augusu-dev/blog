@@ -542,16 +542,20 @@ export default function UserPage() {
     return (
         <>
             {/* ─── Navbar ─── */}
-            <nav className="navbar" id="navbar">
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <Link href="/" className="nav-logo" style={{ textDecoration: "none" }}>
+            <nav className="navbar home-navbar" id="navbar" style={{ justifyContent: "space-between" }}>
+                <div className="home-navbar-brand">
+                    <Link
+                        href="/"
+                        className="nav-logo"
+                        style={{ textDecoration: "none", position: "static", left: "auto" }}
+                    >
                         <img src="/images/a.png" alt="Next Blog" className="nav-logo-img" />
                         Next Blog <span className="beta-badge">β</span>
                     </Link>
                     {session && isOwnProfile ? (
                         <Link
                             href="/pins"
-                            className="nav-auth-btn nav-user-btn"
+                            className="nav-auth-btn nav-user-btn home-navbar-pin-btn"
                             style={{ textDecoration: "none" }}
                             title="ピンしたユーザーの新着"
                         >
@@ -577,7 +581,7 @@ export default function UserPage() {
                         About me
                     </button>
                 </div>
-                <div className="nav-auth">
+                <div className="nav-auth home-navbar-actions">
                     {session ? (
                         <>
                             {canShowPinButton && (
