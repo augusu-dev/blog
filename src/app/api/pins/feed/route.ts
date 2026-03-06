@@ -167,8 +167,8 @@ async function fetchPinnedPosts(pinnedUsers: PublicUser[]) {
         .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime());
 }
 
-export async function GET(req: Request) {
-    const session = await auth(req as any) /* eslint-disable-line @typescript-eslint/no-explicit-any */;
+export async function GET() {
+    const session = await auth();
     const ownerId = await resolveSessionUserId(session);
     if (!ownerId) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

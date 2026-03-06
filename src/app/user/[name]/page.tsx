@@ -44,6 +44,8 @@ interface UserProfile {
     posts: Post[];
 }
 
+type SectionId = "home" | "blog" | "product" | "about";
+
 /* ─── Tag colors ─── */
 const TAG_COLORS: Record<string, string> = {
     "AI": "#d4877a", "思考": "#8a7a6b", "コード": "#6b7a8a",
@@ -86,6 +88,26 @@ function shuffle<T>(arr: T[]): T[] {
     return a;
 }
 
+function SectionTabIcon({ section }: { section: SectionId }) {
+    if (section === "home") {
+        return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></svg>;
+    }
+    if (section === "blog") {
+        return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" /><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" /></svg>;
+    }
+    if (section === "product") {
+        return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" /></svg>;
+    }
+    return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>;
+}
+
+const SECTION_TABS: Array<{ id: SectionId; label: string }> = [
+    { id: "home", label: "Home" },
+    { id: "blog", label: "Blog" },
+    { id: "product", label: "Product" },
+    { id: "about", label: "About me" },
+];
+
 export default function UserPage() {
     const { data: session } = useSession();
     const router = useRouter();
@@ -127,6 +149,7 @@ export default function UserPage() {
     }>({ date: "", tags: [], author: null });
     const [isPinned, setIsPinned] = useState(false);
     const [pinLoading, setPinLoading] = useState(false);
+    const [activeSection, setActiveSection] = useState<SectionId>("home");
 
     // Blog pagination
     const BLOG_PER_PAGE = 7;
@@ -313,25 +336,16 @@ export default function UserPage() {
     }, [session?.user, user?.id]);
 
     /* ─── Scroll tracking ─── */
-    const SECTIONS = ["home", "blog", "product", "about"];
+    const SECTIONS: SectionId[] = ["home", "blog", "product", "about"];
 
     const updateNav = useCallback(() => {
         const sy = window.scrollY + 120;
-        let cur = "home";
+        let cur: SectionId = "home";
         SECTIONS.forEach((id) => {
             const el = document.getElementById(id);
             if (el && el.offsetTop <= sy) cur = id;
         });
-        document.querySelectorAll(".nav-link").forEach((link) => {
-            const el = link as HTMLElement;
-            el.classList.toggle("active", el.dataset.section === cur);
-        });
-        document.querySelectorAll(".page-dot").forEach((dot) => {
-            const el = dot as HTMLElement;
-            const isActive = el.dataset.section === cur;
-            el.classList.toggle("active", isActive);
-            el.style.width = isActive ? "20px" : "6px";
-        });
+        setActiveSection((current) => (current === cur ? current : cur));
         const nb = document.getElementById("navbar");
         if (nb) nb.classList.toggle("scrolled", window.scrollY > 10);
     }, []);
@@ -563,23 +577,28 @@ export default function UserPage() {
                         </Link>
                     ) : null}
                 </div>
-                <div className="nav-links">
-                    <button className="nav-link active" data-section="home" onClick={() => scrollTo("home")}>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></svg>
-                        Home
-                    </button>
-                    <button className="nav-link" data-section="blog" onClick={() => scrollTo("blog")}>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" /><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" /></svg>
-                        Blog
-                    </button>
-                    <button className="nav-link" data-section="product" onClick={() => scrollTo("product")}>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" /></svg>
-                        Product
-                    </button>
-                    <button className="nav-link" data-section="about" onClick={() => scrollTo("about")}>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
-                        About me
-                    </button>
+                <div className="nav-links" style={{ gap: 6 }}>
+                    {SECTION_TABS.map((tab) => {
+                        const isActive = activeSection === tab.id;
+                        return (
+                            <button
+                                key={tab.id}
+                                className={`nav-link ${isActive ? "active" : ""}`}
+                                data-section={tab.id}
+                                onClick={() => scrollTo(tab.id)}
+                                aria-label={tab.label}
+                                title={tab.label}
+                                style={{
+                                    minWidth: isActive ? undefined : 38,
+                                    justifyContent: "center",
+                                    padding: isActive ? "7px 14px" : "7px 10px",
+                                }}
+                            >
+                                <SectionTabIcon section={tab.id} />
+                                {isActive ? <span>{tab.label}</span> : null}
+                            </button>
+                        );
+                    })}
                 </div>
                 <div className="nav-auth home-navbar-actions">
                     {session ? (
@@ -620,7 +639,7 @@ export default function UserPage() {
             {/* ─── Page dots ─── */}
             <div className="page-dots" id="pageDots">
                 {SECTIONS.map((s) => (
-                    <div key={s} className={`page-dot ${s === "home" ? "active" : ""}`} style={{ width: s === "home" ? 20 : 6 }} data-section={s} />
+                    <div key={s} className={`page-dot ${activeSection === s ? "active" : ""}`} style={{ width: activeSection === s ? 20 : 6 }} data-section={s} />
                 ))}
             </div>
 

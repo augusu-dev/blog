@@ -158,7 +158,7 @@ export default function MessagesPage() {
     }, [threadDrawerOpen]);
 
     const loadThreads = useCallback(async () => {
-        if (status !== "authenticated" || !currentUserId) return;
+        if (status !== "authenticated" || !session?.user) return;
 
         setError("");
         setLoadingThreads(true);
@@ -183,17 +183,17 @@ export default function MessagesPage() {
         } finally {
             setLoadingThreads(false);
         }
-    }, [currentUserId, fetchWithAuthRetry, presetTarget, status]);
+    }, [fetchWithAuthRetry, presetTarget, session?.user, status]);
 
     useEffect(() => {
-        if (status !== "authenticated" || !currentUserId) return;
+        if (status !== "authenticated" || !session?.user) return;
         void loadThreads();
-    }, [currentUserId, loadThreads, status]);
+    }, [loadThreads, session?.user, status]);
 
     useEffect(() => {
-        if (!currentUserId) return;
+        if (!session?.user) return;
         markDmPrSeen();
-    }, [currentUserId]);
+    }, [session?.user]);
 
     useEffect(() => {
         if (!selectedUserId) {
@@ -214,7 +214,7 @@ export default function MessagesPage() {
             return;
         }
 
-        if (status !== "authenticated" || !currentUserId) {
+        if (status !== "authenticated" || !session?.user) {
             return;
         }
 
@@ -261,7 +261,7 @@ export default function MessagesPage() {
         return () => {
             active = false;
         };
-    }, [currentUserId, fetchWithAuthRetry, selectedUserId, status]);
+    }, [fetchWithAuthRetry, selectedUserId, session?.user, status]);
 
     const refreshCurrentThread = useCallback(async () => {
         if (!selectedUserId) return;
