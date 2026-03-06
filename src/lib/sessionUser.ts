@@ -24,6 +24,19 @@ function buildSessionCacheKeys(session: Session | null): string[] {
     return [...keys];
 }
 
+function getFastSessionPrimaryId(session: Session | null): string {
+    const primaryId = normalizeString(session?.user?.id);
+    const publicUserId = normalizeString(
+        (session?.user as { userId?: string } | undefined)?.userId
+    ).toLowerCase();
+
+    if (primaryId && publicUserId && publicUserId !== primaryId.toLowerCase()) {
+        return primaryId;
+    }
+
+    return "";
+}
+
 function readCachedSessionUserId(keys: string[]): string | null {
     const now = Date.now();
 
@@ -146,6 +159,11 @@ export async function resolveSessionUserId(session: Session | null): Promise<str
 
     if (cachedUserId) {
         return cachedUserId;
+    }
+
+    const fastPrimaryId = getFastSessionPrimaryId(session);
+    if (fastPrimaryId) {
+        return writeCachedSessionUserId(cacheKeys, fastPrimaryId);
     }
 
     if (sessionUserId) {

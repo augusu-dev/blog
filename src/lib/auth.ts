@@ -5,13 +5,16 @@ import { PrismaAdapter } from "@auth/prisma-adapter";
 import bcrypt from "bcryptjs";
 import { prisma } from "./db";
 import { getTableColumns } from "./tableSchema";
-import { ensureUserIdForUser } from "./userId";
+import { isValidUserId, normalizeUserIdInput } from "./userId";
 
 const googleEnabled =
     typeof process.env.GOOGLE_CLIENT_ID === "string" &&
     process.env.GOOGLE_CLIENT_ID.length > 0 &&
     typeof process.env.GOOGLE_CLIENT_SECRET === "string" &&
     process.env.GOOGLE_CLIENT_SECRET.length > 0;
+
+const PUBLIC_USER_ID_CACHE_TTL_MS = 5 * 60 * 1000;
+const publicUserIdCache = new Map<string, { value: string; expiresAt: number }>();
 
 function isUserIdColumnMissing(error: unknown): boolean {
     if (error && typeof error === "object" && "code" in error) {
@@ -99,6 +102,43 @@ type CredentialsLookupUser = {
 
 function normalizeNullableString(value: unknown): string | null {
     return typeof value === "string" ? value : null;
+}
+
+function normalizeReadablePublicUserId(
+    value: unknown,
+    primaryUserId?: string
+): string {
+    const normalized = normalizeUserIdInput(value);
+    const normalizedPrimary = normalizeUserIdInput(primaryUserId || "");
+
+    if (!isValidUserId(normalized) || normalized === normalizedPrimary) {
+        return "";
+    }
+
+    return normalized;
+}
+
+function readCachedPublicUserId(primaryUserId: string): string {
+    const cached = publicUserIdCache.get(primaryUserId);
+    if (!cached) return "";
+    if (cached.expiresAt <= Date.now()) {
+        publicUserIdCache.delete(primaryUserId);
+        return "";
+    }
+    return cached.value;
+}
+
+function writeCachedPublicUserId(primaryUserId: string, publicUserId: string): string {
+    if (!primaryUserId || !publicUserId) {
+        return publicUserId;
+    }
+
+    publicUserIdCache.set(primaryUserId, {
+        value: publicUserId,
+        expiresAt: Date.now() + PUBLIC_USER_ID_CACHE_TTL_MS,
+    });
+
+    return publicUserId;
 }
 
 function normalizePasswordHashVariants(storedPassword: string): string[] {
@@ -195,20 +235,55 @@ async function verifyPassword(password: string, storedPassword: string, userId: 
 
 async function resolveStablePublicUserId(
     primaryUserId: string,
-    fallbackPublicUserId?: string | null
+    fallbackPublicUserId?: string | null,
+    fallbackName?: string | null
 ): Promise<string> {
-    const normalizedFallback =
-        typeof fallbackPublicUserId === "string" ? fallbackPublicUserId.trim() : "";
+    const normalizedFallback = normalizeReadablePublicUserId(fallbackPublicUserId, primaryUserId);
+    if (normalizedFallback) {
+        return writeCachedPublicUserId(primaryUserId, normalizedFallback);
+    }
 
-    if (normalizedFallback && normalizedFallback !== primaryUserId) {
-        return normalizedFallback;
+    const cachedPublicUserId = readCachedPublicUserId(primaryUserId);
+    if (cachedPublicUserId) {
+        return cachedPublicUserId;
     }
 
     try {
-        return await ensureUserIdForUser(primaryUserId);
+        const user = await prisma.user.findUnique({
+            where: { id: primaryUserId },
+            select: {
+                userId: true,
+                name: true,
+            },
+        });
+
+        const resolvedFromUser =
+            normalizeReadablePublicUserId(user?.userId, primaryUserId) ||
+            normalizeReadablePublicUserId(user?.name, primaryUserId);
+        if (resolvedFromUser) {
+            return writeCachedPublicUserId(primaryUserId, resolvedFromUser);
+        }
     } catch {
-        return normalizedFallback || primaryUserId;
+        try {
+            const legacyUser = await prisma.user.findUnique({
+                where: { id: primaryUserId },
+                select: {
+                    name: true,
+                },
+            });
+            const resolvedFromLegacyUser = normalizeReadablePublicUserId(
+                legacyUser?.name,
+                primaryUserId
+            );
+            if (resolvedFromLegacyUser) {
+                return writeCachedPublicUserId(primaryUserId, resolvedFromLegacyUser);
+            }
+        } catch {
+            // Ignore public user id lookup failures in auth callbacks.
+        }
     }
+
+    return normalizeReadablePublicUserId(fallbackName, primaryUserId);
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
@@ -254,7 +329,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                         name: user.name,
                         userId: await resolveStablePublicUserId(
                             user.id,
-                            hasUserIdColumn && "userId" in user ? user.userId : null
+                            hasUserIdColumn && "userId" in user ? user.userId : null,
+                            user.name
                         ),
                     };
                 } catch (error) {
@@ -279,7 +355,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                 if (typeof user.id === "string" && user.id) {
                     token.userId = await resolveStablePublicUserId(
                         user.id,
-                        typeof user.userId === "string" ? user.userId : null
+                        typeof user.userId === "string" ? user.userId : null,
+                        typeof user.name === "string" ? user.name : null
                     );
                 }
             }
@@ -294,7 +371,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                 const tokenPublicUserId =
                     typeof token.userId === "string" ? token.userId.trim() : "";
                 if (!tokenPublicUserId || tokenPublicUserId === tokenPrimaryId) {
-                    token.userId = await resolveStablePublicUserId(tokenPrimaryId, null);
+                    token.userId = await resolveStablePublicUserId(
+                        tokenPrimaryId,
+                        null,
+                        typeof token.name === "string" ? token.name : null
+                    );
                 }
             }
             return token;
