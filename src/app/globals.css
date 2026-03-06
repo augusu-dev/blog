@@ -1446,10 +1446,27 @@ body {
   .profile-navbar {
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 8px;
+    min-height: 60px;
+    align-items: center;
   }
 
   .profile-navbar-brand {
     gap: 6px;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .profile-navbar .nav-logo {
+    max-width: 100%;
+    white-space: nowrap;
+    font-size: 14px;
+    line-height: 1;
+    letter-spacing: 0.03em;
+  }
+
+  .profile-navbar .nav-logo-img,
+  .profile-navbar .beta-badge {
+    flex-shrink: 0;
   }
 
   .profile-navbar-tabs {
@@ -1458,7 +1475,7 @@ body {
 
   .profile-mobile-tabs {
     position: fixed;
-    top: 56px;
+    top: 60px;
     left: 0;
     right: 0;
     z-index: 99;
@@ -1473,7 +1490,20 @@ body {
   }
 
   .profile-mobile-tabs-track {
+    width: 100%;
+    justify-content: center;
     gap: 4px;
+  }
+
+  .profile-navbar-actions {
+    gap: 4px;
+  }
+
+  .profile-navbar-actions .nav-auth-btn {
+    min-width: 32px;
+    min-height: 32px;
+    padding: 0 8px;
+    justify-content: center;
   }
 
   .profile-tab-btn {
@@ -1506,11 +1536,11 @@ body {
   }
 
   .profile-mobile-tabs + .page-dots {
-    top: 96px;
+    top: 104px;
   }
 
-  .profile-main-content {
-    padding-top: 136px;
+  .main-content.profile-main-content {
+    padding: 148px 16px 0;
   }
 
   .nav-write-btn {
