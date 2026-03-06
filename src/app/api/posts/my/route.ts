@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { resolveSessionUserId } from "@/lib/sessionUser";
-import { tryEnsureProfileAndPostSchema } from "@/lib/schemaCompat";
 import { getPostsByAuthorFallback } from "@/lib/publicContentFallback";
 
 function isSchemaMismatchError(error: unknown): boolean {
@@ -18,6 +17,19 @@ function isSchemaMismatchError(error: unknown): boolean {
     return false;
 }
 
+function normalizeAuthorRefs(values: Array<string | null | undefined>): string[] {
+    const refs = new Set<string>();
+
+    for (const value of values) {
+        const normalized = typeof value === "string" ? value.trim() : "";
+        if (normalized) {
+            refs.add(normalized);
+        }
+    }
+
+    return [...refs];
+}
+
 export async function GET() {
     const session = await auth();
     const userId = await resolveSessionUserId(session);
@@ -25,11 +37,17 @@ export async function GET() {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const authorRefs = normalizeAuthorRefs([
+        userId,
+        typeof session?.user?.userId === "string" ? session.user.userId : null,
+    ]);
+    const authorWhere =
+        authorRefs.length <= 1 ? { authorId: authorRefs[0] || userId } : { authorId: { in: authorRefs } };
+
     try {
-        await tryEnsureProfileAndPostSchema();
         try {
             const posts = await prisma.post.findMany({
-                where: { authorId: userId },
+                where: authorWhere,
                 orderBy: { updatedAt: "desc" },
             });
             return NextResponse.json(posts);
@@ -37,10 +55,14 @@ export async function GET() {
             if (!isSchemaMismatchError(error)) throw error;
         }
 
-        return NextResponse.json(await getPostsByAuthorFallback(userId, { publishedOnly: false, limit: 300 }));
+        return NextResponse.json(
+            await getPostsByAuthorFallback(authorRefs, { publishedOnly: false, limit: 300 })
+        );
     } catch (error) {
         try {
-            return NextResponse.json(await getPostsByAuthorFallback(userId, { publishedOnly: false, limit: 300 }));
+            return NextResponse.json(
+                await getPostsByAuthorFallback(authorRefs, { publishedOnly: false, limit: 300 })
+            );
         } catch (fallbackError) {
             if (isSchemaMismatchError(error) || isSchemaMismatchError(fallbackError)) {
                 return NextResponse.json([]);

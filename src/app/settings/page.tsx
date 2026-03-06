@@ -141,26 +141,27 @@ export default function SettingsPage() {
             }
             if (!profile) return;
 
-            setName(profile.name || "");
-            setUserId(profile.userId || refs[0] || "");
-            setImage(profile.image || "");
-            setHeaderImage(profile.headerImage || "");
-            setBio(profile.bio || "");
-            setAboutMe(profile.aboutMe || "");
-            setLinks(Array.isArray(profile.links) ? profile.links : []);
+            applySettingsPayload({
+                ...profile,
+                userId: profile.userId || refs[0] || "",
+            });
         } catch {
             // ignore fallback load failure
         }
     };
 
     const applySettingsPayload = (data: Record<string, any>) => {
-        setName(data.name || "");
-        setUserId(data.userId || "");
-        setImage(data.image || "");
-        setHeaderImage(data.headerImage || "");
-        setBio(data.bio || "");
-        setAboutMe(data.aboutMe || "");
-        setLinks(Array.isArray(data.links) ? data.links : []);
+        const hasOwn = (key: string) => Object.prototype.hasOwnProperty.call(data, key);
+        const getString = (value: unknown) => (typeof value === "string" ? value : "");
+
+        if (hasOwn("name")) setName(getString(data.name));
+        if (hasOwn("userId")) setUserId(getString(data.userId));
+        if (hasOwn("email")) setEmail(getString(data.email));
+        if (hasOwn("image")) setImage(getString(data.image));
+        if (hasOwn("headerImage")) setHeaderImage(getString(data.headerImage));
+        if (hasOwn("bio")) setBio(getString(data.bio));
+        if (hasOwn("aboutMe")) setAboutMe(getString(data.aboutMe));
+        if (hasOwn("links")) setLinks(Array.isArray(data.links) ? data.links : []);
     };
 
     const loadSettingsData = async (): Promise<void> => {
@@ -284,13 +285,7 @@ export default function SettingsPage() {
                     await hydrateFromPublicProfile();
                     return;
                 }
-                setName(data.name || "");
-                setUserId(data.userId || "");
-                setImage(data.image || "");
-                setHeaderImage(data.headerImage || "");
-                setBio(data.bio || "");
-                setAboutMe(data.aboutMe || "");
-                setLinks(Array.isArray(data.links) ? data.links : []);
+                applySettingsPayload(data as Record<string, any>);
                 setMessage("");
             };
 
@@ -332,6 +327,9 @@ export default function SettingsPage() {
             });
             const payload = await res.json().catch(() => ({}));
             if (res.ok) {
+                if (payload && typeof payload === "object") {
+                    applySettingsPayload(payload as Record<string, any>);
+                }
                 commitTheme(
                     (payload.theme as ThemeName | undefined) || theme,
                     (payload.themeCustomColor as string | undefined) || customColor

@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { resolveSessionUserId } from "@/lib/sessionUser";
-import { tryEnsureProfileAndPostSchema } from "@/lib/schemaCompat";
 import { getUserProfileByRefFallback } from "@/lib/publicContentFallback";
 
 type DmSetting = "OPEN" | "PR_ONLY" | "CLOSED";
@@ -374,6 +373,51 @@ async function findCurrentSessionUserFallback(userRef: string) {
     };
 }
 
+function hasResolvedValue(value: unknown): boolean {
+    if (value === null || value === undefined) return false;
+    if (typeof value === "string") return value.trim().length > 0;
+    if (Array.isArray(value)) return value.length > 0;
+    return true;
+}
+
+type UserProfileCandidate = {
+    id: string;
+    userId?: string | null;
+    name?: string | null;
+    email?: string | null;
+    image?: string | null;
+    headerImage?: string | null;
+    bio?: string | null;
+    aboutMe?: string | null;
+    links?: string | null;
+    posts?: unknown[];
+};
+
+function mergeUserProfileCandidates(
+    primary: UserProfileCandidate | null,
+    secondary: UserProfileCandidate | null
+): UserProfileCandidate | null {
+    if (!primary) return secondary;
+    if (!secondary) return primary;
+
+    const primaryPosts = Array.isArray(primary.posts) ? primary.posts : [];
+    const secondaryPosts = Array.isArray(secondary.posts) ? secondary.posts : [];
+
+    return {
+        ...secondary,
+        ...primary,
+        userId: hasResolvedValue(primary.userId) ? primary.userId : secondary.userId,
+        name: hasResolvedValue(primary.name) ? primary.name : secondary.name,
+        email: hasResolvedValue(primary.email) ? primary.email : secondary.email,
+        image: hasResolvedValue(primary.image) ? primary.image : secondary.image,
+        headerImage: hasResolvedValue(primary.headerImage) ? primary.headerImage : secondary.headerImage,
+        bio: hasResolvedValue(primary.bio) ? primary.bio : secondary.bio,
+        aboutMe: hasResolvedValue(primary.aboutMe) ? primary.aboutMe : secondary.aboutMe,
+        links: hasResolvedValue(primary.links) ? primary.links : secondary.links,
+        posts: primaryPosts.length >= secondaryPosts.length ? primaryPosts : secondaryPosts,
+    };
+}
+
 export async function GET(
     _request: Request,
     { params }: { params: Promise<{ name: string }> }
@@ -383,25 +427,27 @@ export async function GET(
     const userRefLower = userRef.toLowerCase();
 
     try {
-        await tryEnsureProfileAndPostSchema();
-        const user = await findUserProfileByRef(userRef, userRefLower);
-        const fallbackUser =
-            user ||
-            (await findCurrentSessionUserFallback(userRef)) ||
-            (await getUserProfileByRefFallback(userRef));
-        if (!fallbackUser) {
+        const prismaUser = await findUserProfileByRef(userRef, userRefLower);
+        const rawUser = await getUserProfileByRefFallback(userRef);
+        const sessionUser = await findCurrentSessionUserFallback(userRef);
+        const resolvedUser = mergeUserProfileCandidates(
+            mergeUserProfileCandidates(prismaUser, rawUser),
+            sessionUser
+        );
+
+        if (!resolvedUser) {
             return NextResponse.json({ error: "User not found" }, { status: 404 });
         }
 
-        const unpacked = unpackLinks(fallbackUser.links);
+        const unpacked = unpackLinks(resolvedUser.links);
 
         const ensuredUserId =
-            ("userId" in fallbackUser && typeof fallbackUser.userId === "string" && fallbackUser.userId.trim())
-                ? fallbackUser.userId.trim()
-                : fallbackUser.id;
+            ("userId" in resolvedUser && typeof resolvedUser.userId === "string" && resolvedUser.userId.trim())
+                ? resolvedUser.userId.trim()
+                : resolvedUser.id;
 
         return NextResponse.json({
-            ...fallbackUser,
+            ...resolvedUser,
             userId: ensuredUserId,
             links: unpacked.links,
             dmSetting: unpacked.dmSetting,

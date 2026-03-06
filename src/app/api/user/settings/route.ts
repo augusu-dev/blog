@@ -331,7 +331,6 @@ export async function GET() {
     }
 
     try {
-        await tryEnsureProfileAndPostSchema();
         const { user } = await fetchUserSettingsRecord(userId);
         if (!user) {
             return NextResponse.json({ error: "User not found" }, { status: 404 });

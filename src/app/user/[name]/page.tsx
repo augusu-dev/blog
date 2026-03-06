@@ -96,6 +96,7 @@ export default function UserPage() {
     const [posts, setPosts] = useState<Post[]>([]);
     const [products, setProducts] = useState<Post[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState("");
     const [overlayOpen, setOverlayOpen] = useState(false);
     const [overlayPostId, setOverlayPostId] = useState<string | null>(null);
     const [overlayContent, setOverlayContent] = useState("");
@@ -144,7 +145,10 @@ export default function UserPage() {
                         const res = await fetch(url, { cache: "no-store" });
                         const data = await res.json().catch(() => ({}));
                         if (res.ok) {
-                            return { ok: true as const, data };
+                            return { ok: true as const, data, status: res.status };
+                        }
+                        if (res.status === 404) {
+                            return { ok: false as const, data: null, status: res.status };
                         }
                     } catch {
                         // retry
@@ -155,10 +159,11 @@ export default function UserPage() {
                     }
                 }
 
-                return { ok: false as const, data: null };
+                return { ok: false as const, data: null, status: 0 };
             };
 
             const applyUserProfile = (data: UserProfile) => {
+                setLoadError("");
                 setUser(data);
                 const allPosts = data.posts.map((p) => ({
                     ...p,
@@ -221,6 +226,7 @@ export default function UserPage() {
             };
 
             try {
+                setLoadError("");
                 let result = await fetchJsonWithRetry(`/api/user/${encodeURIComponent(userName)}`, 3);
                 if (
                     !result.ok &&
@@ -236,12 +242,16 @@ export default function UserPage() {
                     if (loadedOwnFallback) {
                         return;
                     }
+                    if (result.status !== 404) {
+                        setLoadError("profile-load");
+                    }
                     return;
                 }
 
                 applyUserProfile(result.data as UserProfile);
             } catch (e) {
                 console.warn("Failed to load user:", e);
+                setLoadError("profile-load");
             } finally {
                 setLoading(false);
             }
@@ -478,6 +488,20 @@ export default function UserPage() {
     }
 
     if (!user) {
+        if (loadError) {
+            return (
+                <div className="login-container">
+                    <div className="login-card" style={{ textAlign: "center" }}>
+                        <h2 style={{ fontFamily: "var(--serif)", marginBottom: 16 }}>プロフィールの読み込みに失敗しました</h2>
+                        <p style={{ color: "var(--text-soft)", marginBottom: 16 }}>
+                            時間をおいて再読み込みしてください。
+                        </p>
+                        <Link href="/" style={{ color: "var(--azuki)" }}>ホームに戻る</Link>
+                    </div>
+                </div>
+            );
+        }
+
         return (
             <div className="login-container">
                 <div className="login-card" style={{ textAlign: "center" }}>

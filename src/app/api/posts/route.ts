@@ -20,7 +20,6 @@ function isSchemaMismatchError(error: unknown): boolean {
 
 export async function GET() {
     try {
-        await tryEnsureProfileAndPostSchema();
         try {
             const posts = await prisma.post.findMany({
                 where: { published: true },
@@ -31,7 +30,9 @@ export async function GET() {
                     },
                 },
             });
-            return NextResponse.json(posts);
+            if (posts.length > 0) {
+                return NextResponse.json(posts);
+            }
         } catch (error) {
             if (!isSchemaMismatchError(error)) throw error;
         }
@@ -46,7 +47,9 @@ export async function GET() {
                     },
                 },
             });
-            return NextResponse.json(posts);
+            if (posts.length > 0) {
+                return NextResponse.json(posts);
+            }
         } catch (error) {
             if (!isSchemaMismatchError(error)) throw error;
         }

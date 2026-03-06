@@ -77,6 +77,22 @@ function asBoolean(value: unknown, fallback: boolean): boolean {
     return fallback;
 }
 
+function normalizeRefList(values: Array<string | null | undefined>): string[] {
+    const seen = new Set<string>();
+    const refs: string[] = [];
+
+    for (const value of values) {
+        const normalized = typeof value === "string" ? value.trim() : "";
+        if (!normalized || seen.has(normalized)) {
+            continue;
+        }
+        seen.add(normalized);
+        refs.push(normalized);
+    }
+
+    return refs;
+}
+
 function parsePgArrayLiteral(value: string): string[] {
     const inner = value.slice(1, -1);
     if (!inner) return [];
@@ -164,18 +180,26 @@ function mapOwnedPostRow(row: Record<string, unknown>): UserOwnedPostFallback {
 }
 
 export async function getPostsByAuthorFallback(
-    authorId: string,
+    authorRefInput: string | Array<string | null | undefined>,
     options?: { publishedOnly?: boolean; limit?: number }
 ): Promise<UserOwnedPostFallback[]> {
     const postColumns = await getTableColumns("Post");
     const requiredPostColumns = ["id", "title", "content", "createdAt", "authorId"];
-    if (!authorId || requiredPostColumns.some((column) => !postColumns.has(column))) {
+    const authorRefs = normalizeRefList(
+        Array.isArray(authorRefInput) ? authorRefInput : [authorRefInput]
+    );
+
+    if (authorRefs.length === 0 || requiredPostColumns.some((column) => !postColumns.has(column))) {
         return [];
     }
 
     const publishedOnly = options?.publishedOnly === true;
     const limit = typeof options?.limit === "number" && options.limit > 0 ? options.limit : 300;
-    const whereClauses = [`p."authorId"::text = $1`];
+    const authorMatchClause = authorRefs
+        .map((_, index) => `p."authorId"::text = $${index + 1}`)
+        .join(" OR ");
+    const whereClauses = [`(${authorMatchClause})`];
+    const limitPlaceholder = `$${authorRefs.length + 1}`;
 
     if (publishedOnly && postColumns.has("published")) {
         whereClauses.push(`LOWER(COALESCE(p."published"::text, 'true')) IN ('true', 't', '1')`);
@@ -198,9 +222,9 @@ export async function getPostsByAuthorFallback(
             FROM "Post" p
             WHERE ${whereClauses.join(" AND ")}
             ORDER BY ${postColumns.has("updatedAt") ? `COALESCE(p."updatedAt", p."createdAt")` : `p."createdAt"`} DESC
-            LIMIT $2
+            LIMIT ${limitPlaceholder}
         `,
-        authorId,
+        ...authorRefs,
         limit
     );
 
@@ -265,7 +289,11 @@ export async function getUserProfileByRefFallback(userRef: string): Promise<User
     }
 
     const userId = asString(row.id);
-    const posts = await getPostsByAuthorFallback(userId, { publishedOnly: true, limit: 300 });
+    const publicUserId = asNullableString(row.userId);
+    const posts = await getPostsByAuthorFallback([userId, publicUserId], {
+        publishedOnly: true,
+        limit: 300,
+    });
 
     return {
         id: userId,
@@ -292,6 +320,24 @@ export async function getPublicPostsFallback(limit = 300): Promise<PublicPostFal
     const wherePublished = postColumns.has("published")
         ? `WHERE LOWER(COALESCE(p."published"::text, 'true')) IN ('true', 't', '1')`
         : "";
+    const hasUserIdColumn = userColumns.has("userId");
+    const primaryUserJoin = `LEFT JOIN "User" u_pk ON u_pk."id"::text = p."authorId"::text`;
+    const publicUserJoin = hasUserIdColumn
+        ? `LEFT JOIN "User" u_uid ON u_uid."userId"::text = p."authorId"::text AND u_pk."id" IS NULL`
+        : "";
+    const authorIdSelect = `COALESCE(u_pk."id"::text, ${hasUserIdColumn ? `u_uid."id"::text, ` : ""}p."authorId"::text)`;
+    const authorUserIdSelect = hasUserIdColumn
+        ? `COALESCE(u_pk."userId"::text, u_uid."userId"::text)`
+        : `NULL::text`;
+    const authorNameSelect = hasUserIdColumn
+        ? `COALESCE(u_pk."name"::text, u_uid."name"::text)`
+        : `u_pk."name"::text`;
+    const authorEmailSelect = hasUserIdColumn
+        ? `COALESCE(u_pk."email"::text, u_uid."email"::text)`
+        : `u_pk."email"::text`;
+    const authorImageSelect = hasUserIdColumn
+        ? `COALESCE(u_pk."image"::text, u_uid."image"::text)`
+        : `u_pk."image"::text`;
 
     const rows = await prisma.$queryRawUnsafe<Record<string, unknown>[]>(
         `
@@ -307,13 +353,14 @@ export async function getPublicPostsFallback(limit = 300): Promise<PublicPostFal
                 p."createdAt"::text AS "createdAt",
                 ${postColumns.has("updatedAt") ? `COALESCE(p."updatedAt"::text, p."createdAt"::text)` : `p."createdAt"::text`} AS "updatedAt",
                 p."authorId"::text AS "authorId",
-                u."id"::text AS "authorPk",
-                ${userColumns.has("userId") ? `u."userId"::text` : `NULL::text`} AS "authorUserId",
-                ${userColumns.has("name") ? `u."name"::text` : `NULL::text`} AS "authorName",
-                ${userColumns.has("email") ? `u."email"::text` : `NULL::text`} AS "authorEmail",
-                ${userColumns.has("image") ? `u."image"::text` : `NULL::text`} AS "authorImage"
+                ${authorIdSelect} AS "authorPk",
+                ${userColumns.has("userId") ? authorUserIdSelect : `NULL::text`} AS "authorUserId",
+                ${userColumns.has("name") ? authorNameSelect : `NULL::text`} AS "authorName",
+                ${userColumns.has("email") ? authorEmailSelect : `NULL::text`} AS "authorEmail",
+                ${userColumns.has("image") ? authorImageSelect : `NULL::text`} AS "authorImage"
             FROM "Post" p
-            LEFT JOIN "User" u ON u."id" = p."authorId"
+            ${primaryUserJoin}
+            ${publicUserJoin}
             ${wherePublished}
             ORDER BY p."createdAt" DESC
             LIMIT $1
@@ -348,6 +395,25 @@ export async function getShortPostsFallback(limit = 30): Promise<ShortPostFallba
         return [];
     }
 
+    const hasUserIdColumn = userColumns.has("userId");
+    const primaryUserJoin = `LEFT JOIN "User" u_pk ON u_pk."id"::text = sp."authorId"::text`;
+    const publicUserJoin = hasUserIdColumn
+        ? `LEFT JOIN "User" u_uid ON u_uid."userId"::text = sp."authorId"::text AND u_pk."id" IS NULL`
+        : "";
+    const authorIdSelect = `COALESCE(u_pk."id"::text, ${hasUserIdColumn ? `u_uid."id"::text, ` : ""}sp."authorId"::text)`;
+    const authorUserIdSelect = hasUserIdColumn
+        ? `COALESCE(u_pk."userId"::text, u_uid."userId"::text)`
+        : `NULL::text`;
+    const authorNameSelect = hasUserIdColumn
+        ? `COALESCE(u_pk."name"::text, u_uid."name"::text)`
+        : `u_pk."name"::text`;
+    const authorEmailSelect = hasUserIdColumn
+        ? `COALESCE(u_pk."email"::text, u_uid."email"::text)`
+        : `u_pk."email"::text`;
+    const authorImageSelect = hasUserIdColumn
+        ? `COALESCE(u_pk."image"::text, u_uid."image"::text)`
+        : `u_pk."image"::text`;
+
     const rows = await prisma.$queryRawUnsafe<Record<string, unknown>[]>(
         `
             SELECT
@@ -355,13 +421,14 @@ export async function getShortPostsFallback(limit = 30): Promise<ShortPostFallba
                 sp."content"::text AS "content",
                 sp."createdAt"::text AS "createdAt",
                 sp."authorId"::text AS "authorId",
-                u."id"::text AS "authorPk",
-                ${userColumns.has("userId") ? `u."userId"::text` : `NULL::text`} AS "authorUserId",
-                ${userColumns.has("name") ? `u."name"::text` : `NULL::text`} AS "authorName",
-                ${userColumns.has("email") ? `u."email"::text` : `NULL::text`} AS "authorEmail",
-                ${userColumns.has("image") ? `u."image"::text` : `NULL::text`} AS "authorImage"
+                ${authorIdSelect} AS "authorPk",
+                ${userColumns.has("userId") ? authorUserIdSelect : `NULL::text`} AS "authorUserId",
+                ${userColumns.has("name") ? authorNameSelect : `NULL::text`} AS "authorName",
+                ${userColumns.has("email") ? authorEmailSelect : `NULL::text`} AS "authorEmail",
+                ${userColumns.has("image") ? authorImageSelect : `NULL::text`} AS "authorImage"
             FROM "ShortPost" sp
-            LEFT JOIN "User" u ON u."id" = sp."authorId"
+            ${primaryUserJoin}
+            ${publicUserJoin}
             ORDER BY sp."createdAt" DESC
             LIMIT $1
         `,
