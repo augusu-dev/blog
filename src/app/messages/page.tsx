@@ -73,6 +73,9 @@ export default function MessagesPage() {
     const [error, setError] = useState("");
     const [presetTarget, setPresetTarget] = useState("");
     const [threadDrawerOpen, setThreadDrawerOpen] = useState(false);
+    const [selectMode, setSelectMode] = useState(false);
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    const [bulkDeleting, setBulkDeleting] = useState(false);
 
     const currentUserId = (session?.user as { id?: string } | undefined)?.id ?? "";
     const sessionUser = session?.user as {
@@ -358,10 +361,10 @@ export default function MessagesPage() {
             prev.map((message) =>
                 message.id === messageId
                     ? {
-                          ...message,
-                          likedByMe: optimisticLiked,
-                          goodCount: optimisticCount,
-                      }
+                        ...message,
+                        likedByMe: optimisticLiked,
+                        goodCount: optimisticCount,
+                    }
                     : message
             )
         );
@@ -383,10 +386,10 @@ export default function MessagesPage() {
                 prev.map((message) =>
                     message.id === messageId
                         ? {
-                              ...message,
-                              goodCount: Number(payload.goodCount || 0),
-                              likedByMe: !!payload.likedByMe,
-                          }
+                            ...message,
+                            goodCount: Number(payload.goodCount || 0),
+                            likedByMe: !!payload.likedByMe,
+                        }
                         : message
                 )
             );
@@ -395,10 +398,10 @@ export default function MessagesPage() {
                 prev.map((message) =>
                     message.id === messageId
                         ? {
-                              ...message,
-                              likedByMe: !!current.likedByMe,
-                              goodCount: Number(current.goodCount || 0),
-                          }
+                            ...message,
+                            likedByMe: !!current.likedByMe,
+                            goodCount: Number(current.goodCount || 0),
+                        }
                         : message
                 )
             );
@@ -439,6 +442,44 @@ export default function MessagesPage() {
         }
     };
 
+    const toggleSelectId = (id: string) => {
+        setSelectedIds((prev) => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id); else next.add(id);
+            return next;
+        });
+    };
+
+    const bulkDelete = async () => {
+        const ids = [...selectedIds].filter((id) => !id.startsWith("temp-"));
+        if (ids.length === 0) return;
+        if (!confirm(`${ids.length}件のメッセージを削除しますか？`)) return;
+
+        setBulkDeleting(true);
+        setError("");
+        try {
+            await Promise.all(
+                ids.map((id) =>
+                    fetch(`/api/direct-messages/${encodeURIComponent(id)}`, { method: "DELETE" })
+                )
+            );
+            setMessages((prev) => prev.filter((m) => !selectedIds.has(m.id)));
+            setSelectedIds(new Set());
+            setSelectMode(false);
+            await refreshCurrentThread();
+            void loadThreads();
+        } catch {
+            setError("一部のメッセージの削除に失敗しました。");
+        } finally {
+            setBulkDeleting(false);
+        }
+    };
+
+    const exitSelectMode = () => {
+        setSelectMode(false);
+        setSelectedIds(new Set());
+    };
+
     if (status === "loading") {
         return (
             <div className="login-container">
@@ -451,24 +492,45 @@ export default function MessagesPage() {
 
     if (!session) return null;
 
+    const handleBack = () => {
+        if (typeof window !== "undefined" && window.history.length > 1) {
+            router.back();
+        } else {
+            router.push("/");
+        }
+    };
+
     return (
-        <>
-            <nav className="navbar" style={{ justifyContent: "space-between" }}>
-                <Link href="/" className="nav-logo" style={{ textDecoration: "none" }}>
-                    <img src="/images/a.png" alt="Next Blog" className="nav-logo-img" />
-                    Next Blog <span className="beta-badge">β</span>
-                </Link>
-                <div className="nav-auth">
+        <div style={{ display: "flex", flexDirection: "column", height: "100dvh", overflow: "hidden" }}>
+            <nav className="navbar" style={{ justifyContent: "space-between", flexShrink: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <Link href="/" className="nav-logo" style={{ textDecoration: "none" }}>
+                        <img src="/images/a.png" alt="Next Blog" className="nav-logo-img" />
+                        Next Blog <span className="beta-badge">β</span>
+                    </Link>
+                </div>
+                <div className="nav-auth" style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <Link href="/settings" className="nav-auth-btn nav-user-btn" style={{ textDecoration: "none" }}>
                         ⚙
                     </Link>
+                    <button
+                        type="button"
+                        className="settings-back-btn"
+                        onClick={handleBack}
+                        aria-label="戻る"
+                        title="戻る"
+                    >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M15 18l-6-6 6-6" />
+                        </svg>
+                    </button>
                 </div>
             </nav>
 
-            <div className="editor-container" style={{ maxWidth: 980 }}>
-                <h1 style={{ fontFamily: "var(--serif)", fontSize: 30, fontWeight: 400, marginBottom: 18 }}>DM</h1>
+            <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", padding: "0 16px 12px", maxWidth: 980, width: "100%", margin: "0 auto", boxSizing: "border-box" }}>
+                <h1 style={{ fontFamily: "var(--serif)", fontSize: 26, fontWeight: 400, margin: "10px 0 10px", flexShrink: 0 }}>DM</h1>
 
-                {error && <div className="login-message login-error" style={{ marginBottom: 12 }}>{error}</div>}
+                {error && <div className="login-message login-error" style={{ marginBottom: 8, flexShrink: 0 }}>{error}</div>}
 
                 <section
                     style={{
@@ -477,18 +539,21 @@ export default function MessagesPage() {
                         background: "var(--card)",
                         display: "flex",
                         flexDirection: "column",
-                        minHeight: 560,
+                        flex: 1,
                         overflow: "hidden",
+                        minHeight: 0,
                     }}
                 >
+                    {/* Header bar */}
                     <div
                         style={{
-                            padding: "12px 14px",
+                            padding: "10px 14px",
                             borderBottom: "1px solid var(--border)",
                             display: "flex",
                             alignItems: "center",
                             justifyContent: "space-between",
                             gap: 12,
+                            flexShrink: 0,
                         }}
                     >
                         <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
@@ -552,9 +617,37 @@ export default function MessagesPage() {
                                 </div>
                             </div>
                         </div>
+                        {/* Select mode toggle */}
+                        {selectedUserId && messages.some((m) => m.senderId === currentUserId && !m.pending) ? (
+                            <button
+                                type="button"
+                                className="editor-btn editor-btn-secondary"
+                                style={{ padding: "4px 10px", fontSize: 11, flexShrink: 0 }}
+                                onClick={() => selectMode ? exitSelectMode() : setSelectMode(true)}
+                            >
+                                {selectMode ? "キャンセル" : "選択"}
+                            </button>
+                        ) : null}
                     </div>
 
-                    <div style={{ flex: 1, overflow: "auto", padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+                    {/* Bulk delete bar */}
+                    {selectMode && selectedIds.size > 0 ? (
+                        <div style={{ padding: "6px 14px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, background: "rgba(155,107,107,0.06)" }}>
+                            <span style={{ fontSize: 12, color: "var(--text-soft)" }}>{selectedIds.size}件選択中</span>
+                            <button
+                                type="button"
+                                className="editor-btn editor-btn-danger"
+                                style={{ padding: "4px 12px", fontSize: 11 }}
+                                disabled={bulkDeleting}
+                                onClick={() => void bulkDelete()}
+                            >
+                                {bulkDeleting ? "削除中..." : "まとめて削除"}
+                            </button>
+                        </div>
+                    ) : null}
+
+                    {/* Chat messages — scrollable area */}
+                    <div style={{ flex: 1, overflowY: "auto", padding: 14, display: "flex", flexDirection: "column", gap: 10, minHeight: 0 }}>
                         {loadingMessages ? (
                             <p style={{ fontSize: 12, color: "var(--text-soft)" }}>読み込み中...</p>
                         ) : !selectedUserId ? (
@@ -568,6 +661,7 @@ export default function MessagesPage() {
                                 const deletingThis = deletingMessageId === message.id;
                                 const togglingThis = togglingGoodId === message.id;
                                 const goodCount = Number(message.goodCount || 0);
+                                const isSelected = selectedIds.has(message.id);
 
                                 return (
                                     <div
@@ -575,68 +669,84 @@ export default function MessagesPage() {
                                         style={{
                                             alignSelf: mine ? "flex-end" : "flex-start",
                                             maxWidth: "min(78%, 640px)",
+                                            display: "flex",
+                                            alignItems: "flex-start",
+                                            gap: 6,
                                         }}
                                     >
-                                        <div
-                                            style={{
-                                                border: "1px solid var(--border)",
-                                                background: mine ? "rgba(155,107,107,0.08)" : "var(--bg-card)",
-                                                borderRadius: 12,
-                                                padding: "10px 12px",
-                                                fontSize: 13,
-                                                lineHeight: 1.65,
-                                                whiteSpace: "pre-wrap",
-                                                opacity: isPending ? 0.88 : 1,
-                                            }}
-                                        >
-                                            {message.content}
-                                        </div>
-                                        <div
-                                            style={{
-                                                display: "flex",
-                                                alignItems: "center",
-                                                justifyContent: mine ? "flex-end" : "flex-start",
-                                                gap: 8,
-                                                marginTop: 4,
-                                                flexWrap: "wrap",
-                                            }}
-                                        >
-                                            <span style={{ fontSize: 10, color: "var(--text-soft)" }}>
-                                                {formatMessageTime(message.createdAt)}
-                                            </span>
-                                            {!mine && !isPending ? (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => void toggleGood(message.id)}
-                                                    disabled={togglingThis}
-                                                    className="editor-btn editor-btn-secondary"
-                                                    style={{
-                                                        padding: "2px 9px",
-                                                        fontSize: 11,
-                                                        borderColor: message.likedByMe ? "var(--azuki)" : undefined,
-                                                        color: message.likedByMe ? "var(--azuki-deep)" : undefined,
-                                                        background: message.likedByMe ? "rgba(155,107,107,0.1)" : undefined,
-                                                        transform: goodPulseId === message.id ? "scale(1.08)" : "scale(1)",
-                                                        transition: "transform 0.18s ease, background 0.18s ease",
-                                                    }}
-                                                >
-                                                    {goodCount > 0 ? `👍 ${goodCount}` : "👍"}
-                                                </button>
-                                            ) : null}
-                                            {mine && goodCount > 0 ? (
-                                                <span style={{ fontSize: 11, color: "var(--azuki)" }}>{`👍 ${goodCount}`}</span>
-                                            ) : null}
-                                            {mine && !isPending ? (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => void deleteMessage(message.id)}
-                                                    disabled={deletingThis}
-                                                    className="editor-btn editor-btn-secondary"
-                                                    style={{ padding: "2px 7px", fontSize: 10 }}
-                                                >
-                                                    {deletingThis ? "削除中..." : "削除"}
-                                                </button>
-                                            ) : null}
+                                        {selectMode && mine && !isPending ? (
+                                            <input
+                                                type="checkbox"
+                                                checked={isSelected}
+                                                onChange={() => toggleSelectId(message.id)}
+                                                style={{ marginTop: 12, accentColor: "var(--azuki)", flexShrink: 0 }}
+                                            />
+                                        ) : null}
+                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                            <div
+                                                style={{
+                                                    border: "1px solid var(--border)",
+                                                    background: mine
+                                                        ? isSelected ? "rgba(155,107,107,0.18)" : "rgba(155,107,107,0.08)"
+                                                        : "var(--bg-card)",
+                                                    borderRadius: 12,
+                                                    padding: "10px 12px",
+                                                    fontSize: 13,
+                                                    lineHeight: 1.65,
+                                                    whiteSpace: "pre-wrap",
+                                                    opacity: isPending ? 0.88 : 1,
+                                                    transition: "background 0.15s",
+                                                }}
+                                            >
+                                                {message.content}
+                                            </div>
+                                            <div
+                                                style={{
+                                                    display: "flex",
+                                                    alignItems: "center",
+                                                    justifyContent: mine ? "flex-end" : "flex-start",
+                                                    gap: 8,
+                                                    marginTop: 4,
+                                                    flexWrap: "wrap",
+                                                }}
+                                            >
+                                                <span style={{ fontSize: 10, color: "var(--text-soft)" }}>
+                                                    {formatMessageTime(message.createdAt)}
+                                                </span>
+                                                {!mine && !isPending ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => void toggleGood(message.id)}
+                                                        disabled={togglingThis}
+                                                        className="editor-btn editor-btn-secondary"
+                                                        style={{
+                                                            padding: "2px 9px",
+                                                            fontSize: 11,
+                                                            borderColor: message.likedByMe ? "var(--azuki)" : undefined,
+                                                            color: message.likedByMe ? "var(--azuki-deep)" : undefined,
+                                                            background: message.likedByMe ? "rgba(155,107,107,0.1)" : undefined,
+                                                            transform: goodPulseId === message.id ? "scale(1.08)" : "scale(1)",
+                                                            transition: "transform 0.18s ease, background 0.18s ease",
+                                                        }}
+                                                    >
+                                                        {goodCount > 0 ? `👍 ${goodCount}` : "👍"}
+                                                    </button>
+                                                ) : null}
+                                                {mine && goodCount > 0 ? (
+                                                    <span style={{ fontSize: 11, color: "var(--azuki)" }}>{`👍 ${goodCount}`}</span>
+                                                ) : null}
+                                                {mine && !isPending && !selectMode ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => void deleteMessage(message.id)}
+                                                        disabled={deletingThis}
+                                                        className="editor-btn editor-btn-secondary"
+                                                        style={{ padding: "2px 7px", fontSize: 10 }}
+                                                    >
+                                                        {deletingThis ? "削除中..." : "削除"}
+                                                    </button>
+                                                ) : null}
+                                            </div>
                                         </div>
                                     </div>
                                 );
@@ -644,28 +754,37 @@ export default function MessagesPage() {
                         )}
                     </div>
 
-                    <div style={{ borderTop: "1px solid var(--border)", padding: 12 }}>
-                        <textarea
-                            className="login-input"
-                            rows={3}
-                            value={draft}
-                            onChange={(event) => setDraft(event.target.value)}
-                            onKeyDown={handleDraftKeyDown}
-                            placeholder={selectedUserId ? "メッセージを入力..." : "会話相手を選択してください"}
-                            disabled={!selectedUserId}
-                            style={{ marginBottom: 8, resize: "vertical", fontFamily: "var(--sans)" }}
-                        />
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-                            <span style={{ fontSize: 11, color: "var(--text-soft)" }}>{draft.length}/10000</span>
+                    {/* Input area with inline send button */}
+                    <div style={{ borderTop: "1px solid var(--border)", padding: "10px 12px", flexShrink: 0 }}>
+                        <div style={{ position: "relative" }}>
+                            <textarea
+                                className="login-input"
+                                rows={2}
+                                value={draft}
+                                onChange={(event) => setDraft(event.target.value)}
+                                onKeyDown={handleDraftKeyDown}
+                                placeholder={selectedUserId ? "メッセージを入力..." : "会話相手を選択してください"}
+                                disabled={!selectedUserId}
+                                style={{ paddingRight: 64, resize: "none", fontFamily: "var(--sans)", marginBottom: 0 }}
+                            />
                             <button
                                 type="button"
                                 className="editor-btn editor-btn-primary"
                                 disabled={!selectedUserId || !draft.trim()}
                                 onClick={sendMessage}
+                                style={{
+                                    position: "absolute",
+                                    right: 8,
+                                    bottom: 8,
+                                    padding: "5px 14px",
+                                    fontSize: 12,
+                                    borderRadius: 8,
+                                }}
                             >
                                 送信
                             </button>
                         </div>
+                        <div style={{ fontSize: 10, color: "var(--text-soft)", marginTop: 4, textAlign: "right" }}>{draft.length}/10000</div>
                     </div>
                 </section>
             </div>
@@ -730,6 +849,6 @@ export default function MessagesPage() {
                     </aside>
                 </div>
             ) : null}
-        </>
+        </div>
     );
 }
