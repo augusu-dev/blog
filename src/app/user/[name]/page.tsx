@@ -108,6 +108,62 @@ const SECTION_TABS: Array<{ id: SectionId; label: string }> = [
     { id: "about", label: "About me" },
 ];
 
+const PROFILE_CACHE_PREFIX = "user-profile-cache";
+const PROFILE_CACHE_TTL_MS = 5 * 60 * 1000;
+
+function normalizeProfileRef(value: unknown): string {
+    return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
+function buildProfileCacheKey(userRef: string): string {
+    return `${PROFILE_CACHE_PREFIX}:${userRef}`;
+}
+
+function readCachedUserProfile(...refs: Array<string | null | undefined>): UserProfile | null {
+    if (typeof window === "undefined") return null;
+
+    for (const ref of refs) {
+        const normalizedRef = normalizeProfileRef(ref);
+        if (!normalizedRef) continue;
+
+        try {
+            const raw = sessionStorage.getItem(buildProfileCacheKey(normalizedRef));
+            if (!raw) continue;
+
+            const parsed = JSON.parse(raw) as { savedAt?: unknown; profile?: UserProfile };
+            const savedAt = typeof parsed.savedAt === "number" ? parsed.savedAt : 0;
+            if (!parsed.profile || Date.now() - savedAt > PROFILE_CACHE_TTL_MS) {
+                sessionStorage.removeItem(buildProfileCacheKey(normalizedRef));
+                continue;
+            }
+
+            return parsed.profile;
+        } catch {
+            // Ignore malformed cache payloads.
+        }
+    }
+
+    return null;
+}
+
+function writeCachedUserProfile(profile: UserProfile, ...refs: Array<string | null | undefined>) {
+    if (typeof window === "undefined") return;
+
+    const payload = JSON.stringify({
+        savedAt: Date.now(),
+        profile,
+    });
+    const normalizedRefs = [...new Set(refs.map((ref) => normalizeProfileRef(ref)).filter(Boolean))];
+
+    for (const ref of normalizedRefs) {
+        try {
+            sessionStorage.setItem(buildProfileCacheKey(ref), payload);
+        } catch {
+            // Ignore cache write failures.
+        }
+    }
+}
+
 export default function UserPage() {
     const { data: session } = useSession();
     const router = useRouter();
@@ -166,13 +222,23 @@ export default function UserPage() {
             const normalizedSessionPublicUserId = sessionPublicUserId.trim();
             const normalizedSessionName = sessionDisplayName.trim().toLowerCase();
             const normalizedSessionEmail = sessionEmail.trim().toLowerCase();
+            const ownRefs = new Set(
+                [
+                    normalizedSessionUserId.toLowerCase(),
+                    normalizedSessionPublicUserId.toLowerCase(),
+                    normalizedSessionName,
+                    normalizedSessionEmail,
+                ].filter(Boolean)
+            );
+            const isOwnRequestedPage =
+                !!normalizedUserName && ownRefs.has(normalizedUserName.toLowerCase());
 
             const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-            const fetchJsonWithRetry = async (url: string, maxAttempts = 4) => {
+            const fetchJsonWithRetry = async (url: string, maxAttempts = 2) => {
                 for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
                     try {
-                        const res = await fetch(url, { cache: "no-store" });
+                        const res = await fetch(url, { cache: "no-store", credentials: "same-origin" });
                         const data = await res.json().catch(() => ({}));
                         if (res.ok) {
                             return { ok: true as const, data, status: res.status };
@@ -188,7 +254,7 @@ export default function UserPage() {
                     }
 
                     if (attempt < maxAttempts - 1) {
-                        await wait(250 * (attempt + 1));
+                        await wait(150 * (attempt + 1));
                     }
                 }
 
@@ -205,37 +271,34 @@ export default function UserPage() {
                 }));
                 setPosts(allPosts.filter((p) => !p.tags?.includes("product")));
                 setProducts(allPosts.filter((p) => p.tags?.includes("product")));
+                writeCachedUserProfile(
+                    data,
+                    normalizedUserName,
+                    data.id,
+                    data.userId || null,
+                    data.name || null,
+                    data.email || null
+                );
             };
 
-            const loadOwnProfileFallback = async () => {
-                const ownRefs = new Set(
-                    [
-                        normalizedSessionUserId.toLowerCase(),
-                        normalizedSessionPublicUserId.toLowerCase(),
-                        normalizedSessionName,
-                        normalizedSessionEmail,
-                    ].filter(Boolean)
-                );
-                const isOwnRequestedPage =
-                    !!normalizedUserName && ownRefs.has(normalizedUserName.toLowerCase());
-
+            const loadOwnProfileFallback = async (): Promise<UserProfile | null> => {
                 if (!isOwnRequestedPage) {
-                    return false;
+                    return null;
                 }
 
                 const [settingsResult, myPostsResult] = await Promise.all([
-                    fetchJsonWithRetry("/api/user/settings", 4),
-                    fetchJsonWithRetry("/api/posts/my", 4),
+                    fetchJsonWithRetry("/api/user/settings", 2),
+                    fetchJsonWithRetry("/api/posts/my", 2),
                 ]);
 
                 if (!settingsResult.ok || !settingsResult.data || typeof settingsResult.data !== "object") {
-                    return false;
+                    return null;
                 }
 
                 const settings = settingsResult.data as Record<string, any>;
                 const fallbackPosts = Array.isArray(myPostsResult.data) ? (myPostsResult.data as Post[]) : [];
 
-                applyUserProfile({
+                return {
                     id: String(settings.id || normalizedSessionUserId || normalizedUserName),
                     userId:
                         typeof settings.userId === "string"
@@ -253,38 +316,70 @@ export default function UserPage() {
                             ? settings.dmSetting
                             : "OPEN",
                     posts: fallbackPosts,
-                });
-
-                return true;
+                };
             };
 
-            try {
-                setLoadError("");
-                let result = await fetchJsonWithRetry(`/api/user/${encodeURIComponent(userName)}`, 3);
+            const loadPublicProfile = async (maxAttempts: number) => {
+                let result = await fetchJsonWithRetry(`/api/user/${encodeURIComponent(userName)}`, maxAttempts);
                 if (
                     !result.ok &&
                     normalizedSessionUserId &&
                     normalizedSessionPublicUserId &&
                     normalizedSessionPublicUserId === normalizedUserName
                 ) {
-                    result = await fetchJsonWithRetry(`/api/user/${encodeURIComponent(normalizedSessionUserId)}`, 3);
+                    result = await fetchJsonWithRetry(`/api/user/${encodeURIComponent(normalizedSessionUserId)}`, maxAttempts);
+                }
+                return result;
+            };
+
+            const cachedProfile = readCachedUserProfile(
+                normalizedUserName,
+                normalizedSessionPublicUserId,
+                normalizedSessionUserId,
+                normalizedSessionName,
+                normalizedSessionEmail
+            );
+
+            setLoadError("");
+            if (cachedProfile) {
+                applyUserProfile(cachedProfile);
+                setLoading(false);
+            } else {
+                setLoading(true);
+                setUser(null);
+                setPosts([]);
+                setProducts([]);
+            }
+
+            try {
+                const ownProfile = isOwnRequestedPage ? await loadOwnProfileFallback() : null;
+                if (ownProfile) {
+                    applyUserProfile(ownProfile);
+                    setLoading(false);
                 }
 
-                if (!result.ok) {
-                    const loadedOwnFallback = await loadOwnProfileFallback();
-                    if (loadedOwnFallback) {
-                        return;
-                    }
-                    if (result.status !== 404) {
-                        setLoadError("profile-load");
-                    }
+                const result = await loadPublicProfile(cachedProfile || ownProfile ? 1 : 2);
+                if (result.ok && result.data) {
+                    applyUserProfile(result.data as UserProfile);
+                    setLoading(false);
                     return;
                 }
 
-                applyUserProfile(result.data as UserProfile);
+                if (ownProfile || cachedProfile) {
+                    setLoading(false);
+                    return;
+                }
+
+                if (result.status !== 404) {
+                    setLoadError("profile-load");
+                } else {
+                    setLoadError("");
+                }
             } catch (e) {
                 console.warn("Failed to load user:", e);
-                setLoadError("profile-load");
+                if (!cachedProfile) {
+                    setLoadError("profile-load");
+                }
             } finally {
                 setLoading(false);
             }

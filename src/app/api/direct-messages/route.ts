@@ -11,6 +11,13 @@ import { resolveSessionUserId } from "@/lib/sessionUser";
 
 type DmSetting = "OPEN" | "PR_ONLY" | "CLOSED";
 const DEFAULT_DM_SETTING: DmSetting = "OPEN";
+const DM_USER_SELECT = {
+    id: true,
+    userId: true,
+    name: true,
+    email: true,
+    image: true,
+} as const;
 
 function normalizeString(value: unknown): string {
     return typeof value === "string" ? value.trim() : "";
@@ -178,15 +185,24 @@ export async function GET(request: NextRequest) {
                     },
                     orderBy: { createdAt: "asc" },
                     include: {
-                        sender: { select: { id: true, name: true, email: true, image: true } },
-                        recipient: { select: { id: true, name: true, email: true, image: true } },
+                        sender: { select: DM_USER_SELECT },
+                        recipient: { select: DM_USER_SELECT },
                     },
                 })
             );
 
+            const targetUser =
+                messages.find((message) => message.senderId === resolvedTargetUserId)?.sender ||
+                messages.find((message) => message.recipientId === resolvedTargetUserId)?.recipient ||
+                (await prisma.user.findUnique({
+                    where: { id: resolvedTargetUserId },
+                    select: DM_USER_SELECT,
+                }).catch(() => null));
+
             return NextResponse.json({
                 mode,
                 userId: resolvedTargetUserId,
+                user: targetUser,
                 messages: await appendDirectMessageGoodState(messages, userId),
             });
         }
@@ -199,8 +215,8 @@ export async function GET(request: NextRequest) {
                     },
                     orderBy: { createdAt: "desc" },
                     include: {
-                        sender: { select: { id: true, name: true, email: true, image: true } },
-                        recipient: { select: { id: true, name: true, email: true, image: true } },
+                        sender: { select: DM_USER_SELECT },
+                        recipient: { select: DM_USER_SELECT },
                     },
                 })
             );
@@ -248,7 +264,7 @@ export async function GET(request: NextRequest) {
                     },
                     orderBy: { createdAt: "desc" },
                     include: {
-                        recipient: { select: { id: true, name: true, email: true, image: true } },
+                        recipient: { select: DM_USER_SELECT },
                     },
                 })
             );
@@ -256,17 +272,17 @@ export async function GET(request: NextRequest) {
         }
 
         const messages = await withDirectMessageTable(() =>
-            prisma.directMessage.findMany({
+                prisma.directMessage.findMany({
                 where: {
                     recipientId: userId,
                     context: DirectMessageContext.GENERAL,
                 },
                 orderBy: { createdAt: "desc" },
-                include: {
-                    sender: { select: { id: true, name: true, email: true, image: true } },
-                },
-            })
-        );
+                    include: {
+                        sender: { select: DM_USER_SELECT },
+                    },
+                })
+            );
 
         return NextResponse.json({ mode, messages });
     } catch (error) {
@@ -346,8 +362,8 @@ export async function POST(request: NextRequest) {
                     context: DirectMessageContext.GENERAL,
                 },
                 include: {
-                    sender: { select: { id: true, name: true, email: true, image: true } },
-                    recipient: { select: { id: true, name: true, email: true, image: true } },
+                    sender: { select: DM_USER_SELECT },
+                    recipient: { select: DM_USER_SELECT },
                 },
             })
         );

@@ -441,7 +441,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ name: s
     try {
         const prismaUser = await findUserProfileByRef(userRef, userRefLower);
         let rawUser = null;
-        if (shouldHydrateUserProfileFromFallback(prismaUser)) {
+        if (shouldHydrateUserProfileFromFallback(prismaUser) || (Array.isArray(prismaUser?.posts) && prismaUser.posts.length === 0)) {
             try {
                 rawUser = await getUserProfileByRefFallback(userRef);
             } catch (fallbackError) {
@@ -478,7 +478,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ name: s
         let fallbackPosts: Awaited<ReturnType<typeof getPostsByAuthorFallback>> = [];
         if (resolvedPosts.length === 0) {
             try {
-                fallbackPosts = await getPostsByAuthorFallback([resolvedUser.id, ensuredUserId || null], {
+                fallbackPosts = await getPostsByAuthorFallback([resolvedUser.id, ensuredUserId || null, userRef], {
                     publishedOnly: true,
                     limit: 300,
                 });
