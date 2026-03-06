@@ -3,6 +3,8 @@ import { prisma } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { resolveSessionUserId } from "@/lib/sessionUser";
 import { getUserProfileByRefFallback } from "@/lib/publicContentFallback";
+import { getPostsByAuthorFallback } from "@/lib/publicContentFallback";
+import { resolvePublicUserIdForUser } from "@/lib/userId";
 
 type DmSetting = "OPEN" | "PR_ONLY" | "CLOSED";
 const DEFAULT_DM_SETTING: DmSetting = "OPEN";
@@ -441,14 +443,20 @@ export async function GET(
 
         const unpacked = unpackLinks(resolvedUser.links);
 
-        const ensuredUserId =
-            ("userId" in resolvedUser && typeof resolvedUser.userId === "string" && resolvedUser.userId.trim())
-                ? resolvedUser.userId.trim()
-                : resolvedUser.id;
+        const ensuredUserId = await resolvePublicUserIdForUser(
+            resolvedUser.id,
+            "userId" in resolvedUser ? resolvedUser.userId : null
+        );
+        const fallbackPosts = await getPostsByAuthorFallback([resolvedUser.id, ensuredUserId], {
+            publishedOnly: true,
+            limit: 300,
+        });
+        const resolvedPosts = Array.isArray(resolvedUser.posts) ? resolvedUser.posts : [];
 
         return NextResponse.json({
             ...resolvedUser,
             userId: ensuredUserId,
+            posts: resolvedPosts.length >= fallbackPosts.length ? resolvedPosts : fallbackPosts,
             links: unpacked.links,
             dmSetting: unpacked.dmSetting,
         });

@@ -34,6 +34,11 @@ export function isValidUserId(value: string): boolean {
     return USER_ID_PATTERN.test(value);
 }
 
+function normalizeResolvedUserId(value: unknown): string {
+    const normalized = normalizeUserIdInput(value);
+    return isValidUserId(normalized) ? normalized : "";
+}
+
 function fallbackBase(userPk: string): string {
     return `user_${userPk.replace(/[^a-z0-9]/gi, "").slice(0, 12).toLowerCase() || "id"}`;
 }
@@ -117,4 +122,58 @@ export async function ensureUserIdForUser(userPk: string): Promise<string> {
     });
 
     return next;
+}
+
+export async function resolvePublicUserIdForUser(
+    userPk: string,
+    fallbackPublicUserId?: string | null
+): Promise<string> {
+    const normalizedFallback = normalizeResolvedUserId(fallbackPublicUserId);
+    if (normalizedFallback) {
+        return normalizedFallback;
+    }
+
+    try {
+        return await ensureUserIdForUser(userPk);
+    } catch {
+        return normalizedFallback || userPk;
+    }
+}
+
+type PublicUserSummary = {
+    id: string;
+    userId?: string | null;
+};
+
+export async function fillMissingPublicUserIds<T extends PublicUserSummary>(users: T[]): Promise<T[]> {
+    const resolvedById = new Map<string, string>();
+
+    for (const user of users) {
+        const primaryId = typeof user.id === "string" ? user.id.trim() : "";
+        if (!primaryId || resolvedById.has(primaryId)) {
+            continue;
+        }
+
+        const normalizedUserId = normalizeResolvedUserId(user.userId);
+        if (normalizedUserId) {
+            resolvedById.set(primaryId, normalizedUserId);
+            continue;
+        }
+
+        resolvedById.set(primaryId, await resolvePublicUserIdForUser(primaryId, null));
+    }
+
+    return users.map((user) => {
+        const primaryId = typeof user.id === "string" ? user.id.trim() : "";
+        const resolvedUserId = primaryId ? resolvedById.get(primaryId) : "";
+
+        if (!resolvedUserId || user.userId === resolvedUserId) {
+            return user;
+        }
+
+        return {
+            ...user,
+            userId: resolvedUserId,
+        };
+    });
 }

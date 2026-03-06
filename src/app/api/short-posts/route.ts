@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { withShortPostTable } from "@/lib/shortPosts";
 import { resolveSessionUserId } from "@/lib/sessionUser";
 import { getShortPostsFallback } from "@/lib/publicContentFallback";
+import { fillMissingPublicUserIds } from "@/lib/userId";
 
 const SHORT_POST_LIMIT = 300;
 const LIST_LIMIT = 30;
@@ -39,6 +40,26 @@ function isShortPostUnavailableError(error: unknown): boolean {
 
 function normalizeContent(value: unknown): string {
     return typeof value === "string" ? value.trim() : "";
+}
+
+async function attachPublicUserIds<
+    T extends Array<{
+        author: {
+            id: string;
+            userId?: string | null;
+            name: string | null;
+            email: string | null;
+            image: string | null;
+        };
+    }>,
+>(posts: T): Promise<T> {
+    const hydratedAuthors = await fillMissingPublicUserIds(posts.map((post) => post.author));
+    const authorById = new Map(hydratedAuthors.map((author) => [author.id, author]));
+
+    return posts.map((post) => ({
+        ...post,
+        author: authorById.get(post.author.id) || post.author,
+    })) as T;
 }
 
 export async function GET() {
@@ -85,10 +106,10 @@ export async function GET() {
             posts = await getShortPostsFallback(LIST_LIMIT);
         }
 
-        return NextResponse.json(posts);
+        return NextResponse.json(await attachPublicUserIds(posts));
     } catch (error) {
         try {
-            return NextResponse.json(await getShortPostsFallback(LIST_LIMIT));
+            return NextResponse.json(await attachPublicUserIds(await getShortPostsFallback(LIST_LIMIT)));
         } catch (fallbackError) {
             if (isShortPostUnavailableError(error) || isShortPostUnavailableError(fallbackError)) {
                 return NextResponse.json([]);
@@ -171,7 +192,7 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        return NextResponse.json(post, { status: 201 });
+        return NextResponse.json((await attachPublicUserIds([post]))[0], { status: 201 });
     } catch (error) {
         console.error("Failed to create short post:", error);
         return NextResponse.json({ error: "Failed to create short post" }, { status: 500 });

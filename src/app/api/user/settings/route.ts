@@ -6,6 +6,7 @@ import { resolveSessionUserId } from "@/lib/sessionUser";
 import {
     isValidUserId,
     normalizeUserIdInput,
+    resolvePublicUserIdForUser,
 } from "@/lib/userId";
 import { tryEnsureProfileAndPostSchema } from "@/lib/schemaCompat";
 import { getTableColumns } from "@/lib/tableSchema";
@@ -337,10 +338,10 @@ export async function GET() {
         }
 
         const unpacked = unpackLinks(("links" in user ? user.links : null) as string | null | undefined);
-        const publicUserId =
-            ("userId" in user && typeof user.userId === "string" && user.userId.trim())
-                ? user.userId.trim()
-                : user.id;
+        const publicUserId = await resolvePublicUserIdForUser(
+            user.id,
+            "userId" in user ? user.userId : null
+        );
 
         return NextResponse.json({
             id: user.id,
@@ -495,10 +496,10 @@ export async function PUT(request: NextRequest) {
         const unpacked = unpackLinks(
             ("links" in responseUser ? responseUser.links : null) as string | null | undefined
         );
-        const publicUserId =
-            ("userId" in responseUser && typeof responseUser.userId === "string" && responseUser.userId.trim())
-                ? responseUser.userId.trim()
-                : responseUser.id;
+        const publicUserId = await resolvePublicUserIdForUser(
+            responseUser.id,
+            "userId" in responseUser ? responseUser.userId : null
+        );
 
         return NextResponse.json({
             id: responseUser.id,

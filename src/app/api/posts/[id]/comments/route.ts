@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { COMMENT_AUTHOR_SELECT, withPostCommentTable } from "@/lib/postComments";
 import { resolveSessionUserId } from "@/lib/sessionUser";
+import { fillMissingPublicUserIds } from "@/lib/userId";
 
 function validateContent(content: unknown): string | null {
     if (typeof content !== "string") return null;
@@ -10,6 +11,26 @@ function validateContent(content: unknown): string | null {
     if (!normalized) return null;
     if (normalized.length > 1000) return null;
     return normalized;
+}
+
+async function attachPublicUserIds<
+    T extends Array<{
+        author: {
+            id: string;
+            userId?: string | null;
+            name: string | null;
+            email: string | null;
+            image: string | null;
+        };
+    }>,
+>(comments: T): Promise<T> {
+    const hydratedAuthors = await fillMissingPublicUserIds(comments.map((comment) => comment.author));
+    const authorById = new Map(hydratedAuthors.map((author) => [author.id, author]));
+
+    return comments.map((comment) => ({
+        ...comment,
+        author: authorById.get(comment.author.id) || comment.author,
+    })) as T;
 }
 
 export async function GET(
@@ -35,7 +56,7 @@ export async function GET(
             })
         );
 
-        return NextResponse.json(comments);
+        return NextResponse.json(await attachPublicUserIds(comments));
     } catch (error) {
         console.error("Failed to fetch comments:", error);
         return NextResponse.json([]);
@@ -90,7 +111,7 @@ export async function POST(
             })
         );
 
-        return NextResponse.json(comment, { status: 201 });
+        return NextResponse.json((await attachPublicUserIds([comment]))[0], { status: 201 });
     } catch (error) {
         console.error("Failed to create comment:", error);
         return NextResponse.json({ error: "Failed to create comment" }, { status: 500 });

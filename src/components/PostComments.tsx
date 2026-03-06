@@ -12,6 +12,7 @@ interface PostComment {
     updatedAt: string;
     author: {
         id: string;
+        userId?: string | null;
         name: string | null;
         email: string | null;
         image: string | null;
@@ -438,7 +439,7 @@ export default function PostComments({ postId, isSignedIn, currentUserId = null 
                         const authorName = comment.author?.name || comment.author?.email || "Anonymous";
                         const avatarFallback = authorName.charAt(0).toUpperCase();
                         const commentDate = formatCommentDate(comment.createdAt, language);
-                        const authorHref = `/user/${encodeURIComponent(comment.author.id)}`;
+                        const authorHref = `/user/${encodeURIComponent(comment.author.userId || comment.author.id)}`;
 
                         return (
                             <article

@@ -3,6 +3,7 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -86,9 +87,11 @@ function shuffle<T>(arr: T[]): T[] {
 
 export default function UserPage() {
     const { data: session } = useSession();
+    const router = useRouter();
     const params = useParams();
     const searchParams = useSearchParams();
     const userName = params.name as string;
+    const searchParamsString = searchParams.toString();
     const requestedPostId = (searchParams.get("post") || "").trim();
 
     const { language, t } = useLanguage();
@@ -258,6 +261,24 @@ export default function UserPage() {
         }
         if (userName) loadUser();
     }, [session?.user, userName]);
+
+    useEffect(() => {
+        const canonicalUserId = typeof user?.userId === "string" ? user.userId.trim() : "";
+        const requestedUserRef = typeof userName === "string" ? userName.trim() : "";
+
+        if (!canonicalUserId || !requestedUserRef) {
+            return;
+        }
+
+        if (requestedUserRef.toLowerCase() === canonicalUserId.toLowerCase()) {
+            return;
+        }
+
+        const nextHref = `/user/${encodeURIComponent(canonicalUserId)}${
+            searchParamsString ? `?${searchParamsString}` : ""
+        }`;
+        router.replace(nextHref);
+    }, [router, searchParamsString, user?.userId, userName]);
 
     useEffect(() => {
         async function loadPinState() {
