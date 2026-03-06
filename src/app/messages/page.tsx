@@ -1,11 +1,11 @@
 /* eslint-disable @next/next/no-img-element */
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type KeyboardEvent } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { getDmUnreadSince, markDmPrSeen } from "@/lib/dmUnreadClient";
+import { markDmPrSeen } from "@/lib/dmUnreadClient";
 
 type ThreadUser = {
     id: string;
@@ -73,7 +73,6 @@ export default function MessagesPage() {
     const [error, setError] = useState("");
     const [presetTarget, setPresetTarget] = useState("");
     const [threadDrawerOpen, setThreadDrawerOpen] = useState(false);
-    const [unreadDmCount, setUnreadDmCount] = useState(0);
 
     const currentUserId = (session?.user as { id?: string } | undefined)?.id ?? "";
     const sessionUser = session?.user as {
@@ -166,32 +165,6 @@ export default function MessagesPage() {
         if (!currentUserId) return;
         void loadThreads();
     }, [currentUserId, loadThreads]);
-
-    useEffect(() => {
-        if (!currentUserId) {
-            setUnreadDmCount(0);
-            return;
-        }
-
-        const loadUnreadDmCount = async () => {
-            const since = getDmUnreadSince();
-            const url = since
-                ? `/api/notifications/unread?since=${encodeURIComponent(since)}`
-                : "/api/notifications/unread";
-
-            try {
-                const res = await fetch(url, { cache: "no-store" });
-                const payload = await res.json().catch(() => ({}));
-                if (!res.ok) return;
-                const nextUnreadCount = Number(payload.dm || 0);
-                setUnreadDmCount(Number.isFinite(nextUnreadCount) && nextUnreadCount > 0 ? nextUnreadCount : 0);
-            } catch {
-                // keep previous unread count
-            }
-        };
-
-        void loadUnreadDmCount();
-    }, [currentUserId]);
 
     useEffect(() => {
         if (!currentUserId) return;
@@ -353,6 +326,16 @@ export default function MessagesPage() {
             setError("Failed to send message.");
             void loadThreads();
         }
+    };
+
+    const handleDraftKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+        if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+        if (event.ctrlKey) return;
+
+        event.preventDefault();
+        if (!selectedUserId || !draft.trim()) return;
+
+        void sendMessage();
     };
 
     const toggleGood = async (messageId: string) => {
@@ -520,21 +503,6 @@ export default function MessagesPage() {
                                 <span />
                                 <span />
                             </button>
-                            <span
-                                style={{
-                                    fontSize: 11,
-                                    color: unreadDmCount > 0 ? "#fff" : "var(--text-soft)",
-                                    background: unreadDmCount > 0 ? "#d35b5b" : "var(--bg-soft)",
-                                    border: "1px solid var(--border)",
-                                    borderRadius: 999,
-                                    padding: "3px 8px",
-                                    lineHeight: 1,
-                                    whiteSpace: "nowrap",
-                                    flexShrink: 0,
-                                }}
-                            >
-                                未読 {unreadDmCount}
-                            </span>
                             {selectedUser?.id ? (
                                 <Link
                                     href={`/user/${encodeURIComponent(selectedUser.userId || selectedUser.id)}`}
@@ -584,14 +552,6 @@ export default function MessagesPage() {
                                 </div>
                             </div>
                         </div>
-                        <button
-                            type="button"
-                            className="editor-btn editor-btn-secondary"
-                            style={{ padding: "6px 10px", fontSize: 12 }}
-                            onClick={() => setThreadDrawerOpen(true)}
-                        >
-                            会話一覧
-                        </button>
                     </div>
 
                     <div style={{ flex: 1, overflow: "auto", padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
@@ -690,6 +650,7 @@ export default function MessagesPage() {
                             rows={3}
                             value={draft}
                             onChange={(event) => setDraft(event.target.value)}
+                            onKeyDown={handleDraftKeyDown}
                             placeholder={selectedUserId ? "メッセージを入力..." : "会話相手を選択してください"}
                             disabled={!selectedUserId}
                             style={{ marginBottom: 8, resize: "vertical", fontFamily: "var(--sans)" }}
