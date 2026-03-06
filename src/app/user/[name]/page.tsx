@@ -647,6 +647,23 @@ export default function UserPage() {
     const currentUserId = (session?.user as { id?: string } | undefined)?.id ?? null;
     const canShowAboutDmButton = !isOwnProfile && (user.dmSetting || "OPEN") === "OPEN";
     const canShowPinButton = !!session?.user && !isOwnProfile;
+    const renderProfileSectionTabs = (keyPrefix: string) =>
+        SECTION_TABS.map((tab) => {
+            const isActive = activeSection === tab.id;
+            return (
+                <button
+                    key={`${keyPrefix}-${tab.id}`}
+                    className={`nav-link profile-tab-btn ${isActive ? "active" : ""}`}
+                    data-section={tab.id}
+                    onClick={() => scrollTo(tab.id)}
+                    aria-label={tab.label}
+                    title={tab.label}
+                >
+                    <SectionTabIcon section={tab.id} />
+                    {isActive ? <span className="profile-tab-label">{tab.label}</span> : null}
+                </button>
+            );
+        });
 
     return (
         <>
@@ -673,22 +690,7 @@ export default function UserPage() {
                     ) : null}
                 </div>
                 <div className="profile-navbar-tabs">
-                    {SECTION_TABS.map((tab) => {
-                        const isActive = activeSection === tab.id;
-                        return (
-                            <button
-                                key={tab.id}
-                                className={`nav-link profile-tab-btn ${isActive ? "active" : ""}`}
-                                data-section={tab.id}
-                                onClick={() => scrollTo(tab.id)}
-                                aria-label={tab.label}
-                                title={tab.label}
-                            >
-                                <SectionTabIcon section={tab.id} />
-                                {isActive ? <span className="profile-tab-label">{tab.label}</span> : null}
-                            </button>
-                        );
-                    })}
+                    {renderProfileSectionTabs("desktop")}
                 </div>
                 <div className="nav-auth profile-navbar-actions">
                     {session ? (
@@ -726,6 +728,12 @@ export default function UserPage() {
                 </div>
             </nav>
 
+            <div className="profile-mobile-tabs">
+                <div className="profile-mobile-tabs-track">
+                    {renderProfileSectionTabs("mobile")}
+                </div>
+            </div>
+
             {/* ─── Page dots ─── */}
             <div className="page-dots" id="pageDots">
                 {SECTIONS.map((s) => (
@@ -734,7 +742,7 @@ export default function UserPage() {
             </div>
 
             {/* ─── Main content ─── */}
-            <div className="main-content">
+            <div className="main-content profile-main-content">
 
                 {/* ──── HOME ──── */}
                 <section className="section visible" id="home" ref={(el) => { if (el) sectionsRef.current[0] = el; }}>

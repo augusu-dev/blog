@@ -27,13 +27,6 @@ interface PullRequestItem {
     }>;
 }
 
-interface DirectMessageItem {
-    id: string;
-    content: string;
-    createdAt: string;
-    sender?: { id: string; name: string | null; email: string | null };
-}
-
 type UiText = {
     back: string;
     title: string;
@@ -53,8 +46,6 @@ type UiText = {
     saving: string;
     incomingPrTitle: string;
     incomingPrEmpty: string;
-    incomingDmTitle: string;
-    incomingDmEmpty: string;
     sentPrTitle: string;
     sentPrEmpty: string;
     from: string;
@@ -84,8 +75,6 @@ const UI_TEXT: Record<"ja" | "en" | "zh", UiText> = {
         saving: "保存中...",
         incomingPrTitle: "受信した記事プルリクエスト",
         incomingPrEmpty: "受信した記事プルリクエストはまだありません。",
-        incomingDmTitle: "受信したDM",
-        incomingDmEmpty: "受信したDMはまだありません。",
         sentPrTitle: "送信した記事プルリクエスト",
         sentPrEmpty: "送信した記事プルリクエストはまだありません。",
         from: "from",
@@ -113,8 +102,6 @@ const UI_TEXT: Record<"ja" | "en" | "zh", UiText> = {
         saving: "Saving...",
         incomingPrTitle: "Incoming Article Pull Requests",
         incomingPrEmpty: "No incoming pull requests yet.",
-        incomingDmTitle: "Incoming Direct Messages",
-        incomingDmEmpty: "No direct messages yet.",
         sentPrTitle: "Sent Article Pull Requests",
         sentPrEmpty: "No sent pull requests yet.",
         from: "from",
@@ -142,8 +129,6 @@ const UI_TEXT: Record<"ja" | "en" | "zh", UiText> = {
         saving: "保存中...",
         incomingPrTitle: "收到的文章 PR 请求",
         incomingPrEmpty: "还没有收到文章 PR 请求。",
-        incomingDmTitle: "收到的 DM",
-        incomingDmEmpty: "还没有收到 DM。",
         sentPrTitle: "已发送的文章 PR 请求",
         sentPrEmpty: "还没有发送文章 PR 请求。",
         from: "来自",
@@ -166,7 +151,6 @@ export default function CollaborationSettingsPage() {
     const [message, setMessage] = useState("");
 
     const [receivedPullRequests, setReceivedPullRequests] = useState<PullRequestItem[]>([]);
-    const [receivedMessages, setReceivedMessages] = useState<DirectMessageItem[]>([]);
     const [sentPullRequests, setSentPullRequests] = useState<PullRequestItem[]>([]);
     const [loadingData, setLoadingData] = useState(true);
 
@@ -182,10 +166,9 @@ export default function CollaborationSettingsPage() {
         setLoadingData(true);
         let loadedAny = false;
         try {
-            const [settingsResult, pullResult, dmResult] = await Promise.allSettled([
+            const [settingsResult, pullResult] = await Promise.allSettled([
                 fetch("/api/user/settings"),
                 fetch("/api/pull-requests"),
-                fetch("/api/direct-messages?mode=inbox"),
             ]);
 
             if (settingsResult.status === "fulfilled" && settingsResult.value.ok) {
@@ -204,17 +187,8 @@ export default function CollaborationSettingsPage() {
                 setSentPullRequests([]);
             }
 
-            if (dmResult.status === "fulfilled" && dmResult.value.ok) {
-                const payload = await dmResult.value.json();
-                setReceivedMessages(Array.isArray(payload.messages) ? payload.messages : []);
-                loadedAny = true;
-            } else {
-                setReceivedMessages([]);
-            }
-
             setMessage(loadedAny ? "" : text.loadFailed);
         } catch {
-            setReceivedMessages([]);
             setReceivedPullRequests([]);
             setSentPullRequests([]);
             setMessage(text.loadFailed);
@@ -354,26 +328,6 @@ export default function CollaborationSettingsPage() {
                                         <summary style={{ cursor: "pointer", fontSize: 12, color: "var(--azuki)" }}>{text.viewContent}</summary>
                                         <div style={{ marginTop: 8, whiteSpace: "pre-wrap", fontSize: 13, lineHeight: 1.7 }}>{pr.content}</div>
                                     </details>
-                                </article>
-                            ))}
-                        </div>
-                    )}
-                </section>
-
-                <section style={{ marginBottom: 32 }}>
-                    <h2 className="settings-section-title">{text.incomingDmTitle}</h2>
-                    {loadingData ? (
-                        <p style={{ fontSize: 13, color: "var(--text-soft)" }}>{text.loading}</p>
-                    ) : receivedMessages.length === 0 ? (
-                        <p style={{ fontSize: 13, color: "var(--text-soft)" }}>{text.incomingDmEmpty}</p>
-                    ) : (
-                        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                            {receivedMessages.map((dm) => (
-                                <article key={dm.id} style={{ border: "1px solid var(--border)", borderRadius: 12, background: "var(--card)", padding: 14 }}>
-                                    <p style={{ fontSize: 12, color: "var(--text-soft)", marginBottom: 6 }}>
-                                        {text.from} {dm.sender?.name || dm.sender?.email || text.unknown} ・ {new Date(dm.createdAt).toLocaleString("ja-JP")}
-                                    </p>
-                                    <p style={{ whiteSpace: "pre-wrap", fontSize: 13 }}>{dm.content}</p>
                                 </article>
                             ))}
                         </div>
