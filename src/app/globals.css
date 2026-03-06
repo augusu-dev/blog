@@ -161,14 +161,6 @@ body {
 
 .dm-nav-link {
   position: relative;
-  overflow: visible;
-}
-
-.dm-nav-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  line-height: 0;
 }
 
 .dm-unread-badge {
@@ -192,14 +184,6 @@ body {
   pointer-events: none;
   z-index: 2;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
-}
-
-.dm-header-bar > div > span {
-  display: none;
-}
-
-.dm-header-bar > button:last-child {
-  display: none;
 }
 
 .short-post-fab {

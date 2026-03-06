@@ -274,23 +274,6 @@ export default function MessagesPage() {
         }
     }, [selectedUserId]);
 
-    const handleDraftKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
-        if (event.key !== "Enter" || event.nativeEvent.isComposing) {
-            return;
-        }
-
-        if (event.ctrlKey) {
-            return;
-        }
-
-        event.preventDefault();
-        if (!selectedUserId || !draft.trim()) {
-            return;
-        }
-
-        void sendMessage();
-    };
-
     const sendMessage = async () => {
         const content = draft.trim();
         if (!selectedUserId || !content) return;
@@ -516,7 +499,6 @@ export default function MessagesPage() {
                     }}
                 >
                     <div
-                        className="dm-header-bar"
                         style={{
                             padding: "12px 14px",
                             borderBottom: "1px solid var(--border)",
@@ -708,7 +690,6 @@ export default function MessagesPage() {
                             rows={3}
                             value={draft}
                             onChange={(event) => setDraft(event.target.value)}
-                            onKeyDown={handleDraftKeyDown}
                             placeholder={selectedUserId ? "メッセージを入力..." : "会話相手を選択してください"}
                             disabled={!selectedUserId}
                             style={{ marginBottom: 8, resize: "vertical", fontFamily: "var(--sans)" }}

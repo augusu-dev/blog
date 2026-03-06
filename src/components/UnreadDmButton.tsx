@@ -41,7 +41,7 @@ export default function UnreadDmButton({
             const total = Number(payload.total || 0);
             setUnreadCount(Number.isFinite(total) && total > 0 ? total : 0);
         } catch {
-            // Keep the previous badge value when the poll fails.
+            // keep previous badge value
         }
     }, [status]);
 
@@ -72,23 +72,8 @@ export default function UnreadDmButton({
             className={`${className} dm-nav-link`.trim()}
             style={{ textDecoration: "none", ...style }}
             title={title}
-            aria-label={unreadCount > 0 ? `${title} (${unreadCount})` : title}
         >
-            <span className="dm-nav-icon" aria-hidden="true">
-                <svg
-                    width="15"
-                    height="15"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.8"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                >
-                    <path d="M4 6h16a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Z" />
-                    <path d="m22 8-8.97 6.35a1.8 1.8 0 0 1-2.06 0L2 8" />
-                </svg>
-            </span>
+            ✉
             {unreadCount > 0 ? (
                 <span className="dm-unread-badge">{unreadCount > MAX_BADGE ? `${MAX_BADGE}+` : unreadCount}</span>
             ) : null}
