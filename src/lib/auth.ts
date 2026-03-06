@@ -207,7 +207,7 @@ async function resolveStablePublicUserId(
     try {
         return await ensureUserIdForUser(primaryUserId);
     } catch {
-        return normalizedFallback || primaryUserId;
+        return normalizedFallback;
     }
 }
 
@@ -291,7 +291,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
             if (tokenPrimaryId) {
                 token.id = tokenPrimaryId;
-                if (typeof token.userId !== "string" || !token.userId.trim()) {
+                const tokenPublicUserId =
+                    typeof token.userId === "string" ? token.userId.trim() : "";
+                if (!tokenPublicUserId || tokenPublicUserId === tokenPrimaryId) {
                     token.userId = await resolveStablePublicUserId(tokenPrimaryId, null);
                 }
             }
@@ -306,9 +308,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             if (session.user && tokenPrimaryId) {
                 session.user.id = tokenPrimaryId;
                 const publicUserId =
-                    typeof token.userId === "string" && token.userId.trim()
+                    typeof token.userId === "string" &&
+                    token.userId.trim() &&
+                    token.userId.trim() !== tokenPrimaryId
                         ? token.userId
-                        : tokenPrimaryId;
+                        : undefined;
                 session.user.userId = publicUserId;
             }
             return session;
