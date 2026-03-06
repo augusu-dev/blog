@@ -153,12 +153,12 @@ async function findCredentialsUserByEmailRaw(email: string) {
         const row = rows[0];
         const user: CredentialsLookupUser | null = row
             ? {
-                  id: String(row.id || ""),
-                  email: normalizeNullableString(row.email),
-                  name: normalizeNullableString(row.name),
-                  password: normalizeNullableString(row.password),
-                  userId: normalizeNullableString(row.userId),
-              }
+                id: String(row.id || ""),
+                email: normalizeNullableString(row.email),
+                name: normalizeNullableString(row.name),
+                password: normalizeNullableString(row.password),
+                userId: normalizeNullableString(row.userId),
+            }
             : null;
 
         return {
@@ -207,7 +207,7 @@ async function resolveStablePublicUserId(
     try {
         return await ensureUserIdForUser(primaryUserId);
     } catch {
-        return normalizedFallback;
+        return normalizedFallback || primaryUserId;
     }
 }
 
@@ -216,11 +216,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     providers: [
         ...(googleEnabled
             ? [
-                  Google({
-                      clientId: process.env.GOOGLE_CLIENT_ID!,
-                      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-                  }),
-              ]
+                Google({
+                    clientId: process.env.GOOGLE_CLIENT_ID!,
+                    clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+                }),
+            ]
             : []),
         Credentials({
             name: "Credentials",
@@ -309,8 +309,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                 session.user.id = tokenPrimaryId;
                 const publicUserId =
                     typeof token.userId === "string" &&
-                    token.userId.trim() &&
-                    token.userId.trim() !== tokenPrimaryId
+                        token.userId.trim() &&
+                        token.userId.trim() !== tokenPrimaryId
                         ? token.userId
                         : undefined;
                 session.user.userId = publicUserId;
