@@ -3,6 +3,7 @@
 
 import { useSession } from "next-auth/react";
 import Link from "next/link";
+import UnreadDmButton from "@/components/UnreadDmButton";
 
 export default function Navbar() {
     const { data: session } = useSession();
@@ -35,12 +36,21 @@ export default function Navbar() {
             <div className="nav-auth">
                 {session ? (
                     <>
-                        <Link href="/editor" className="nav-auth-btn nav-write-btn">
-                            ✏ 記事を書く
+                        <Link href="/editor" className="nav-auth-btn nav-write-btn" title="記事を書く">
+                            ✍️
+                        </Link>
+                        <Link
+                            href={session.user?.name ? `/user/${session.user.name}` : "/settings"}
+                            className="nav-auth-btn nav-user-btn"
+                            title="マイページ"
+                            style={{ textDecoration: "none" }}
+                        >
+                            👤
                         </Link>
                         <Link href="/settings" className="nav-auth-btn nav-user-btn" style={{ textDecoration: "none" }}>
                             ⚙
                         </Link>
+                        <UnreadDmButton className="nav-auth-btn nav-user-btn" />
                     </>
                 ) : (
                     <Link href="/login" className="nav-auth-btn nav-login-btn">
