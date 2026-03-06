@@ -16,7 +16,7 @@ export async function PATCH(
     request: NextRequest,
     { params }: { params: Promise<{ id: string; commentId: string }> }
 ) {
-    const session = await auth(req as any) /* eslint-disable-line @typescript-eslint/no-explicit-any */;
+    const session = await auth(request as any) /* eslint-disable-line @typescript-eslint/no-explicit-any */;
     const userId = await resolveSessionUserId(session as any) /* eslint-disable-line @typescript-eslint/no-explicit-any */;
     if (!userId) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -78,7 +78,7 @@ export async function DELETE(
     _request: NextRequest,
     { params }: { params: Promise<{ id: string; commentId: string }> }
 ) {
-    const session = await auth(req as any) /* eslint-disable-line @typescript-eslint/no-explicit-any */;
+    const session = await auth(_request as any) /* eslint-disable-line @typescript-eslint/no-explicit-any */;
     const userId = await resolveSessionUserId(session as any) /* eslint-disable-line @typescript-eslint/no-explicit-any */;
     if (!userId) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

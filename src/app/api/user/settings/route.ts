@@ -393,7 +393,7 @@ export async function GET(req: Request) {
 }
 
 export async function PUT(request: NextRequest) {
-    const session = await auth(req as any) /* eslint-disable-line @typescript-eslint/no-explicit-any */;
+    const session = await auth(request as any) /* eslint-disable-line @typescript-eslint/no-explicit-any */;
     const userId = await resolveSessionUserId(session as any) /* eslint-disable-line @typescript-eslint/no-explicit-any */;
     if (!userId) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

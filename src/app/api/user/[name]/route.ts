@@ -307,7 +307,7 @@ async function findUserProfileByRef(userRef: string, userRefLower: string) {
 }
 
 async function findCurrentSessionUserFallback(req: Request, userRef: string) {
-    const session = await auth(req);
+    const session = await auth(req as any) /* eslint-disable-line @typescript-eslint/no-explicit-any */;
     const sessionUserId = await resolveSessionUserId(session);
     const sessionPublicUserId =
         typeof session?.user?.userId === "string" ? session.user.userId.trim() : "";
@@ -429,7 +429,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ name: st
     try {
         const prismaUser = await findUserProfileByRef(userRef, userRefLower);
         const rawUser = await getUserProfileByRefFallback(userRef);
-        const sessionUser = await findCurrentSessionUserFallback(_request, userRef);
+        const sessionUser = await findCurrentSessionUserFallback(req, userRef);
         const resolvedUser = mergeUserProfileCandidates(
             mergeUserProfileCandidates(prismaUser, rawUser),
             sessionUser

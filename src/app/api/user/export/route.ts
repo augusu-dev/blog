@@ -13,7 +13,7 @@ const DEFAULT_THEME: ThemeName = "default";
 const DEFAULT_THEME_CUSTOM_COLOR = "#925c5c";
 
 export async function GET(request: NextRequest) {
-    const session = await auth(req as any)  ;
+    const session = await auth(request as any)  ;
     const userId = await resolveSessionUserId(session as any)  ;
     if (!userId) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
