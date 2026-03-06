@@ -8,6 +8,7 @@ import {
     normalizeUserIdInput,
 } from "@/lib/userId";
 import { tryEnsureProfileAndPostSchema } from "@/lib/schemaCompat";
+import { getTableColumns } from "@/lib/tableSchema";
 
 type DmSetting = "OPEN" | "PR_ONLY" | "CLOSED";
 type ThemeName = "default" | "lightblue" | "sand" | "apricot" | "white" | "black" | "custom";
@@ -58,6 +59,18 @@ type UserSettingsPayload = {
     links?: string | null;
 };
 
+type RawSettingsRow = {
+    id: string;
+    userId: string | null;
+    name: string | null;
+    email: string | null;
+    image: string | null;
+    headerImage: string | null;
+    bio: string | null;
+    aboutMe: string | null;
+    links: string | null;
+};
+
 function parseDmSetting(value: unknown): DmSetting | undefined {
     if (value === undefined) return undefined;
     if (value === "OPEN" || value === "PR_ONLY" || value === "CLOSED") {
@@ -96,6 +109,37 @@ function normalizeNullableString(value: unknown): string | null {
     if (value === undefined) return null;
     if (typeof value === "string") return value;
     return String(value);
+}
+
+async function fetchUserSettingsRecordRaw(userId: string) {
+    const columns = await getTableColumns("User");
+    if (!columns.has("id")) {
+        return { user: null, hasUserIdColumn: false as const };
+    }
+
+    const rows = await prisma.$queryRawUnsafe<RawSettingsRow[]>(
+        `
+            SELECT
+                "id"::text AS "id",
+                ${columns.has("userId") ? `"userId"::text` : `NULL::text`} AS "userId",
+                ${columns.has("name") ? `"name"::text` : `NULL::text`} AS "name",
+                ${columns.has("email") ? `"email"::text` : `NULL::text`} AS "email",
+                ${columns.has("image") ? `"image"::text` : `NULL::text`} AS "image",
+                ${columns.has("headerImage") ? `"headerImage"::text` : `NULL::text`} AS "headerImage",
+                ${columns.has("bio") ? `"bio"::text` : `NULL::text`} AS "bio",
+                ${columns.has("aboutMe") ? `"aboutMe"::text` : `NULL::text`} AS "aboutMe",
+                ${columns.has("links") ? `"links"::text` : `NULL::text`} AS "links"
+            FROM "User"
+            WHERE "id"::text = $1
+            LIMIT 1
+        `,
+        userId
+    );
+
+    return {
+        user: rows[0] || null,
+        hasUserIdColumn: columns.has("userId") as boolean,
+    };
 }
 
 function unpackLinks(raw: string | null | undefined): {
@@ -216,11 +260,19 @@ async function fetchUserSettingsRecord(userId: string) {
         if (!isUserSchemaCompatibilityError(error)) throw error;
     }
 
-    const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: USER_SETTINGS_SELECT_MINIMAL,
-    });
-    return { user, hasUserIdColumn: false as const };
+    try {
+        const user = await prisma.user.findUnique({
+            where: { id: userId },
+            select: USER_SETTINGS_SELECT_MINIMAL,
+        });
+        if (user) {
+            return { user, hasUserIdColumn: false as const };
+        }
+    } catch (error) {
+        if (!isUserSchemaCompatibilityError(error)) throw error;
+    }
+
+    return fetchUserSettingsRecordRaw(userId);
 }
 
 async function fetchCurrentLinksAndUserId(userId: string) {
@@ -244,11 +296,31 @@ async function fetchCurrentLinksAndUserId(userId: string) {
         if (!isUserSchemaCompatibilityError(error)) throw error;
     }
 
-    const current = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { id: true },
-    });
-    return { current, hasUserIdColumn: false as const };
+    try {
+        const current = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { id: true },
+        });
+        if (current) {
+            return { current, hasUserIdColumn: false as const };
+        }
+    } catch (error) {
+        if (!isUserSchemaCompatibilityError(error)) throw error;
+    }
+
+    const raw = await fetchUserSettingsRecordRaw(userId);
+    if (!raw.user) {
+        return { current: null, hasUserIdColumn: raw.hasUserIdColumn };
+    }
+
+    return {
+        current: {
+            id: raw.user.id,
+            links: raw.user.links,
+            ...(raw.hasUserIdColumn ? { userId: raw.user.userId } : {}),
+        },
+        hasUserIdColumn: raw.hasUserIdColumn,
+    };
 }
 
 export async function GET() {
@@ -419,23 +491,25 @@ export async function PUT(request: NextRequest) {
             });
         }
 
+        const refreshed = await fetchUserSettingsRecord(userId);
+        const responseUser = refreshed.user || updatedUser;
         const unpacked = unpackLinks(
-            ("links" in updatedUser ? updatedUser.links : null) as string | null | undefined
+            ("links" in responseUser ? responseUser.links : null) as string | null | undefined
         );
         const publicUserId =
-            ("userId" in updatedUser && typeof updatedUser.userId === "string" && updatedUser.userId.trim())
-                ? updatedUser.userId.trim()
-                : updatedUser.id;
+            ("userId" in responseUser && typeof responseUser.userId === "string" && responseUser.userId.trim())
+                ? responseUser.userId.trim()
+                : responseUser.id;
 
         return NextResponse.json({
-            id: updatedUser.id,
+            id: responseUser.id,
             userId: publicUserId,
-            name: ("name" in updatedUser ? updatedUser.name : null) ?? null,
-            email: ("email" in updatedUser ? updatedUser.email : null) ?? null,
-            image: ("image" in updatedUser ? updatedUser.image : null) ?? null,
-            headerImage: ("headerImage" in updatedUser ? updatedUser.headerImage : null) ?? null,
-            bio: ("bio" in updatedUser ? updatedUser.bio : null) ?? null,
-            aboutMe: ("aboutMe" in updatedUser ? updatedUser.aboutMe : null) ?? null,
+            name: ("name" in responseUser ? responseUser.name : null) ?? null,
+            email: ("email" in responseUser ? responseUser.email : null) ?? null,
+            image: ("image" in responseUser ? responseUser.image : null) ?? null,
+            headerImage: ("headerImage" in responseUser ? responseUser.headerImage : null) ?? null,
+            bio: ("bio" in responseUser ? responseUser.bio : null) ?? null,
+            aboutMe: ("aboutMe" in responseUser ? responseUser.aboutMe : null) ?? null,
             links: unpacked.links,
             dmSetting: unpacked.dmSetting,
             theme: unpacked.theme,

@@ -313,11 +313,10 @@ async function findCurrentSessionUserFallback(userRef: string) {
     const normalizedUserRef = userRef.trim().toLowerCase();
     const sessionPrimaryRef = sessionUserId ? sessionUserId.trim().toLowerCase() : "";
     const sessionPublicRef = sessionPublicUserId.toLowerCase();
-    const isSelfAlias = normalizedUserRef === "me";
 
     if (
         !sessionUserId ||
-        (!isSelfAlias && normalizedUserRef !== sessionPrimaryRef && normalizedUserRef !== sessionPublicRef)
+        (normalizedUserRef !== sessionPrimaryRef && normalizedUserRef !== sessionPublicRef)
     ) {
         return null;
     }
@@ -385,10 +384,10 @@ export async function GET(
 
     try {
         await tryEnsureProfileAndPostSchema();
-        const currentSessionUser = await findCurrentSessionUserFallback(userRef);
-        const user = currentSessionUser || (await findUserProfileByRef(userRef, userRefLower));
+        const user = await findUserProfileByRef(userRef, userRefLower);
         const fallbackUser =
             user ||
+            (await findCurrentSessionUserFallback(userRef)) ||
             (await getUserProfileByRefFallback(userRef));
         if (!fallbackUser) {
             return NextResponse.json({ error: "User not found" }, { status: 404 });

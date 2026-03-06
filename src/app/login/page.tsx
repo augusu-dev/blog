@@ -22,8 +22,11 @@ export default function LoginPage() {
 
     const buildMyPageHref = (rawPublicUserId?: string | null, rawUserId?: string | null) => {
         const publicUserId = typeof rawPublicUserId === "string" ? rawPublicUserId.trim() : "";
+        if (publicUserId) {
+            return `/user/${encodeURIComponent(publicUserId)}`;
+        }
         const userId = typeof rawUserId === "string" ? rawUserId.trim() : "";
-        return publicUserId || userId ? "/user/me" : "/settings";
+        return userId ? `/user/${encodeURIComponent(userId)}` : "/settings";
     };
 
     const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -67,7 +70,7 @@ export default function LoginPage() {
                             ? payload.user.email.trim().toLowerCase()
                             : "";
                     if (!normalizedExpectedEmail || resolvedEmail === normalizedExpectedEmail) {
-                        return buildMyPageHref(payload.user?.userId, payload.user?.id);
+                        return buildMyPageHref(null, payload.user?.id);
                     }
                 }
             } catch {
