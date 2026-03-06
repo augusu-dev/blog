@@ -54,7 +54,7 @@ export default function UnreadDmButton({
         };
 
         const initTimer = window.setTimeout(onRefresh, 0);
-        const timer = window.setInterval(onRefresh, 30000);
+        const timer = window.setInterval(onRefresh, 5000); // Poll every 5 seconds for less lag
         window.addEventListener(refreshEvent, onRefresh);
         window.addEventListener("focus", onRefresh);
 

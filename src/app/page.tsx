@@ -209,9 +209,9 @@ export default function HomePage() {
         <div className="nav-auth home-navbar-actions">
           {session ? (
             <>
-              <Link href="/editor" className="nav-auth-btn nav-write-btn">{t("✏ 記事を書く")}</Link>
-              <Link href={myPageHref} className="nav-auth-btn nav-user-btn home-navbar-mypage" style={{ textDecoration: "none" }}>
-                {t("マイページ")}
+              <Link href="/editor" className="nav-auth-btn nav-write-btn" title="記事を書く">✍️</Link>
+              <Link href={session.user.name ? `/user/${session.user.name}` : "/settings"} className="nav-auth-btn nav-user-btn" title="マイページ">
+                👤
               </Link>
               <Link href="/settings" className="nav-auth-btn nav-user-btn" style={{ textDecoration: "none" }}>⚙</Link>
               <UnreadDmButton className="nav-auth-btn nav-user-btn" />
