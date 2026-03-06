@@ -589,6 +589,9 @@ export default function UserPage() {
                                 </button>
                             )}
                             <Link href="/editor" className="nav-auth-btn nav-write-btn">✏ 記事を書く</Link>
+                            <Link href={session.user?.name ? `/user/${session.user.name}` : "/settings"} className="nav-auth-btn nav-user-btn" style={{ textDecoration: "none" }}>
+                                マイページ
+                            </Link>
                             <Link href="/settings" className="nav-auth-btn nav-user-btn" style={{ textDecoration: "none" }}>⚙</Link>
                             <UnreadDmButton className="nav-auth-btn nav-user-btn" />
                         </>

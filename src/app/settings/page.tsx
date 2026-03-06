@@ -63,14 +63,15 @@ export default function SettingsPage() {
     const [restoring, setRestoring] = useState(false);
     const restoreInputRef = useRef<HTMLInputElement | null>(null);
     const resetThemeOnLeaveRef = useRef(resetTheme);
+    const loadedRef = useRef(false);
 
     const themeTitle = locale === "en" ? "Site Color" : locale === "zh" ? "站点颜色" : "サイトカラー";
     const themeDescription =
         locale === "en"
             ? "Choose a color theme for Next Blog."
             : locale === "zh"
-              ? "选择 Next Blog 的主题颜色。"
-              : "Next Blog の配色を変更できます。";
+                ? "选择 Next Blog 的主题颜色。"
+                : "Next Blog の配色を変更できます。";
     const customColorLabel =
         locale === "en" ? "Custom color" : locale === "zh" ? "自定义颜色" : "カスタムカラー";
 
@@ -82,8 +83,8 @@ export default function SettingsPage() {
         locale === "en"
             ? "When you restore, only the data contained in the selected JSON file will be applied to this account. Any newer posts or settings currently saved on this account and not included in the file may be overwritten or removed, so please export a fresh backup before continuing."
             : locale === "zh"
-              ? "鎭㈠師鍚庯紝鍙細灏嗘墍閫夌殑 JSON 鏂囦欢涓寘鍚殑鏁版嵁鍙嶆槧鍒拌繖涓处鍙枫�傚綋鍓嶈处鍙蜂腑鍚庢潵鏂板銆佷絾涓嶅湪鏂囦欢鍐呯殑鍐呭锛屽彲鑳戒細琚鐩栨垨鍒犻櫎銆傝鍦ㄧ户缁箣鍓嶅厛瀵煎嚭鏈�鏂扮殑澶囦唤銆�"
-              : "復元を実行すると、選択した JSON ファイルに含まれる内容だけがこのアカウントへ反映されます。現在のアカウントにある投稿や設定のうち、ファイルに含まれていない新しい内容は上書きまたは削除される可能性があるため、続行する前に最新のバックアップを書き出しておくことをおすすめします。";
+                ? "鎭㈠師鍚庯紝鍙細灏嗘墍閫夌殑 JSON 鏂囦欢涓寘鍚殑鏁版嵁鍙嶆槧鍒拌繖涓处鍙枫�傚綋鍓嶈处鍙蜂腑鍚庢潵鏂板銆佷絾涓嶅湪鏂囦欢鍐呯殑鍐呭锛屽彲鑳戒細琚鐩栨垨鍒犻櫎銆傝鍦ㄧ户缁箣鍓嶅厛瀵煎嚭鏈�鏂扮殑澶囦唤銆�"
+                : "復元を実行すると、選択した JSON ファイルに含まれる内容だけがこのアカウントへ反映されます。現在のアカウントにある投稿や設定のうち、ファイルに含まれていない新しい内容は上書きまたは削除される可能性があるため、続行する前に最新のバックアップを書き出しておくことをおすすめします。";
     const restoreConfirmLabel =
         locale === "en" ? "I understand the warning" : locale === "zh" ? "鎴戝凡纭涓婅堪鍐呭" : "注意事項を確認しました";
     const restoreSelectLabel =
@@ -94,8 +95,8 @@ export default function SettingsPage() {
         locale === "en"
             ? "We take care to preserve your data, but unexpected issues can still cause data loss. Please export backups regularly for anything important."
             : locale === "zh"
-              ? "我们会尽力妥善保存数据，但仍无法完全排除因意外问题导致数据丢失的可能。重要内容请定期导出备份保存。"
-              : "当サイトではデータの保全に努めていますが、予期しない不具合などでデータが失われる可能性を完全にはなくせません。大切な内容は、こまめにバックアップを書き出して保管してください。";
+                ? "我们会尽力妥善保存数据，但仍无法完全排除因意外问题导致数据丢失的可能。重要内容请定期导出备份保存。"
+                : "当サイトではデータの保全に努めていますが、予期しない不具合などでデータが失われる可能性を完全にはなくせません。大切な内容は、こまめにバックアップを書き出して保管してください。";
 
     const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -238,8 +239,8 @@ export default function SettingsPage() {
                 locale === "en"
                     ? "Backup restored."
                     : locale === "zh"
-                      ? "澶囦唤宸叉仮澶嶃�"
-                      : "バックアップを復元しました。"
+                        ? "澶囦唤宸叉仮澶嶃�"
+                        : "バックアップを復元しました。"
             );
             setShowRestoreModal(false);
             setRestoreConfirmed(false);
@@ -247,8 +248,8 @@ export default function SettingsPage() {
                 locale === "en"
                     ? "Backup restored."
                     : locale === "zh"
-                      ? "已恢复备份。"
-                      : "バックアップを復元しました。"
+                        ? "已恢复备份。"
+                        : "バックアップを復元しました。"
             );
         } catch {
             setMessage("❌ restore-failed");
@@ -272,7 +273,7 @@ export default function SettingsPage() {
     }, []);
 
     useEffect(() => {
-        if (session) {
+        if (session && !loadedRef.current) {
             setEmail(session.user?.email || "");
             setName(session.user?.name || "");
             setImage((session.user as { image?: string | null } | undefined)?.image || "");
@@ -286,6 +287,7 @@ export default function SettingsPage() {
                     return;
                 }
                 applySettingsPayload(data as Record<string, any>);
+                loadedRef.current = true;
                 setMessage("");
             };
 

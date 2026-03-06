@@ -52,6 +52,7 @@ export default function HomePage() {
   const { t, language } = useLanguage();
   const myPageHref = useMyPageHref();
   const [posts, setPosts] = useState<Post[]>([]);
+  const [loadingPosts, setLoadingPosts] = useState(true);
   const [overlayOpen, setOverlayOpen] = useState(false);
   const [overlayPostId, setOverlayPostId] = useState<string | null>(null);
   const [overlayContent, setOverlayContent] = useState("");
@@ -93,6 +94,8 @@ export default function HomePage() {
         console.error(error);
         setPosts([]);
         setPostsError("記事の読み込みに失敗しました。時間をおいて再読み込みしてください。");
+      } finally {
+        if (active) setLoadingPosts(false);
       }
     };
 
@@ -215,12 +218,13 @@ export default function HomePage() {
             </>
           ) : (
             <Link href="/login" className="nav-auth-btn nav-login-btn">{t("ログイン")}</Link>
-          )}
-        </div>
-      </nav>
+          )
+          }
+        </div >
+      </nav >
 
       {/* ─── Hero ─── */}
-      <div className="main-content">
+      < div className="main-content" >
         <section className="hero">
           <div className="hero-content">
             <h1 style={{
@@ -260,18 +264,24 @@ export default function HomePage() {
         </section>
 
         <HomeShortPosts />
-        {postsError && (
-          <div className="login-message login-error" style={{ marginBottom: 12 }}>
-            {postsError}
-          </div>
-        )}
+        {
+          postsError && (
+            <div className="login-message login-error" style={{ marginBottom: 12 }}>
+              {postsError}
+            </div>
+          )
+        }
 
         <div className="section-divider" />
 
         {/* ─── Recent Blog Posts ─── */}
         <section className="section">
           <h2 className="section-title">{t("最近の記事")}</h2>
-          {blogPosts.length === 0 ? (
+          {loadingPosts ? (
+            <p style={{ textAlign: "center", color: "var(--text-soft)", padding: "40px 0" }}>
+              {t("読み込み中...")}
+            </p>
+          ) : blogPosts.length === 0 ? (
             <p style={{ textAlign: "center", color: "var(--text-soft)", padding: "40px 0" }}>
               {t("まだ記事がありません。ログインして最初の記事を書きましょう。")}
             </p>
@@ -309,34 +319,36 @@ export default function HomePage() {
         </section>
 
         {/* ─── Products ─── */}
-        {productPosts.length > 0 && (
-          <>
-            <div className="section-divider" />
-            <section className="section">
-              <h2 className="section-title">{t("最近のプロダクト")}</h2>
-              <div className="product-grid">
-                {productPosts.slice(0, 8).map((p) => (
-                  <div key={p.id} className="product-card" onClick={() => openPost(p)} style={{ cursor: "pointer" }}>
-                    <div className="product-thumb" style={{ background: "linear-gradient(135deg,#e8d5d0,#e8d5d088)" }}>
-                      <div className="product-thumb-inner" />
-                    </div>
-                    <div className="product-info">
-                      <h3>{p.title}</h3>
-                      <p>{p.excerpt}</p>
-                      <div style={{ fontSize: 11, color: "var(--azuki-light)", marginTop: 6 }}>
-                        by {p.author?.name || "Anonymous"}
+        {
+          productPosts.length > 0 && (
+            <>
+              <div className="section-divider" />
+              <section className="section">
+                <h2 className="section-title">{t("最近のプロダクト")}</h2>
+                <div className="product-grid">
+                  {productPosts.slice(0, 8).map((p) => (
+                    <div key={p.id} className="product-card" onClick={() => openPost(p)} style={{ cursor: "pointer" }}>
+                      <div className="product-thumb" style={{ background: "linear-gradient(135deg,#e8d5d0,#e8d5d088)" }}>
+                        <div className="product-thumb-inner" />
+                      </div>
+                      <div className="product-info">
+                        <h3>{p.title}</h3>
+                        <p>{p.excerpt}</p>
+                        <div style={{ fontSize: 11, color: "var(--azuki-light)", marginTop: 6 }}>
+                          by {p.author?.name || "Anonymous"}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-          </>
-        )}
-      </div>
+                  ))}
+                </div>
+              </section>
+            </>
+          )
+        }
+      </div >
 
       {/* ─── Footer ─── */}
-      <footer className="footer">
+      < footer className="footer" >
         <div className="footer-links">
           <span className="footer-copy">© 2026 Next Blog</span>
           {session ? (
@@ -345,10 +357,10 @@ export default function HomePage() {
             </Link>
           ) : null}
         </div>
-      </footer>
+      </footer >
 
       {/* ─── Overlay ─── */}
-      <div className={`post-overlay ${overlayOpen ? "open" : ""}`} onClick={closeOverlay}>
+      < div className={`post-overlay ${overlayOpen ? "open" : ""}`} onClick={closeOverlay} >
         <div className="post-panel" onClick={(e) => e.stopPropagation()}>
           <div className="post-panel-header">
             <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
@@ -435,7 +447,7 @@ export default function HomePage() {
             />
           </div>
         </div>
-      </div>
+      </div >
     </>
   );
 }
