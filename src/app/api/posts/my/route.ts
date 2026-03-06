@@ -30,8 +30,8 @@ function normalizeAuthorRefs(values: Array<string | null | undefined>): string[]
     return [...refs];
 }
 
-export async function GET(req: Request) {
-    const session = await auth(req as any) /* eslint-disable-line @typescript-eslint/no-explicit-any */;
+export async function GET() {
+    const session = await auth();
     const userId = await resolveSessionUserId(session);
     if (!userId) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

@@ -12,17 +12,36 @@ export async function getTableColumns(tableName: string): Promise<Set<string>> {
         return new Set(await cached);
     }
 
-    const pending = prisma
-        .$queryRawUnsafe<ColumnRow[]>(
+    const pending = (async () => {
+        const preferredRows = await prisma.$queryRawUnsafe<ColumnRow[]>(
             `
-                SELECT "column_name"
+                SELECT DISTINCT "column_name"
                 FROM "information_schema"."columns"
-                WHERE "table_schema" = current_schema()
-                  AND "table_name" = $1
+                WHERE "table_name" = $1
+                  AND (
+                    "table_schema" = ANY(current_schemas(false))
+                    OR "table_schema" = 'public'
+                  )
             `,
             tableName
-        )
-        .then((rows) => new Set(rows.map((row) => String(row.column_name))));
+        );
+
+        if (preferredRows.length > 0) {
+            return new Set(preferredRows.map((row) => String(row.column_name)));
+        }
+
+        const fallbackRows = await prisma.$queryRawUnsafe<ColumnRow[]>(
+            `
+                SELECT DISTINCT "column_name"
+                FROM "information_schema"."columns"
+                WHERE "table_name" = $1
+                  AND "table_schema" NOT IN ('pg_catalog', 'information_schema')
+            `,
+            tableName
+        );
+
+        return new Set(fallbackRows.map((row) => String(row.column_name)));
+    })();
 
     columnCache.set(tableName, pending);
 

@@ -35,7 +35,7 @@ export async function PUT(
     request: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ) {
-    const session = await auth(request as any) /* eslint-disable-line @typescript-eslint/no-explicit-any */;
+    const session = await auth();
     const userId = await resolveSessionUserId(session as any) /* eslint-disable-line @typescript-eslint/no-explicit-any */;
     if (!userId) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -70,7 +70,7 @@ export async function DELETE(
     request: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ) {
-    const session = await auth(request as any) /* eslint-disable-line @typescript-eslint/no-explicit-any */;
+    const session = await auth();
     const userId = await resolveSessionUserId(session as any) /* eslint-disable-line @typescript-eslint/no-explicit-any */;
     if (!userId) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

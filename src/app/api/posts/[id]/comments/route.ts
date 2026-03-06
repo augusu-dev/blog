@@ -67,7 +67,7 @@ export async function POST(
     request: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ) {
-    const session = await auth(request as any) /* eslint-disable-line @typescript-eslint/no-explicit-any */;
+    const session = await auth();
     const userId = await resolveSessionUserId(session as any) /* eslint-disable-line @typescript-eslint/no-explicit-any */;
     if (!userId) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

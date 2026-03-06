@@ -306,8 +306,8 @@ async function findUserProfileByRef(userRef: string, userRefLower: string) {
     };
 }
 
-async function findCurrentSessionUserFallback(req: Request, userRef: string) {
-    const session = await auth(req as any) /* eslint-disable-line @typescript-eslint/no-explicit-any */;
+async function findCurrentSessionUserFallback(userRef: string) {
+    const session = await auth();
     const sessionUserId = await resolveSessionUserId(session);
     const sessionPublicUserId =
         typeof session?.user?.userId === "string" ? session.user.userId.trim() : "";
@@ -432,7 +432,7 @@ function mergeUserProfileCandidates(
     };
 }
 
-export async function GET(req: Request, { params }: { params: Promise<{ name: string }> }
+export async function GET(_req: Request, { params }: { params: Promise<{ name: string }> }
 ) {
     const { name } = await params;
     const userRef = typeof name === "string" ? name.trim() : "";
@@ -440,11 +440,23 @@ export async function GET(req: Request, { params }: { params: Promise<{ name: st
 
     try {
         const prismaUser = await findUserProfileByRef(userRef, userRefLower);
-        const rawUser = shouldHydrateUserProfileFromFallback(prismaUser)
-            ? await getUserProfileByRefFallback(userRef)
-            : null;
+        let rawUser = null;
+        if (shouldHydrateUserProfileFromFallback(prismaUser)) {
+            try {
+                rawUser = await getUserProfileByRefFallback(userRef);
+            } catch (fallbackError) {
+                console.error("Failed to hydrate user profile from raw fallback:", fallbackError);
+            }
+        }
         const mergedUser = mergeUserProfileCandidates(prismaUser, rawUser);
-        const sessionUser = mergedUser ? null : await findCurrentSessionUserFallback(req, userRef);
+        let sessionUser = null;
+        if (!mergedUser) {
+            try {
+                sessionUser = await findCurrentSessionUserFallback(userRef);
+            } catch (sessionFallbackError) {
+                console.error("Failed to hydrate current session user fallback:", sessionFallbackError);
+            }
+        }
         const resolvedUser = mergeUserProfileCandidates(
             mergedUser,
             sessionUser
@@ -463,13 +475,17 @@ export async function GET(req: Request, { params }: { params: Promise<{ name: st
             email: resolvedUser.email ?? null,
         });
         const resolvedPosts = Array.isArray(resolvedUser.posts) ? resolvedUser.posts : [];
-        const fallbackPosts =
-            resolvedPosts.length === 0
-                ? await getPostsByAuthorFallback([resolvedUser.id, ensuredUserId || null], {
-                      publishedOnly: true,
-                      limit: 300,
-                  })
-                : [];
+        let fallbackPosts: Awaited<ReturnType<typeof getPostsByAuthorFallback>> = [];
+        if (resolvedPosts.length === 0) {
+            try {
+                fallbackPosts = await getPostsByAuthorFallback([resolvedUser.id, ensuredUserId || null], {
+                    publishedOnly: true,
+                    limit: 300,
+                });
+            } catch (postsFallbackError) {
+                console.error("Failed to hydrate profile posts from raw fallback:", postsFallbackError);
+            }
+        }
 
         return NextResponse.json({
             ...resolvedUser,
