@@ -44,6 +44,22 @@ export default function LoginPage() {
 
         for (let attempt = 0; attempt < 6; attempt += 1) {
             try {
+                const settingsRes = await fetch("/api/user/settings", { cache: "no-store" });
+                if (settingsRes.ok) {
+                    const settingsPayload = (await settingsRes.json()) as {
+                        id?: string | null;
+                        userId?: string | null;
+                        email?: string | null;
+                    };
+                    const resolvedEmail =
+                        typeof settingsPayload.email === "string"
+                            ? settingsPayload.email.trim().toLowerCase()
+                            : "";
+                    if (!normalizedExpectedEmail || resolvedEmail === normalizedExpectedEmail) {
+                        return buildMyPageHref(settingsPayload.userId, settingsPayload.id);
+                    }
+                }
+
                 const res = await fetch("/api/auth/session", { cache: "no-store" });
                 if (res.ok) {
                     const payload = (await res.json()) as {

@@ -9,6 +9,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import PostComments from "@/components/PostComments";
 import UnreadDmButton from "@/components/UnreadDmButton";
 import HomeShortPosts from "@/components/HomeShortPosts";
+import { useMyPageHref } from "@/hooks/useMyPageHref";
 
 interface Post {
   id: string;
@@ -49,6 +50,7 @@ export default function HomePage() {
   const { data: session } = useSession();
   const router = useRouter();
   const { t, language } = useLanguage();
+  const myPageHref = useMyPageHref();
   const [posts, setPosts] = useState<Post[]>([]);
   const [overlayOpen, setOverlayOpen] = useState(false);
   const [overlayPostId, setOverlayPostId] = useState<string | null>(null);
@@ -72,7 +74,7 @@ export default function HomePage() {
         const res = await fetch("/api/posts", { cache: "no-store" });
         const data = await res.json().catch(() => []);
         if (!res.ok || !Array.isArray(data)) {
-          if (attempt < 1) {
+          if (attempt < 2) {
             await new Promise((resolve) => setTimeout(resolve, 350));
             await loadPosts(attempt + 1);
             return;
@@ -180,11 +182,6 @@ export default function HomePage() {
   };
 
   const sessionUser = session?.user as { id?: string; userId?: string | null } | undefined;
-  const myPageHref = sessionUser?.userId
-    ? `/user/${encodeURIComponent(sessionUser.userId)}`
-    : sessionUser?.id
-      ? `/user/${encodeURIComponent(sessionUser.id)}`
-      : "/settings";
   const currentUserId = sessionUser?.id ?? null;
 
   return (

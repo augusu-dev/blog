@@ -5,6 +5,7 @@ import { PrismaAdapter } from "@auth/prisma-adapter";
 import bcrypt from "bcryptjs";
 import { prisma } from "./db";
 import { getTableColumns } from "./tableSchema";
+import { ensureUserIdForUser } from "./userId";
 
 const googleEnabled =
     typeof process.env.GOOGLE_CLIENT_ID === "string" &&
@@ -192,6 +193,24 @@ async function verifyPassword(password: string, storedPassword: string, userId: 
     return true;
 }
 
+async function resolveStablePublicUserId(
+    primaryUserId: string,
+    fallbackPublicUserId?: string | null
+): Promise<string> {
+    const normalizedFallback =
+        typeof fallbackPublicUserId === "string" ? fallbackPublicUserId.trim() : "";
+
+    if (normalizedFallback && normalizedFallback !== primaryUserId) {
+        return normalizedFallback;
+    }
+
+    try {
+        return await ensureUserIdForUser(primaryUserId);
+    } catch {
+        return normalizedFallback || primaryUserId;
+    }
+}
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
     adapter: PrismaAdapter(prisma),
     providers: [
@@ -233,13 +252,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                         id: user.id,
                         email: user.email,
                         name: user.name,
-                        userId:
-                            hasUserIdColumn &&
-                            "userId" in user &&
-                            typeof user.userId === "string" &&
-                            user.userId.trim()
-                                ? user.userId
-                                : user.id,
+                        userId: await resolveStablePublicUserId(
+                            user.id,
+                            hasUserIdColumn && "userId" in user ? user.userId : null
+                        ),
                     };
                 } catch (error) {
                     console.error("Credentials authorize failed:", error);
@@ -260,8 +276,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                 if (typeof user.id === "string" && user.id) {
                     token.id = user.id;
                 }
-                if (typeof user.userId === "string" && user.userId.trim()) {
-                    token.userId = user.userId;
+                if (typeof user.id === "string" && user.id) {
+                    token.userId = await resolveStablePublicUserId(
+                        user.id,
+                        typeof user.userId === "string" ? user.userId : null
+                    );
                 }
             }
 
@@ -273,7 +292,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             if (tokenPrimaryId) {
                 token.id = tokenPrimaryId;
                 if (typeof token.userId !== "string" || !token.userId.trim()) {
-                    token.userId = tokenPrimaryId;
+                    token.userId = await resolveStablePublicUserId(tokenPrimaryId, null);
                 }
             }
             return token;

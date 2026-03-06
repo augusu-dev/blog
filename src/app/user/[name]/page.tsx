@@ -131,6 +131,10 @@ export default function UserPage() {
             const normalizedSessionUserId = typeof sessionUser?.id === "string" ? sessionUser.id.trim() : "";
             const normalizedSessionPublicUserId =
                 typeof sessionUser?.userId === "string" ? sessionUser.userId.trim() : "";
+            const normalizedSessionName =
+                typeof sessionUser?.name === "string" ? sessionUser.name.trim().toLowerCase() : "";
+            const normalizedSessionEmail =
+                typeof sessionUser?.email === "string" ? sessionUser.email.trim().toLowerCase() : "";
 
             const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -166,13 +170,18 @@ export default function UserPage() {
             };
 
             const loadOwnProfileFallback = async () => {
+                const ownRefs = new Set(
+                    [
+                        normalizedSessionUserId.toLowerCase(),
+                        normalizedSessionPublicUserId.toLowerCase(),
+                        normalizedSessionName,
+                        normalizedSessionEmail,
+                    ].filter(Boolean)
+                );
                 const isOwnRequestedPage =
-                    !!normalizedUserName &&
-                    (!!normalizedSessionUserId || !!normalizedSessionPublicUserId) &&
-                    (normalizedUserName === normalizedSessionUserId ||
-                        normalizedUserName === normalizedSessionPublicUserId);
+                    !!normalizedUserName && ownRefs.has(normalizedUserName.toLowerCase());
 
-                if (!isOwnRequestedPage || !normalizedSessionUserId) {
+                if (!isOwnRequestedPage) {
                     return false;
                 }
 
@@ -189,11 +198,11 @@ export default function UserPage() {
                 const fallbackPosts = Array.isArray(myPostsResult.data) ? (myPostsResult.data as Post[]) : [];
 
                 applyUserProfile({
-                    id: String(settings.id || normalizedSessionUserId),
+                    id: String(settings.id || normalizedSessionUserId || normalizedUserName),
                     userId:
                         typeof settings.userId === "string"
                             ? settings.userId
-                            : normalizedSessionPublicUserId || normalizedSessionUserId,
+                            : normalizedSessionPublicUserId || String(settings.id || normalizedSessionUserId || normalizedUserName),
                     name: String(settings.name || sessionUser?.name || ""),
                     email: String(settings.email || sessionUser?.email || ""),
                     image: typeof settings.image === "string" ? settings.image : sessionUser?.image || null,

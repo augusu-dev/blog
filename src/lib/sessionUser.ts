@@ -1,5 +1,6 @@
 import type { Session } from "next-auth";
 import { prisma } from "@/lib/db";
+import { getTableColumns } from "@/lib/tableSchema";
 
 function normalizeString(value: unknown): string {
     return typeof value === "string" ? value.trim() : "";
@@ -19,6 +20,63 @@ function isUserIdColumnMissing(error: unknown): boolean {
     return false;
 }
 
+async function findUserIdByEmailRaw(email: string): Promise<string | null> {
+    const columns = await getTableColumns("User");
+    if (!columns.has("id") || !columns.has("email")) {
+        return null;
+    }
+
+    const rows = await prisma.$queryRawUnsafe<Array<{ id: string }>>(
+        `
+            SELECT "id"::text AS "id"
+            FROM "User"
+            WHERE LOWER(COALESCE("email"::text, '')) = LOWER($1)
+            LIMIT 1
+        `,
+        email
+    );
+
+    return rows[0]?.id || null;
+}
+
+async function findUserIdByPrimaryIdRaw(userId: string): Promise<string | null> {
+    const columns = await getTableColumns("User");
+    if (!columns.has("id")) {
+        return null;
+    }
+
+    const rows = await prisma.$queryRawUnsafe<Array<{ id: string }>>(
+        `
+            SELECT "id"::text AS "id"
+            FROM "User"
+            WHERE "id"::text = $1
+            LIMIT 1
+        `,
+        userId
+    );
+
+    return rows[0]?.id || null;
+}
+
+async function findUserIdByPublicIdRaw(publicUserId: string): Promise<string | null> {
+    const columns = await getTableColumns("User");
+    if (!columns.has("id") || !columns.has("userId")) {
+        return null;
+    }
+
+    const rows = await prisma.$queryRawUnsafe<Array<{ id: string }>>(
+        `
+            SELECT "id"::text AS "id"
+            FROM "User"
+            WHERE LOWER(COALESCE("userId"::text, '')) = LOWER($1)
+            LIMIT 1
+        `,
+        publicUserId
+    );
+
+    return rows[0]?.id || null;
+}
+
 export async function resolveSessionUserId(session: Session | null): Promise<string | null> {
     const sessionUserId = normalizeString(session?.user?.id);
     const sessionPublicUserId = normalizeString((session?.user as { userId?: string } | undefined)?.userId).toLowerCase();
@@ -33,7 +91,14 @@ export async function resolveSessionUserId(session: Session | null): Promise<str
                 return byPrimaryId.id;
             }
         } catch {
-            // Fall through to alternate resolution paths.
+            try {
+                const rawResolvedId = await findUserIdByPrimaryIdRaw(sessionUserId);
+                if (rawResolvedId) {
+                    return rawResolvedId;
+                }
+            } catch {
+                // Fall through to alternate resolution paths.
+            }
         }
 
         try {
@@ -46,7 +111,14 @@ export async function resolveSessionUserId(session: Session | null): Promise<str
             }
         } catch (error) {
             if (!isUserIdColumnMissing(error)) {
-                return null;
+                try {
+                    const rawResolvedId = await findUserIdByPublicIdRaw(sessionUserId.toLowerCase());
+                    if (rawResolvedId) {
+                        return rawResolvedId;
+                    }
+                } catch {
+                    return null;
+                }
             }
         }
     }
@@ -62,7 +134,14 @@ export async function resolveSessionUserId(session: Session | null): Promise<str
             }
         } catch (error) {
             if (!isUserIdColumnMissing(error)) {
-                return null;
+                try {
+                    const rawResolvedId = await findUserIdByPublicIdRaw(sessionPublicUserId);
+                    if (rawResolvedId) {
+                        return rawResolvedId;
+                    }
+                } catch {
+                    return null;
+                }
             }
         }
     }
@@ -79,6 +158,10 @@ export async function resolveSessionUserId(session: Session | null): Promise<str
         });
         return user?.id || null;
     } catch {
-        return null;
+        try {
+            return await findUserIdByEmailRaw(sessionEmail);
+        } catch {
+            return null;
+        }
     }
 }

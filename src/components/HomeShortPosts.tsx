@@ -97,7 +97,7 @@ export default function HomeShortPosts() {
             const res = await fetch("/api/short-posts", { cache: "no-store" });
             const payload = await res.json().catch(() => []);
             if (!res.ok) {
-                if (attempt < 1) {
+                if (attempt < 2) {
                     await new Promise((resolve) => setTimeout(resolve, 350));
                     await loadPosts(attempt + 1);
                     return;
@@ -108,7 +108,7 @@ export default function HomeShortPosts() {
             setPosts(Array.isArray(payload) ? payload.slice(0, 30) : []);
             setError("");
         } catch {
-            if (attempt < 1) {
+            if (attempt < 2) {
                 await new Promise((resolve) => setTimeout(resolve, 350));
                 await loadPosts(attempt + 1);
                 return;

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { resolveSessionUserId } from "@/lib/sessionUser";
 import { tryEnsureProfileAndPostSchema } from "@/lib/schemaCompat";
+import { getUserProfileByRefFallback } from "@/lib/publicContentFallback";
 
 type DmSetting = "OPEN" | "PR_ONLY" | "CLOSED";
 const DEFAULT_DM_SETTING: DmSetting = "OPEN";
@@ -384,7 +385,10 @@ export async function GET(
     try {
         await tryEnsureProfileAndPostSchema();
         const user = await findUserProfileByRef(userRef, userRefLower);
-        const fallbackUser = user || (await findCurrentSessionUserFallback(userRef));
+        const fallbackUser =
+            user ||
+            (await findCurrentSessionUserFallback(userRef)) ||
+            (await getUserProfileByRefFallback(userRef));
         if (!fallbackUser) {
             return NextResponse.json({ error: "User not found" }, { status: 404 });
         }
