@@ -9,6 +9,7 @@ import Link from "next/link";
 import { useLanguage } from "@/contexts/LanguageContext";
 import PostComments from "@/components/PostComments";
 import UnreadDmButton from "@/components/UnreadDmButton";
+import { useMyPageHref } from "@/hooks/useMyPageHref";
 
 /* ─── Types ─── */
 interface Post {
@@ -93,6 +94,19 @@ export default function UserPage() {
     const userName = params.name as string;
     const searchParamsString = searchParams.toString();
     const requestedPostId = (searchParams.get("post") || "").trim();
+    const sessionUser = session?.user as {
+        id?: string;
+        userId?: string | null;
+        name?: string | null;
+        email?: string | null;
+        image?: string | null;
+    } | undefined;
+    const sessionUserId = typeof sessionUser?.id === "string" ? sessionUser.id : "";
+    const sessionPublicUserId = typeof sessionUser?.userId === "string" ? sessionUser.userId : "";
+    const sessionDisplayName = typeof sessionUser?.name === "string" ? sessionUser.name : "";
+    const sessionEmail = typeof sessionUser?.email === "string" ? sessionUser.email : "";
+    const sessionImage = typeof sessionUser?.image === "string" ? sessionUser.image : null;
+    const myPageHref = useMyPageHref();
 
     const { language, t } = useLanguage();
     const [user, setUser] = useState<UserProfile | null>(null);
@@ -124,21 +138,11 @@ export default function UserPage() {
     /* ─── Fetch user data ─── */
     useEffect(() => {
         async function loadUser() {
-            const sessionUser = session?.user as {
-                id?: string;
-                userId?: string | null;
-                name?: string | null;
-                email?: string | null;
-                image?: string | null;
-            } | undefined;
             const normalizedUserName = typeof userName === "string" ? userName.trim() : "";
-            const normalizedSessionUserId = typeof sessionUser?.id === "string" ? sessionUser.id.trim() : "";
-            const normalizedSessionPublicUserId =
-                typeof sessionUser?.userId === "string" ? sessionUser.userId.trim() : "";
-            const normalizedSessionName =
-                typeof sessionUser?.name === "string" ? sessionUser.name.trim().toLowerCase() : "";
-            const normalizedSessionEmail =
-                typeof sessionUser?.email === "string" ? sessionUser.email.trim().toLowerCase() : "";
+            const normalizedSessionUserId = sessionUserId.trim();
+            const normalizedSessionPublicUserId = sessionPublicUserId.trim();
+            const normalizedSessionName = sessionDisplayName.trim().toLowerCase();
+            const normalizedSessionEmail = sessionEmail.trim().toLowerCase();
 
             const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -211,9 +215,9 @@ export default function UserPage() {
                         typeof settings.userId === "string"
                             ? settings.userId
                             : normalizedSessionPublicUserId || String(settings.id || normalizedSessionUserId || normalizedUserName),
-                    name: String(settings.name || sessionUser?.name || ""),
-                    email: String(settings.email || sessionUser?.email || ""),
-                    image: typeof settings.image === "string" ? settings.image : sessionUser?.image || null,
+                    name: String(settings.name || sessionDisplayName || ""),
+                    email: String(settings.email || sessionEmail || ""),
+                    image: typeof settings.image === "string" ? settings.image : sessionImage,
                     headerImage: typeof settings.headerImage === "string" ? settings.headerImage : null,
                     bio: String(settings.bio || ""),
                     aboutMe: String(settings.aboutMe || ""),
@@ -260,7 +264,7 @@ export default function UserPage() {
             }
         }
         if (userName) loadUser();
-    }, [session?.user, userName]);
+    }, [sessionDisplayName, sessionEmail, sessionImage, sessionPublicUserId, sessionUserId, userName]);
 
     useEffect(() => {
         const canonicalUserId = typeof user?.userId === "string" ? user.userId.trim() : "";
@@ -561,6 +565,16 @@ export default function UserPage() {
                 <div className="nav-auth">
                     {session ? (
                         <>
+                            {isOwnProfile ? (
+                                <Link
+                                    href="/pins"
+                                    className="nav-auth-btn nav-user-btn"
+                                    style={{ textDecoration: "none" }}
+                                    title="ピンしたユーザーの新着"
+                                >
+                                    👥
+                                </Link>
+                            ) : null}
                             {canShowPinButton && (
                                 <button
                                     type="button"
@@ -582,7 +596,7 @@ export default function UserPage() {
                                 </button>
                             )}
                             <Link href="/editor" className="nav-auth-btn nav-write-btn" title="記事を書く">✍️</Link>
-                            <Link href={session.user?.name ? `/user/${session.user.name}` : "/settings"} className="nav-auth-btn nav-user-btn" title="マイページ">
+                            <Link href={myPageHref} className="nav-auth-btn nav-user-btn" title="マイページ">
                                 👤
                             </Link>
                             <Link href="/settings" className="nav-auth-btn nav-user-btn" style={{ textDecoration: "none" }}>⚙</Link>

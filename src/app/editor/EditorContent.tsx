@@ -148,20 +148,35 @@ export default function EditorPage() {
 
     // Load my posts
     const loadMyPosts = useCallback(async () => {
-        try {
-            const res = await fetch("/api/posts/my");
-            if (res.ok) {
-                const data = await res.json();
-                setMyPosts(data);
+        if (status !== "authenticated") return;
+
+        const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+            try {
+                const res = await fetch("/api/posts/my", { cache: "no-store" });
+                const data = await res.json().catch(() => []);
+                if (res.ok && Array.isArray(data)) {
+                    setMyPosts(data);
+                    return;
+                }
+            } catch (e) {
+                if (attempt === 2) {
+                    console.warn("Failed to load posts:", e);
+                }
             }
-        } catch (e) {
-            console.warn("Failed to load posts:", e);
+
+            if (attempt < 2) {
+                await wait(300 * (attempt + 1));
+            }
         }
-    }, []);
+    }, [status]);
 
     useEffect(() => {
-        if (session) loadMyPosts();
-    }, [session, loadMyPosts]);
+        if (status === "authenticated") {
+            void loadMyPosts();
+        }
+    }, [loadMyPosts, status]);
 
     useEffect(() => {
         hasUnsavedChangesRef.current = !snapshotsEqual(savedSnapshotRef.current, buildCurrentSnapshot());

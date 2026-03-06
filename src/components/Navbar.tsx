@@ -4,9 +4,11 @@
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import UnreadDmButton from "@/components/UnreadDmButton";
+import { useMyPageHref } from "@/hooks/useMyPageHref";
 
 export default function Navbar() {
     const { data: session } = useSession();
+    const myPageHref = useMyPageHref();
 
     const scrollTo = (id: string) => {
         const el = document.getElementById(id);
@@ -40,7 +42,7 @@ export default function Navbar() {
                             ✍️
                         </Link>
                         <Link
-                            href={session.user?.name ? `/user/${session.user.name}` : "/settings"}
+                            href={myPageHref}
                             className="nav-auth-btn nav-user-btn"
                             title="マイページ"
                             style={{ textDecoration: "none" }}

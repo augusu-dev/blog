@@ -210,7 +210,7 @@ export default function HomePage() {
           {session ? (
             <>
               <Link href="/editor" className="nav-auth-btn nav-write-btn" title="記事を書く">✍️</Link>
-              <Link href={session.user.name ? `/user/${session.user.name}` : "/settings"} className="nav-auth-btn nav-user-btn" title="マイページ">
+              <Link href={myPageHref} className="nav-auth-btn nav-user-btn" title="マイページ">
                 👤
               </Link>
               <Link href="/settings" className="nav-auth-btn nav-user-btn" style={{ textDecoration: "none" }}>⚙</Link>

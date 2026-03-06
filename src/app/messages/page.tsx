@@ -193,6 +193,10 @@ export default function MessagesPage() {
             return;
         }
 
+        if (status !== "authenticated" || !currentUserId) {
+            return;
+        }
+
         setThreadDrawerOpen(false);
 
         let active = true;
@@ -236,7 +240,7 @@ export default function MessagesPage() {
         return () => {
             active = false;
         };
-    }, [selectedUserId]);
+    }, [currentUserId, selectedUserId, status]);
 
     const refreshCurrentThread = useCallback(async () => {
         if (!selectedUserId) return;
