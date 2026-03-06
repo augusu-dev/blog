@@ -505,7 +505,7 @@ export default function MessagesPage() {
                             </button>
                             {selectedUser?.id ? (
                                 <Link
-                                    href={`/user/${encodeURIComponent(selectedUser.userId || selectedUser.id)}`}
+                                    href={selectedUser.userId ? `/user/${encodeURIComponent(selectedUser.userId)}` : "#"}
                                     style={{ textDecoration: "none" }}
                                 >
                                     <div

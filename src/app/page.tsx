@@ -293,7 +293,7 @@ export default function HomePage() {
                     <div style={{ fontSize: 12, color: "var(--azuki-light)", marginTop: 8 }}>
                       by{" "}
                       <Link
-                        href={p.author?.id ? `/user/${encodeURIComponent(p.author.userId || p.author.id)}` : "#"}
+                        href={p.author?.userId ? `/user/${encodeURIComponent(p.author.userId)}` : "#"}
                         style={{ color: "var(--azuki)", textDecoration: "none" }}
                         onClick={(e) => e.stopPropagation()}
                       >
@@ -354,7 +354,7 @@ export default function HomePage() {
             <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
               {overlayMeta.author?.id && (
                 <Link
-                  href={`/user/${encodeURIComponent(overlayMeta.author.userId || overlayMeta.author.id)}`}
+                  href={overlayMeta.author.userId ? `/user/${encodeURIComponent(overlayMeta.author.userId)}` : "#"}
                   style={{ textDecoration: "none" }}
                   title="ページに飛ぶ"
                 >

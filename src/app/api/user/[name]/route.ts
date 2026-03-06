@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth";
 import { resolveSessionUserId } from "@/lib/sessionUser";
 import { getUserProfileByRefFallback } from "@/lib/publicContentFallback";
 import { getPostsByAuthorFallback } from "@/lib/publicContentFallback";
-import { resolvePublicUserIdForUser } from "@/lib/userId";
+import { resolveReadablePublicUserId } from "@/lib/userId";
 
 type DmSetting = "OPEN" | "PR_ONLY" | "CLOSED";
 const DEFAULT_DM_SETTING: DmSetting = "OPEN";
@@ -443,11 +443,13 @@ export async function GET(
 
         const unpacked = unpackLinks(resolvedUser.links);
 
-        const ensuredUserId = await resolvePublicUserIdForUser(
-            resolvedUser.id,
-            "userId" in resolvedUser ? resolvedUser.userId : null
-        );
-        const fallbackPosts = await getPostsByAuthorFallback([resolvedUser.id, ensuredUserId], {
+        const ensuredUserId = resolveReadablePublicUserId({
+            id: resolvedUser.id,
+            userId: "userId" in resolvedUser ? resolvedUser.userId : null,
+            name: resolvedUser.name ?? null,
+            email: resolvedUser.email ?? null,
+        });
+        const fallbackPosts = await getPostsByAuthorFallback([resolvedUser.id, ensuredUserId || null], {
             publishedOnly: true,
             limit: 300,
         });
@@ -455,7 +457,7 @@ export async function GET(
 
         return NextResponse.json({
             ...resolvedUser,
-            userId: ensuredUserId,
+            userId: ensuredUserId || null,
             posts: resolvedPosts.length >= fallbackPosts.length ? resolvedPosts : fallbackPosts,
             links: unpacked.links,
             dmSetting: unpacked.dmSetting,

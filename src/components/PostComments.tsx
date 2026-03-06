@@ -439,7 +439,9 @@ export default function PostComments({ postId, isSignedIn, currentUserId = null 
                         const authorName = comment.author?.name || comment.author?.email || "Anonymous";
                         const avatarFallback = authorName.charAt(0).toUpperCase();
                         const commentDate = formatCommentDate(comment.createdAt, language);
-                        const authorHref = `/user/${encodeURIComponent(comment.author.userId || comment.author.id)}`;
+                        const authorHref = comment.author.userId
+                            ? `/user/${encodeURIComponent(comment.author.userId)}`
+                            : "#";
 
                         return (
                             <article

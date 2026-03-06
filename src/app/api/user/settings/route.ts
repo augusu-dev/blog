@@ -6,7 +6,7 @@ import { resolveSessionUserId } from "@/lib/sessionUser";
 import {
     isValidUserId,
     normalizeUserIdInput,
-    resolvePublicUserIdForUser,
+    resolveReadablePublicUserId,
 } from "@/lib/userId";
 import { tryEnsureProfileAndPostSchema } from "@/lib/schemaCompat";
 import { getTableColumns } from "@/lib/tableSchema";
@@ -240,6 +240,34 @@ function isUserSchemaCompatibilityError(error: unknown): boolean {
     return false;
 }
 
+function hasResolvedValue(value: unknown): boolean {
+    if (value === null || value === undefined) return false;
+    if (typeof value === "string") return value.trim().length > 0;
+    if (Array.isArray(value)) return value.length > 0;
+    return true;
+}
+
+function mergeUserSettingsPayload(
+    primary: UserSettingsPayload | RawSettingsRow | null,
+    secondary: UserSettingsPayload | RawSettingsRow | null
+): UserSettingsPayload | RawSettingsRow | null {
+    if (!primary) return secondary;
+    if (!secondary) return primary;
+
+    return {
+        ...secondary,
+        ...primary,
+        userId: hasResolvedValue(primary.userId) ? primary.userId : secondary.userId,
+        name: hasResolvedValue(primary.name) ? primary.name : secondary.name,
+        email: hasResolvedValue(primary.email) ? primary.email : secondary.email,
+        image: hasResolvedValue(primary.image) ? primary.image : secondary.image,
+        headerImage: hasResolvedValue(primary.headerImage) ? primary.headerImage : secondary.headerImage,
+        bio: hasResolvedValue(primary.bio) ? primary.bio : secondary.bio,
+        aboutMe: hasResolvedValue(primary.aboutMe) ? primary.aboutMe : secondary.aboutMe,
+        links: hasResolvedValue(primary.links) ? primary.links : secondary.links,
+    };
+}
+
 async function fetchUserSettingsRecord(userId: string) {
     try {
         const user = await prisma.user.findUnique({
@@ -332,20 +360,21 @@ export async function GET() {
     }
 
     try {
-        const { user } = await fetchUserSettingsRecord(userId);
+        const [{ user: fetchedUser }, raw] = await Promise.all([
+            fetchUserSettingsRecord(userId),
+            fetchUserSettingsRecordRaw(userId),
+        ]);
+        const user = mergeUserSettingsPayload(fetchedUser, raw.user);
         if (!user) {
             return NextResponse.json({ error: "User not found" }, { status: 404 });
         }
 
         const unpacked = unpackLinks(("links" in user ? user.links : null) as string | null | undefined);
-        const publicUserId = await resolvePublicUserIdForUser(
-            user.id,
-            "userId" in user ? user.userId : null
-        );
+        const publicUserId = resolveReadablePublicUserId(user);
 
         return NextResponse.json({
             id: user.id,
-            userId: publicUserId,
+            userId: publicUserId || null,
             name: ("name" in user ? user.name : null) ?? null,
             email: ("email" in user ? user.email : null) ?? null,
             image: ("image" in user ? user.image : null) ?? null,
@@ -492,18 +521,19 @@ export async function PUT(request: NextRequest) {
         }
 
         const refreshed = await fetchUserSettingsRecord(userId);
-        const responseUser = refreshed.user || updatedUser;
+        const refreshedRaw = await fetchUserSettingsRecordRaw(userId);
+        const responseUser = mergeUserSettingsPayload(refreshed.user || updatedUser, refreshedRaw.user);
+        if (!responseUser) {
+            return NextResponse.json({ error: "User not found" }, { status: 404 });
+        }
         const unpacked = unpackLinks(
             ("links" in responseUser ? responseUser.links : null) as string | null | undefined
         );
-        const publicUserId = await resolvePublicUserIdForUser(
-            responseUser.id,
-            "userId" in responseUser ? responseUser.userId : null
-        );
+        const publicUserId = resolveReadablePublicUserId(responseUser);
 
         return NextResponse.json({
             id: responseUser.id,
-            userId: publicUserId,
+            userId: publicUserId || null,
             name: ("name" in responseUser ? responseUser.name : null) ?? null,
             email: ("email" in responseUser ? responseUser.email : null) ?? null,
             image: ("image" in responseUser ? responseUser.image : null) ?? null,

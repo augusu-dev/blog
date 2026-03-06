@@ -43,7 +43,7 @@ function getAuthorLabel(author: ShortPostAuthor): string {
 }
 
 function getAuthorHref(author: ShortPostAuthor): string {
-    return `/user/${encodeURIComponent(author.userId || author.id)}`;
+    return author.userId ? `/user/${encodeURIComponent(author.userId)}` : "#";
 }
 
 function renderTextWithLinks(content: string) {
