@@ -543,10 +543,22 @@ export default function UserPage() {
         <>
             {/* ─── Navbar ─── */}
             <nav className="navbar" id="navbar">
-                <Link href="/" className="nav-logo" style={{ textDecoration: "none" }}>
-                    <img src="/images/a.png" alt="Next Blog" className="nav-logo-img" />
-                    Next Blog <span className="beta-badge">β</span>
-                </Link>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <Link href="/" className="nav-logo" style={{ textDecoration: "none" }}>
+                        <img src="/images/a.png" alt="Next Blog" className="nav-logo-img" />
+                        Next Blog <span className="beta-badge">β</span>
+                    </Link>
+                    {session && isOwnProfile ? (
+                        <Link
+                            href="/pins"
+                            className="nav-auth-btn nav-user-btn"
+                            style={{ textDecoration: "none" }}
+                            title="ピンしたユーザーの新着"
+                        >
+                            👥
+                        </Link>
+                    ) : null}
+                </div>
                 <div className="nav-links">
                     <button className="nav-link active" data-section="home" onClick={() => scrollTo("home")}>
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></svg>
@@ -568,16 +580,6 @@ export default function UserPage() {
                 <div className="nav-auth">
                     {session ? (
                         <>
-                            {isOwnProfile ? (
-                                <Link
-                                    href="/pins"
-                                    className="nav-auth-btn nav-user-btn"
-                                    style={{ textDecoration: "none" }}
-                                    title="ピンしたユーザーの新着"
-                                >
-                                    👥
-                                </Link>
-                            ) : null}
                             {canShowPinButton && (
                                 <button
                                     type="button"

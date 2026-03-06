@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { withPinnedUserTable } from "@/lib/pinnedUsers";
+import { getUserProfileByRefFallback } from "@/lib/publicContentFallback";
 import { resolveSessionUserId } from "@/lib/sessionUser";
 import { tryEnsureProfileAndPostSchema } from "@/lib/schemaCompat";
 
@@ -22,6 +23,14 @@ const PINNED_USER_PUBLIC_SELECT_LEGACY = {
 
 function normalizeString(value: unknown): string {
     return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeRef(value: unknown): string {
+    return normalizeString(value).toLowerCase();
+}
+
+function uniqueRefs(...values: Array<string | null | undefined>): string[] {
+    return [...new Set(values.map((value) => normalizeString(value)).filter(Boolean))];
 }
 
 function isUserIdColumnMissing(error: unknown): boolean {
@@ -81,6 +90,41 @@ async function fetchPinnedUsers(ownerId: string) {
     const pinnedUserIds = [...new Set(rows.map((row) => row.pinnedUserId))];
     if (pinnedUserIds.length === 0) return [];
 
+    const userById = new Map<
+        string,
+        {
+            id: string;
+            userId?: string | null;
+            name: string | null;
+            email: string | null;
+            image: string | null;
+        }
+    >();
+    const userByRef = new Map<
+        string,
+        {
+            id: string;
+            userId?: string | null;
+            name: string | null;
+            email: string | null;
+            image: string | null;
+        }
+    >();
+
+    const registerUser = (user: {
+        id: string;
+        userId?: string | null;
+        name: string | null;
+        email: string | null;
+        image: string | null;
+    }) => {
+        userById.set(user.id, user);
+        userByRef.set(normalizeRef(user.id), user);
+        if (user.userId) {
+            userByRef.set(normalizeRef(user.userId), user);
+        }
+    };
+
     let users:
         | Array<{
               id: string;
@@ -109,13 +153,36 @@ async function fetchPinnedUsers(ownerId: string) {
         });
     }
 
-    const userMap = new Map(users.map((user) => [user.id, user]));
+    for (const user of users) {
+        registerUser(user);
+    }
+
+    const unresolvedRefs = pinnedUserIds.filter((ref) => !userByRef.has(normalizeRef(ref)));
+    if (unresolvedRefs.length > 0) {
+        const profiles = await Promise.all(
+            unresolvedRefs.map((ref) =>
+                getUserProfileByRefFallback(ref).catch(() => null)
+            )
+        );
+
+        for (const profile of profiles) {
+            if (!profile) continue;
+            registerUser({
+                id: profile.id,
+                userId: profile.userId ?? null,
+                name: profile.name,
+                email: profile.email,
+                image: profile.image,
+            });
+        }
+    }
+
     return rows
         .map((row) => {
-            const pinnedUser = userMap.get(row.pinnedUserId);
+            const pinnedUser = userByRef.get(normalizeRef(row.pinnedUserId));
             if (!pinnedUser) return null;
             return {
-                pinnedUserId: row.pinnedUserId,
+                pinnedUserId: pinnedUser.id,
                 createdAt: row.createdAt,
                 pinnedUser,
             };
@@ -138,6 +205,24 @@ async function resolvePinnedUserIdForDelete(rawRef: string): Promise<string | nu
     return resolveTargetUserId(normalized);
 }
 
+async function resolvePinnedTargetRefs(rawRef: string): Promise<{
+    normalizedRef: string;
+    targetUserId: string | null;
+    candidateRefs: string[];
+}> {
+    const normalizedRef = normalizeString(rawRef);
+    if (!normalizedRef) {
+        return { normalizedRef: "", targetUserId: null, candidateRefs: [] };
+    }
+
+    const targetUserId = await resolveTargetUserId(normalizedRef);
+    return {
+        normalizedRef,
+        targetUserId,
+        candidateRefs: uniqueRefs(normalizedRef, targetUserId),
+    };
+}
+
 export async function GET(request: NextRequest) {
     const session = await auth(request as any) /* eslint-disable-line @typescript-eslint/no-explicit-any */;
     const ownerId = await resolveSessionUserId(session as any) /* eslint-disable-line @typescript-eslint/no-explicit-any */;
@@ -150,17 +235,21 @@ export async function GET(request: NextRequest) {
     try {
         await tryEnsureProfileAndPostSchema();
         if (targetRef) {
-            const targetUserId = await resolveTargetUserId(targetRef);
+            const { targetUserId, candidateRefs } = await resolvePinnedTargetRefs(targetRef);
             if (!targetUserId) {
                 return NextResponse.json({ pinned: false, userId: targetRef });
             }
             const existing = await withPinnedUserTable(() =>
                 prisma.pinnedUser.findFirst({
-                    where: { ownerId, pinnedUserId: targetUserId },
-                    select: { id: true },
+                    where: { ownerId, pinnedUserId: { in: candidateRefs } },
+                    select: { id: true, pinnedUserId: true },
                 })
             );
-            return NextResponse.json({ pinned: !!existing, userId: targetUserId });
+            return NextResponse.json({
+                pinned: !!existing,
+                userId: targetUserId,
+                pinnedUserId: existing?.pinnedUserId || targetUserId,
+            });
         }
 
         const pinnedUsers = await fetchPinnedUsers(ownerId);
@@ -185,7 +274,8 @@ export async function POST(request: NextRequest) {
         await tryEnsureProfileAndPostSchema();
         const body = await request.json();
         const targetRef = normalizeString(body.pinnedUserId || body.userId || body.targetUserId);
-        const pinnedUserId = await resolveTargetUserId(targetRef);
+        const { targetUserId, candidateRefs } = await resolvePinnedTargetRefs(targetRef);
+        const pinnedUserId = targetUserId;
         if (!pinnedUserId) {
             return NextResponse.json({ error: "User not found" }, { status: 404 });
         }
@@ -195,7 +285,7 @@ export async function POST(request: NextRequest) {
 
         const existing = await withPinnedUserTable(() =>
             prisma.pinnedUser.findFirst({
-                where: { ownerId, pinnedUserId },
+                where: { ownerId, pinnedUserId: { in: candidateRefs } },
                 select: { id: true },
             })
         );
@@ -237,9 +327,10 @@ export async function DELETE(request: NextRequest) {
 
     try {
         await tryEnsureProfileAndPostSchema();
+        const candidateRefs = uniqueRefs(targetRef, pinnedUserId);
         const existing = await withPinnedUserTable(() =>
             prisma.pinnedUser.findFirst({
-                where: { ownerId, pinnedUserId },
+                where: { ownerId, pinnedUserId: { in: candidateRefs } },
                 select: { id: true },
             })
         );

@@ -27,6 +27,13 @@ interface PullRequestItem {
     }>;
 }
 
+interface DirectMessageItem {
+    id: string;
+    content: string;
+    createdAt: string;
+    sender?: { id: string; name: string | null; email: string | null };
+}
+
 type UiText = {
     back: string;
     title: string;
@@ -159,6 +166,7 @@ export default function CollaborationSettingsPage() {
     const [message, setMessage] = useState("");
 
     const [receivedPullRequests, setReceivedPullRequests] = useState<PullRequestItem[]>([]);
+    const [receivedMessages, setReceivedMessages] = useState<DirectMessageItem[]>([]);
     const [sentPullRequests, setSentPullRequests] = useState<PullRequestItem[]>([]);
     const [loadingData, setLoadingData] = useState(true);
 
@@ -172,25 +180,48 @@ export default function CollaborationSettingsPage() {
         if (!session?.user) return;
 
         setLoadingData(true);
+        let loadedAny = false;
         try {
-            const [settingsRes, pullRes] = await Promise.all([
+            const [settingsResult, pullResult, dmResult] = await Promise.allSettled([
                 fetch("/api/user/settings"),
                 fetch("/api/pull-requests"),
+                fetch("/api/direct-messages?mode=inbox"),
             ]);
 
-            if (settingsRes.ok) {
-                const settings = await settingsRes.json();
+            if (settingsResult.status === "fulfilled" && settingsResult.value.ok) {
+                const settings = await settingsResult.value.json();
                 setDmSetting((settings.dmSetting as DmSetting) || "OPEN");
+                loadedAny = true;
             }
 
-            if (pullRes.ok) {
-                const payload = await pullRes.json();
+            if (pullResult.status === "fulfilled" && pullResult.value.ok) {
+                const payload = await pullResult.value.json();
                 setReceivedPullRequests(Array.isArray(payload.received) ? payload.received : []);
                 setSentPullRequests(Array.isArray(payload.sent) ? payload.sent : []);
+                loadedAny = true;
+            } else {
+                setReceivedPullRequests([]);
+                setSentPullRequests([]);
             }
+
+            if (dmResult.status === "fulfilled" && dmResult.value.ok) {
+                const payload = await dmResult.value.json();
+                setReceivedMessages(Array.isArray(payload.messages) ? payload.messages : []);
+                loadedAny = true;
+            } else {
+                setReceivedMessages([]);
+            }
+
+            setMessage(loadedAny ? "" : text.loadFailed);
         } catch {
+            setReceivedMessages([]);
+            setReceivedPullRequests([]);
+            setSentPullRequests([]);
             setMessage(text.loadFailed);
         } finally {
+            if (!loadedAny) {
+                setMessage((current) => current || text.loadFailed);
+            }
             setLoadingData(false);
         }
     }, [session?.user, text.loadFailed]);
@@ -323,6 +354,26 @@ export default function CollaborationSettingsPage() {
                                         <summary style={{ cursor: "pointer", fontSize: 12, color: "var(--azuki)" }}>{text.viewContent}</summary>
                                         <div style={{ marginTop: 8, whiteSpace: "pre-wrap", fontSize: 13, lineHeight: 1.7 }}>{pr.content}</div>
                                     </details>
+                                </article>
+                            ))}
+                        </div>
+                    )}
+                </section>
+
+                <section style={{ marginBottom: 32 }}>
+                    <h2 className="settings-section-title">{text.incomingDmTitle}</h2>
+                    {loadingData ? (
+                        <p style={{ fontSize: 13, color: "var(--text-soft)" }}>{text.loading}</p>
+                    ) : receivedMessages.length === 0 ? (
+                        <p style={{ fontSize: 13, color: "var(--text-soft)" }}>{text.incomingDmEmpty}</p>
+                    ) : (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                            {receivedMessages.map((dm) => (
+                                <article key={dm.id} style={{ border: "1px solid var(--border)", borderRadius: 12, background: "var(--card)", padding: 14 }}>
+                                    <p style={{ fontSize: 12, color: "var(--text-soft)", marginBottom: 6 }}>
+                                        {text.from} {dm.sender?.name || dm.sender?.email || text.unknown} ・ {new Date(dm.createdAt).toLocaleString("ja-JP")}
+                                    </p>
+                                    <p style={{ whiteSpace: "pre-wrap", fontSize: 13 }}>{dm.content}</p>
                                 </article>
                             ))}
                         </div>

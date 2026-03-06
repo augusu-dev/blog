@@ -124,7 +124,7 @@ export default function SettingsPage() {
         return { ok: false as const, data: null };
     };
 
-    const hydrateFromPublicProfile = async () => {
+    const hydrateFromPublicProfile = async (): Promise<boolean> => {
         try {
             const sessionRes = await fetch("/api/auth/session", { cache: "no-store" });
             const sessionPayload = await sessionRes
@@ -134,7 +134,7 @@ export default function SettingsPage() {
                 (value, index, array): value is string =>
                     typeof value === "string" && value.trim().length > 0 && array.indexOf(value) === index
             );
-            if (!sessionRes.ok || refs.length === 0) return;
+            if (!sessionRes.ok || refs.length === 0) return false;
 
             let profile: Record<string, any> | null = null;
             for (const ref of refs) {
@@ -144,14 +144,17 @@ export default function SettingsPage() {
                     break;
                 }
             }
-            if (!profile) return;
+            if (!profile) return false;
 
             applySettingsPayload({
                 ...profile,
                 userId: profile.userId || refs[0] || "",
             });
+            writeCachedPublicUserId((session?.user as { id?: string } | undefined)?.id, profile.userId);
+            return true;
         } catch {
             // ignore fallback load failure
+            return false;
         }
     };
 
@@ -169,18 +172,23 @@ export default function SettingsPage() {
         if (hasOwn("links")) setLinks(Array.isArray(data.links) ? data.links : []);
     };
 
-    const loadSettingsData = async (): Promise<void> => {
+    const loadSettingsData = async (options?: { silent?: boolean }): Promise<boolean> => {
         const result = await loadJsonWithRetry("/api/user/settings", 4);
         const data = result.data;
-        if (!result.ok || !data || typeof data !== "object") {
-            setMessage("Error: settings-load");
-            await hydrateFromPublicProfile();
-            return;
+        if (result.ok && data && typeof data === "object") {
+            applySettingsPayload(data as Record<string, any>);
+            writeCachedPublicUserId((session?.user as { id?: string } | undefined)?.id, (data as Record<string, any>).userId);
+            setMessage("");
+            return true;
         }
 
-        applySettingsPayload(data as Record<string, any>);
-        writeCachedPublicUserId((session?.user as { id?: string } | undefined)?.id, (data as Record<string, any>).userId);
-        setMessage("");
+        const hydrated = await hydrateFromPublicProfile();
+        if (!hydrated && !options?.silent) {
+            setMessage("Error: settings-load");
+        } else if (hydrated) {
+            setMessage("");
+        }
+        return hydrated;
     };
 
     const loadMyPosts = async (): Promise<void> => {
@@ -287,6 +295,9 @@ export default function SettingsPage() {
             setEmail(session.user?.email || "");
             setName(session.user?.name || "");
             setImage((session.user as { image?: string | null } | undefined)?.image || "");
+            void loadSettingsData({ silent: true });
+            void loadMyPosts();
+            return;
 
             const loadSettings = async (): Promise<void> => {
                 const result = await loadJsonWithRetry("/api/user/settings", 4);

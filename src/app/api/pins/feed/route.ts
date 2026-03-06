@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { withPinnedUserTable } from "@/lib/pinnedUsers";
+import { getPostsByAuthorFallback, getUserProfileByRefFallback } from "@/lib/publicContentFallback";
 import { resolveSessionUserId } from "@/lib/sessionUser";
 import { tryEnsureProfileAndPostSchema } from "@/lib/schemaCompat";
 
@@ -21,6 +22,14 @@ const USER_PUBLIC_SELECT_LEGACY = {
     email: true,
     image: true,
 } as const;
+
+type PublicUser = {
+    id: string;
+    userId?: string | null;
+    name: string | null;
+    email: string | null;
+    image: string | null;
+};
 
 function isSchemaCompatibilityError(error: unknown): boolean {
     if (error && typeof error === "object" && "code" in error) {
@@ -48,101 +57,114 @@ async function fetchPinnedRows(ownerId: string) {
     );
 }
 
-async function fetchUsersByIds(userIds: string[]) {
-    if (userIds.length === 0) return [] as Array<{
-        id: string;
-        userId?: string | null;
-        name: string | null;
-        email: string | null;
-        image: string | null;
-    }>;
-
-    try {
-        return await prisma.user.findMany({
-            where: { id: { in: userIds } },
-            select: USER_PUBLIC_SELECT_WITH_USER_ID,
-        });
-    } catch (error) {
-        if (!isSchemaCompatibilityError(error)) {
-            throw error;
-        }
-    }
-
-    return prisma.user.findMany({
-        where: { id: { in: userIds } },
-        select: USER_PUBLIC_SELECT_LEGACY,
-    });
+function normalizeRef(value: string | null | undefined): string {
+    return typeof value === "string" ? value.trim().toLowerCase() : "";
 }
 
-async function fetchPinnedPosts(pinnedUserIds: string[]) {
+function registerUserRef(map: Map<string, PublicUser>, user: PublicUser) {
+    const idRef = normalizeRef(user.id);
+    const publicRef = normalizeRef(user.userId);
+
+    if (idRef) {
+        map.set(idRef, user);
+    }
+    if (publicRef) {
+        map.set(publicRef, user);
+    }
+}
+
+async function fetchUsersByRefs(userRefs: string[]) {
+    const refs = [...new Set(userRefs.map((ref) => ref.trim()).filter(Boolean))];
+    if (refs.length === 0) return [] as PublicUser[];
+
+    const userById = new Map<string, PublicUser>();
+    const userByRef = new Map<string, PublicUser>();
+
     try {
-        const posts = await prisma.post.findMany({
+        const users = await prisma.user.findMany({
             where: {
-                published: true,
-                authorId: { in: pinnedUserIds },
+                OR: [
+                    { id: { in: refs } },
+                    { userId: { in: refs.map((ref) => ref.toLowerCase()) } },
+                ],
             },
-            orderBy: { createdAt: "desc" },
-            take: FEED_LIMIT,
-            include: {
-                author: {
-                    select: USER_PUBLIC_SELECT_WITH_USER_ID,
-                },
-            },
+            select: USER_PUBLIC_SELECT_WITH_USER_ID,
         });
-        return posts;
+        for (const user of users) {
+            userById.set(user.id, user);
+            registerUserRef(userByRef, user);
+        }
     } catch (error) {
         if (!isSchemaCompatibilityError(error)) {
             throw error;
         }
-    }
 
-    try {
-        return await prisma.post.findMany({
-            where: {
-                published: true,
-                authorId: { in: pinnedUserIds },
-            },
-            orderBy: { createdAt: "desc" },
-            take: FEED_LIMIT,
-            include: {
-                author: {
-                    select: USER_PUBLIC_SELECT_LEGACY,
-                },
-            },
+        const legacyUsers = await prisma.user.findMany({
+            where: { id: { in: refs } },
+            select: USER_PUBLIC_SELECT_LEGACY,
         });
-    } catch (error) {
-        if (!isSchemaCompatibilityError(error)) {
-            throw error;
+        for (const user of legacyUsers) {
+            const normalizedUser: PublicUser = { ...user, userId: null };
+            userById.set(normalizedUser.id, normalizedUser);
+            registerUserRef(userByRef, normalizedUser);
         }
     }
 
-    const minimalPosts = await prisma.post.findMany({
-        where: {
-            authorId: { in: pinnedUserIds },
-        },
-        orderBy: { createdAt: "desc" },
-        take: FEED_LIMIT,
-        select: {
-            id: true,
-            title: true,
-            content: true,
-            createdAt: true,
-            authorId: true,
-            author: {
-                select: USER_PUBLIC_SELECT_LEGACY,
-            },
-        },
+    const unresolvedRefs = refs.filter((ref) => !userByRef.has(normalizeRef(ref)));
+    if (unresolvedRefs.length > 0) {
+        const profiles = await Promise.all(
+            unresolvedRefs.map((ref) =>
+                getUserProfileByRefFallback(ref).catch(() => null)
+            )
+        );
+
+        for (const profile of profiles) {
+            if (!profile) continue;
+            const user: PublicUser = {
+                id: profile.id,
+                userId: profile.userId ?? null,
+                name: profile.name,
+                email: profile.email,
+                image: profile.image,
+            };
+            userById.set(user.id, user);
+            registerUserRef(userByRef, user);
+        }
+    }
+
+    return Array.from(userById.values());
+}
+
+async function fetchPinnedPosts(pinnedUsers: PublicUser[]) {
+    const authorRefs = [...new Set(
+        pinnedUsers.flatMap((user) => [user.id, user.userId].filter((ref): ref is string => typeof ref === "string" && ref.trim().length > 0))
+    )];
+    if (authorRefs.length === 0) {
+        return [];
+    }
+
+    const posts = await getPostsByAuthorFallback(authorRefs, {
+        publishedOnly: true,
+        limit: FEED_LIMIT,
     });
+    const authorMap = new Map<string, PublicUser>();
 
-    return minimalPosts.map((post) => ({
-        ...post,
-        excerpt: "",
-        headerImage: null,
-        tags: [] as string[],
-        published: true,
-        pinned: false,
-        updatedAt: post.createdAt,
-    }));
+    for (const user of pinnedUsers) {
+        registerUserRef(authorMap, user);
+    }
+
+    return posts
+        .map((post) => {
+            const author = authorMap.get(normalizeRef(post.authorId));
+            if (!author) return null;
+            return {
+                ...post,
+                authorId: author.id,
+                author,
+            };
+        })
+        .filter((post): post is NonNullable<typeof post> => !!post)
+        .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime());
 }
 
 export async function GET(req: Request) {
@@ -156,32 +178,34 @@ export async function GET(req: Request) {
         await tryEnsureProfileAndPostSchema();
         const pinnedRows = await fetchPinnedRows(ownerId);
 
-        const pinnedUserIds = pinnedRows.map((row) => row.pinnedUserId);
-        if (pinnedUserIds.length === 0) {
+        const pinnedUserRefs = pinnedRows.map((row) => row.pinnedUserId);
+        if (pinnedUserRefs.length === 0) {
             return NextResponse.json({ pinnedCount: 0, pinnedUsers: [], posts: [] });
         }
 
-        const users = await fetchUsersByIds([...new Set(pinnedUserIds)]);
-        const userMap = new Map(users.map((user) => [user.id, user]));
+        const users = await fetchUsersByRefs(pinnedUserRefs);
+        const userMap = new Map<string, PublicUser>();
+        for (const user of users) {
+            registerUserRef(userMap, user);
+        }
 
         const normalizedPinnedRows = pinnedRows
             .map((row) => {
-                const pinnedUser = userMap.get(row.pinnedUserId);
+                const pinnedUser = userMap.get(normalizeRef(row.pinnedUserId));
                 if (!pinnedUser) return null;
                 return {
-                    pinnedUserId: row.pinnedUserId,
+                    pinnedUserId: pinnedUser.id,
                     createdAt: row.createdAt,
                     pinnedUser,
                 };
             })
             .filter((row): row is NonNullable<typeof row> => !!row);
 
-        const normalizedPinnedUserIds = normalizedPinnedRows.map((row) => row.pinnedUserId);
-        if (normalizedPinnedUserIds.length === 0) {
+        if (normalizedPinnedRows.length === 0) {
             return NextResponse.json({ pinnedCount: 0, pinnedUsers: [], posts: [] });
         }
 
-        const posts = await fetchPinnedPosts(normalizedPinnedUserIds);
+        const posts = await fetchPinnedPosts(normalizedPinnedRows.map((row) => row.pinnedUser));
 
         return NextResponse.json({
             pinnedCount: normalizedPinnedRows.length,
