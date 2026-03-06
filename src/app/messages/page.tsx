@@ -160,6 +160,47 @@ export default function MessagesPage() {
         [status]
     );
 
+    const warmThreadCache = useCallback(
+        async (threadIds: string[]) => {
+            const uniqueThreadIds = [...new Set(threadIds.filter(Boolean))].slice(0, 3);
+
+            await Promise.all(
+                uniqueThreadIds.map(async (threadId) => {
+                    if (threadMessagesCacheRef.current.has(threadId)) {
+                        return;
+                    }
+
+                    try {
+                        const res = await fetchReadWithRetry(
+                            `/api/direct-messages?mode=thread&userId=${encodeURIComponent(threadId)}`,
+                            1
+                        );
+                        const payload = await res.json().catch(() => ({}));
+                        if (!res.ok) {
+                            return;
+                        }
+
+                        const nextMessages = Array.isArray(payload.messages)
+                            ? (payload.messages as DirectMessage[])
+                            : [];
+                        threadMessagesCacheRef.current.set(threadId, nextMessages);
+
+                        const payloadUser =
+                            payload.user && typeof payload.user === "object"
+                                ? (payload.user as ThreadUser)
+                                : deriveThreadUserFromMessages(nextMessages, threadId);
+                        if (payloadUser?.id) {
+                            cacheThreadUser(payloadUser);
+                        }
+                    } catch {
+                        // Ignore background warm-up failures.
+                    }
+                })
+            );
+        },
+        [cacheThreadUser, deriveThreadUserFromMessages, fetchReadWithRetry]
+    );
+
     const syncThreadFromMessage = useCallback(
         (nextMessage: DirectMessage) => {
             const otherUser =
@@ -227,6 +268,7 @@ export default function MessagesPage() {
             const nextThreads = Array.isArray(payload.threads) ? (payload.threads as Thread[]) : [];
             setThreads(nextThreads);
             nextThreads.forEach((thread) => cacheThreadUser(thread.user));
+            void warmThreadCache(nextThreads.map((thread) => thread.id));
 
             if (presetTarget) {
                 setSelectedUserId(presetTarget);
@@ -238,7 +280,7 @@ export default function MessagesPage() {
         } finally {
             setLoadingThreads(false);
         }
-    }, [cacheThreadUser, fetchReadWithRetry, presetTarget, session?.user, status]);
+    }, [cacheThreadUser, fetchReadWithRetry, presetTarget, session?.user, status, warmThreadCache]);
 
     useEffect(() => {
         if (status !== "authenticated" || !session?.user) return;

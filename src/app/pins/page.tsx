@@ -41,6 +41,9 @@ type FeedPayload = {
     posts: PinFeedPost[];
 };
 
+const PINS_FEED_CACHE_KEY = "pins-feed-cache";
+const PINS_FEED_CACHE_TTL_MS = 60 * 1000;
+
 function authorLabel(author: { name: string | null; email: string | null }): string {
     return author.name || author.email || "Anonymous";
 }
@@ -69,6 +72,46 @@ function formatDateTime(value: string): string {
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+function readCachedFeed(): FeedPayload | null {
+    if (typeof window === "undefined") return null;
+
+    try {
+        const raw = sessionStorage.getItem(PINS_FEED_CACHE_KEY);
+        if (!raw) return null;
+
+        const parsed = JSON.parse(raw) as { savedAt?: unknown; payload?: FeedPayload };
+        const savedAt = typeof parsed.savedAt === "number" ? parsed.savedAt : 0;
+        if (!parsed.payload || Date.now() - savedAt > PINS_FEED_CACHE_TTL_MS) {
+            sessionStorage.removeItem(PINS_FEED_CACHE_KEY);
+            return null;
+        }
+
+        return {
+            pinnedCount: Number(parsed.payload.pinnedCount || 0),
+            pinnedUsers: Array.isArray(parsed.payload.pinnedUsers) ? parsed.payload.pinnedUsers : [],
+            posts: Array.isArray(parsed.payload.posts) ? parsed.payload.posts.slice(0, 15) : [],
+        };
+    } catch {
+        return null;
+    }
+}
+
+function writeCachedFeed(payload: FeedPayload): void {
+    if (typeof window === "undefined") return;
+
+    try {
+        sessionStorage.setItem(
+            PINS_FEED_CACHE_KEY,
+            JSON.stringify({
+                savedAt: Date.now(),
+                payload,
+            })
+        );
+    } catch {
+        // Ignore cache write failures.
+    }
+}
+
 export default function PinsPage() {
     const { data: session, status } = useSession();
     const router = useRouter();
@@ -77,6 +120,7 @@ export default function PinsPage() {
     const [deletingPinId, setDeletingPinId] = useState<string | null>(null);
     const [payload, setPayload] = useState<FeedPayload>({ pinnedCount: 0, pinnedUsers: [], posts: [] });
     const [error, setError] = useState("");
+    const hasVisibleFeed = payload.pinnedUsers.length > 0 || payload.posts.length > 0;
 
     useEffect(() => {
         if (status === "unauthenticated") {
@@ -84,11 +128,19 @@ export default function PinsPage() {
         }
     }, [router, status]);
 
+    useEffect(() => {
+        const cached = readCachedFeed();
+        if (!cached) return;
+        setPayload(cached);
+    }, []);
+
     const loadFeed = useCallback(
         async (attempt = 0): Promise<void> => {
             if (status !== "authenticated" || !session?.user) return;
 
-            setLoading(true);
+            if (!hasVisibleFeed || attempt > 0) {
+                setLoading(true);
+            }
             if (attempt === 0) {
                 setError("");
             }
@@ -102,8 +154,8 @@ export default function PinsPage() {
 
                 if (!res.ok) {
                     const shouldRetry = res.status === 401 || res.status >= 500;
-                    if (shouldRetry && attempt < 3) {
-                        await wait(350 * (attempt + 1));
+                    if (shouldRetry && attempt < 1) {
+                        await wait(160 * (attempt + 1));
                         await loadFeed(attempt + 1);
                         return;
                     }
@@ -111,15 +163,17 @@ export default function PinsPage() {
                     return;
                 }
 
-                setPayload({
+                const nextPayload = {
                     pinnedCount: Number(data.pinnedCount || 0),
                     pinnedUsers: Array.isArray(data.pinnedUsers) ? (data.pinnedUsers as PinUser[]) : [],
-                    posts: Array.isArray(data.posts) ? (data.posts as PinFeedPost[]) : [],
-                });
+                    posts: Array.isArray(data.posts) ? (data.posts as PinFeedPost[]).slice(0, 15) : [],
+                };
+                setPayload(nextPayload);
+                writeCachedFeed(nextPayload);
                 setError("");
             } catch {
-                if (attempt < 3) {
-                    await wait(350 * (attempt + 1));
+                if (attempt < 1) {
+                    await wait(160 * (attempt + 1));
                     await loadFeed(attempt + 1);
                     return;
                 }
@@ -128,7 +182,7 @@ export default function PinsPage() {
                 setLoading(false);
             }
         },
-        [session?.user, status]
+        [hasVisibleFeed, session?.user, status]
     );
 
     useEffect(() => {

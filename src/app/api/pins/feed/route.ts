@@ -4,9 +4,8 @@ import { prisma } from "@/lib/db";
 import { withPinnedUserTable } from "@/lib/pinnedUsers";
 import { getPostsByAuthorFallback, getUserProfileByRefFallback } from "@/lib/publicContentFallback";
 import { resolveSessionUserId } from "@/lib/sessionUser";
-import { tryEnsureProfileAndPostSchema } from "@/lib/schemaCompat";
 
-const FEED_LIMIT = 120;
+const FEED_LIMIT = 15;
 
 const USER_PUBLIC_SELECT_WITH_USER_ID = {
     id: true,
@@ -143,15 +142,61 @@ async function fetchPinnedPosts(pinnedUsers: PublicUser[]) {
         return [];
     }
 
-    const posts = await getPostsByAuthorFallback(authorRefs, {
-        publishedOnly: true,
-        limit: FEED_LIMIT,
-    });
     const authorMap = new Map<string, PublicUser>();
 
     for (const user of pinnedUsers) {
         registerUserRef(authorMap, user);
     }
+
+    try {
+        const posts = await prisma.post.findMany({
+            where: {
+                authorId: { in: authorRefs },
+                published: true,
+            },
+            orderBy: { createdAt: "desc" },
+            take: FEED_LIMIT,
+            select: {
+                id: true,
+                title: true,
+                content: true,
+                excerpt: true,
+                headerImage: true,
+                tags: true,
+                published: true,
+                pinned: true,
+                createdAt: true,
+                updatedAt: true,
+                authorId: true,
+            },
+        });
+
+        const normalizedPosts = posts
+            .map((post) => {
+                const author = authorMap.get(normalizeRef(post.authorId));
+                if (!author) return null;
+                return {
+                    ...post,
+                    excerpt: post.excerpt || "",
+                    authorId: author.id,
+                    author,
+                };
+            })
+            .filter((post): post is NonNullable<typeof post> => !!post);
+
+        if (normalizedPosts.length > 0) {
+            return normalizedPosts;
+        }
+    } catch (error) {
+        if (!isSchemaCompatibilityError(error)) {
+            throw error;
+        }
+    }
+
+    const posts = await getPostsByAuthorFallback(authorRefs, {
+        publishedOnly: true,
+        limit: FEED_LIMIT,
+    });
 
     return posts
         .map((post) => {
@@ -175,7 +220,6 @@ export async function GET() {
     }
 
     try {
-        await tryEnsureProfileAndPostSchema();
         const pinnedRows = await fetchPinnedRows(ownerId);
 
         const pinnedUserRefs = pinnedRows.map((row) => row.pinnedUserId);
