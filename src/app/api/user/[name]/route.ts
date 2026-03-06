@@ -395,6 +395,18 @@ type UserProfileCandidate = {
     posts?: unknown[];
 };
 
+function shouldHydrateUserProfileFromFallback(candidate: UserProfileCandidate | null): boolean {
+    if (!candidate) return true;
+
+    return (
+        !("headerImage" in candidate) ||
+        !("bio" in candidate) ||
+        !("aboutMe" in candidate) ||
+        !("links" in candidate) ||
+        !("posts" in candidate)
+    );
+}
+
 function mergeUserProfileCandidates(
     primary: UserProfileCandidate | null,
     secondary: UserProfileCandidate | null
@@ -428,10 +440,13 @@ export async function GET(req: Request, { params }: { params: Promise<{ name: st
 
     try {
         const prismaUser = await findUserProfileByRef(userRef, userRefLower);
-        const rawUser = await getUserProfileByRefFallback(userRef);
-        const sessionUser = await findCurrentSessionUserFallback(req, userRef);
+        const rawUser = shouldHydrateUserProfileFromFallback(prismaUser)
+            ? await getUserProfileByRefFallback(userRef)
+            : null;
+        const mergedUser = mergeUserProfileCandidates(prismaUser, rawUser);
+        const sessionUser = mergedUser ? null : await findCurrentSessionUserFallback(req, userRef);
         const resolvedUser = mergeUserProfileCandidates(
-            mergeUserProfileCandidates(prismaUser, rawUser),
+            mergedUser,
             sessionUser
         );
 
@@ -447,11 +462,14 @@ export async function GET(req: Request, { params }: { params: Promise<{ name: st
             name: resolvedUser.name ?? null,
             email: resolvedUser.email ?? null,
         });
-        const fallbackPosts = await getPostsByAuthorFallback([resolvedUser.id, ensuredUserId || null], {
-            publishedOnly: true,
-            limit: 300,
-        });
         const resolvedPosts = Array.isArray(resolvedUser.posts) ? resolvedUser.posts : [];
+        const fallbackPosts =
+            resolvedPosts.length === 0
+                ? await getPostsByAuthorFallback([resolvedUser.id, ensuredUserId || null], {
+                      publishedOnly: true,
+                      limit: 300,
+                  })
+                : [];
 
         return NextResponse.json({
             ...resolvedUser,

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { signIn, useSession } from "next-auth/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { resolveClientPublicUserId, writeCachedPublicUserId } from "@/lib/clientPublicUserId";
 
 type ProvidersResponse = Record<string, { id: string; name: string }>;
 
@@ -37,12 +38,13 @@ export default function LoginPage() {
             typeof expectedEmail === "string" ? expectedEmail.trim().toLowerCase() : "";
         const normalizedSessionEmail =
             typeof sessionUser?.email === "string" ? sessionUser.email.trim().toLowerCase() : "";
+        const cachedPublicUserId = resolveClientPublicUserId(sessionUser?.id, sessionUser?.userId);
 
-        if (sessionUser?.userId && (!normalizedExpectedEmail || normalizedSessionEmail === normalizedExpectedEmail)) {
-            return buildMyPageHref(sessionUser.userId, sessionUser.id);
+        if (cachedPublicUserId && (!normalizedExpectedEmail || normalizedSessionEmail === normalizedExpectedEmail)) {
+            return buildMyPageHref(cachedPublicUserId, sessionUser?.id);
         }
 
-        for (let attempt = 0; attempt < 6; attempt += 1) {
+        for (let attempt = 0; attempt < 3; attempt += 1) {
             try {
                 const settingsRes = await fetch("/api/user/settings", { cache: "no-store" });
                 if (settingsRes.ok) {
@@ -56,6 +58,7 @@ export default function LoginPage() {
                             ? settingsPayload.email.trim().toLowerCase()
                             : "";
                     if (!normalizedExpectedEmail || resolvedEmail === normalizedExpectedEmail) {
+                        writeCachedPublicUserId(settingsPayload.id, settingsPayload.userId);
                         return buildMyPageHref(settingsPayload.userId, settingsPayload.id);
                     }
                 }
@@ -70,7 +73,8 @@ export default function LoginPage() {
                             ? payload.user.email.trim().toLowerCase()
                             : "";
                     if (!normalizedExpectedEmail || resolvedEmail === normalizedExpectedEmail) {
-                        return buildMyPageHref(null, payload.user?.id);
+                        writeCachedPublicUserId(payload.user?.id, payload.user?.userId);
+                        return buildMyPageHref(payload.user?.userId, payload.user?.id);
                     }
                 }
             } catch {

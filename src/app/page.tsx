@@ -72,9 +72,12 @@ export default function HomePage() {
     const loadPosts = async (attempt = 0): Promise<void> => {
       setPostsError("");
       try {
-        const res = await fetch("/api/posts", { cache: "no-store" });
+        const res = await fetch("/api/posts");
         const data = await res.json().catch(() => []);
         if (!res.ok || !Array.isArray(data)) {
+          if (res.status >= 400 && res.status < 500) {
+            throw new Error("Failed to fetch posts");
+          }
           if (attempt < 2) {
             await new Promise((resolve) => setTimeout(resolve, 350));
             await loadPosts(attempt + 1);

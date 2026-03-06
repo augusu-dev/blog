@@ -157,6 +157,9 @@ export default function UserPage() {
                         if (res.status === 404) {
                             return { ok: false as const, data: null, status: res.status };
                         }
+                        if (res.status >= 400 && res.status < 500) {
+                            return { ok: false as const, data: null, status: res.status };
+                        }
                     } catch {
                         // retry
                     }

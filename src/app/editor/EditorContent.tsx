@@ -160,6 +160,9 @@ export default function EditorPage() {
                     setMyPosts(data);
                     return;
                 }
+                if (res.status >= 400 && res.status < 500) {
+                    return;
+                }
             } catch (e) {
                 if (attempt === 2) {
                     console.warn("Failed to load posts:", e);

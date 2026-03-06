@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { ThemeName, useTheme } from "@/contexts/ThemeContext";
+import { writeCachedPublicUserId } from "@/lib/clientPublicUserId";
 
 interface SocialLink {
     label: string;
@@ -108,6 +109,9 @@ export default function SettingsPage() {
                 if (res.ok) {
                     return { ok: true as const, data };
                 }
+                if (res.status >= 400 && res.status < 500) {
+                    return { ok: false as const, data: null };
+                }
             } catch {
                 // retry
             }
@@ -175,6 +179,7 @@ export default function SettingsPage() {
         }
 
         applySettingsPayload(data as Record<string, any>);
+        writeCachedPublicUserId((session?.user as { id?: string } | undefined)?.id, (data as Record<string, any>).userId);
         setMessage("");
     };
 
@@ -228,6 +233,10 @@ export default function SettingsPage() {
 
             if (payload.user && typeof payload.user === "object") {
                 applySettingsPayload(payload.user as Record<string, any>);
+                writeCachedPublicUserId(
+                    (session?.user as { id?: string } | undefined)?.id,
+                    (payload.user as Record<string, any>).userId
+                );
             }
 
             if (payload.user?.theme && payload.user?.themeCustomColor) {
@@ -331,6 +340,10 @@ export default function SettingsPage() {
             if (res.ok) {
                 if (payload && typeof payload === "object") {
                     applySettingsPayload(payload as Record<string, any>);
+                    writeCachedPublicUserId(
+                        (session?.user as { id?: string } | undefined)?.id,
+                        (payload as Record<string, any>).userId
+                    );
                 }
                 commitTheme(
                     (payload.theme as ThemeName | undefined) || theme,

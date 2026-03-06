@@ -23,6 +23,8 @@ type ShortPostItem = {
 };
 
 const SHORT_POST_LIMIT = 300;
+const LOAD_ERROR_MESSAGE = "短文ポストの読み込みに失敗しました。";
+const SUBMIT_ERROR_MESSAGE = "短文ポストの投稿に失敗しました。";
 
 function formatDate(value: string): string {
     try {
@@ -94,15 +96,19 @@ export default function HomeShortPosts() {
     const loadPosts = useCallback(async (attempt = 0): Promise<void> => {
         setLoading(true);
         try {
-            const res = await fetch("/api/short-posts", { cache: "no-store" });
+            const res = await fetch("/api/short-posts");
             const payload = await res.json().catch(() => []);
             if (!res.ok) {
+                if (res.status >= 400 && res.status < 500) {
+                    setError(LOAD_ERROR_MESSAGE);
+                    return;
+                }
                 if (attempt < 2) {
                     await new Promise((resolve) => setTimeout(resolve, 350));
                     await loadPosts(attempt + 1);
                     return;
                 }
-                setError("短文ポストの読み込みに失敗しました。");
+                setError(LOAD_ERROR_MESSAGE);
                 return;
             }
             setPosts(Array.isArray(payload) ? payload.slice(0, 30) : []);
@@ -113,7 +119,7 @@ export default function HomeShortPosts() {
                 await loadPosts(attempt + 1);
                 return;
             }
-            setError("短文ポストの読み込みに失敗しました。");
+            setError(LOAD_ERROR_MESSAGE);
         } finally {
             setLoading(false);
         }
@@ -146,7 +152,7 @@ export default function HomeShortPosts() {
             });
             const payload = await res.json().catch(() => ({} as { error?: string }));
             if (!res.ok) {
-                setError(payload.error || "投稿に失敗しました。");
+                setError(payload.error || SUBMIT_ERROR_MESSAGE);
                 return;
             }
 
@@ -154,7 +160,7 @@ export default function HomeShortPosts() {
             setOpenComposer(false);
             setPosts((prev) => [payload as ShortPostItem, ...prev].slice(0, 30));
         } catch {
-            setError("投稿に失敗しました。");
+            setError(SUBMIT_ERROR_MESSAGE);
         } finally {
             setSubmitting(false);
         }
@@ -176,11 +182,11 @@ export default function HomeShortPosts() {
                     </Link>
                 </div>
 
-                {error && (
+                {error ? (
                     <div className="login-message login-error" style={{ marginBottom: 12 }}>
                         {error}
                     </div>
-                )}
+                ) : null}
 
                 <div
                     style={{
@@ -257,19 +263,19 @@ export default function HomeShortPosts() {
                 title="短文ポストを投稿"
                 onClick={openComposerModal}
             >
-                ✍
+                ✍️
             </button>
 
-            {openComposer && (
+            {openComposer ? (
                 <div className="short-post-modal-backdrop" onClick={() => setOpenComposer(false)}>
-                    <div className="short-post-modal" onClick={(e) => e.stopPropagation()}>
+                    <div className="short-post-modal" onClick={(event) => event.stopPropagation()}>
                         <h3 style={{ marginBottom: 8, fontFamily: "var(--serif)", fontWeight: 400 }}>短文ポスト</h3>
                         <textarea
                             className="login-input"
                             rows={5}
                             maxLength={SHORT_POST_LIMIT}
                             value={content}
-                            onChange={(e) => setContent(e.target.value)}
+                            onChange={(event) => setContent(event.target.value)}
                             placeholder="300文字以内で投稿"
                             style={{ resize: "vertical", fontFamily: "var(--sans)", marginBottom: 8 }}
                         />
@@ -297,7 +303,7 @@ export default function HomeShortPosts() {
                         </div>
                     </div>
                 </div>
-            )}
+            ) : null}
         </>
     );
 }

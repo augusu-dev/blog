@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
+import { resolveClientPublicUserId } from "@/lib/clientPublicUserId";
 
 function buildMyPageHref(rawPublicUserId?: string | null) {
     const publicUserId = typeof rawPublicUserId === "string" ? rawPublicUserId.trim() : "";
@@ -14,7 +15,10 @@ function buildMyPageHref(rawPublicUserId?: string | null) {
 export function useMyPageHref(): string {
     const { data: session, status } = useSession();
     const sessionUser = session?.user as { id?: string | null; userId?: string | null } | undefined;
-    const fallbackHref = useMemo(() => buildMyPageHref(sessionUser?.userId), [sessionUser?.userId]);
+    const fallbackHref = useMemo(
+        () => buildMyPageHref(resolveClientPublicUserId(sessionUser?.id, sessionUser?.userId)),
+        [sessionUser?.id, sessionUser?.userId]
+    );
     const [href, setHref] = useState(fallbackHref);
 
     useEffect(() => {
@@ -22,31 +26,19 @@ export function useMyPageHref(): string {
     }, [fallbackHref]);
 
     useEffect(() => {
-        if (status !== "authenticated") return;
+        if (status !== "authenticated" || typeof window === "undefined") return;
 
-        let active = true;
-
-        const resolveHref = async () => {
-            try {
-                const res = await fetch("/api/user/settings", { cache: "no-store" });
-                const payload = await res.json().catch(() => ({} as { id?: string | null; userId?: string | null }));
-                if (!active || !res.ok) return;
-
-                const nextHref = buildMyPageHref(payload.userId);
-                if (nextHref) {
-                    setHref(nextHref);
-                }
-            } catch {
-                // Keep the id-based fallback.
-            }
+        const syncHref = () => {
+            setHref(buildMyPageHref(resolveClientPublicUserId(sessionUser?.id, sessionUser?.userId)));
         };
 
-        void resolveHref();
+        syncHref();
+        window.addEventListener("storage", syncHref);
 
         return () => {
-            active = false;
+            window.removeEventListener("storage", syncHref);
         };
-    }, [status]);
+    }, [sessionUser?.id, sessionUser?.userId, status]);
 
     return href;
 }

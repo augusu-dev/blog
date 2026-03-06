@@ -308,6 +308,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
                 setCommittedTheme(cachedTheme.theme);
                 setCommittedCustomColor(cachedTheme.customColor);
             });
+            serverThemeRequestedUserRef.current = userRef;
+            return;
         }
 
         if (serverThemeRequestedUserRef.current === userRef) {

@@ -268,6 +268,19 @@ function mergeUserSettingsPayload(
     };
 }
 
+function shouldHydrateUserSettingsFromRaw(
+    user: UserSettingsPayload | RawSettingsRow | null
+): boolean {
+    if (!user) return true;
+
+    return (
+        !("headerImage" in user) ||
+        !("bio" in user) ||
+        !("aboutMe" in user) ||
+        !("links" in user)
+    );
+}
+
 async function fetchUserSettingsRecord(userId: string) {
     try {
         const user = await prisma.user.findUnique({
@@ -360,11 +373,11 @@ export async function GET(req: Request) {
     }
 
     try {
-        const [{ user: fetchedUser }, raw] = await Promise.all([
-            fetchUserSettingsRecord(userId),
-            fetchUserSettingsRecordRaw(userId),
-        ]);
-        const user = mergeUserSettingsPayload(fetchedUser, raw.user);
+        const { user: fetchedUser } = await fetchUserSettingsRecord(userId);
+        const rawUser = shouldHydrateUserSettingsFromRaw(fetchedUser)
+            ? (await fetchUserSettingsRecordRaw(userId)).user
+            : null;
+        const user = mergeUserSettingsPayload(fetchedUser, rawUser);
         if (!user) {
             return NextResponse.json({ error: "User not found" }, { status: 404 });
         }
@@ -521,8 +534,10 @@ export async function PUT(request: NextRequest) {
         }
 
         const refreshed = await fetchUserSettingsRecord(userId);
-        const refreshedRaw = await fetchUserSettingsRecordRaw(userId);
-        const responseUser = mergeUserSettingsPayload(refreshed.user || updatedUser, refreshedRaw.user);
+        const refreshedRawUser = shouldHydrateUserSettingsFromRaw(refreshed.user || updatedUser)
+            ? (await fetchUserSettingsRecordRaw(userId)).user
+            : null;
+        const responseUser = mergeUserSettingsPayload(refreshed.user || updatedUser, refreshedRawUser);
         if (!responseUser) {
             return NextResponse.json({ error: "User not found" }, { status: 404 });
         }
