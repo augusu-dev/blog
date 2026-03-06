@@ -274,9 +274,8 @@ export default function UserPage() {
             return;
         }
 
-        const nextHref = `/user/${encodeURIComponent(canonicalUserId)}${
-            searchParamsString ? `?${searchParamsString}` : ""
-        }`;
+        const nextHref = `/user/${encodeURIComponent(canonicalUserId)}${searchParamsString ? `?${searchParamsString}` : ""
+            }`;
         router.replace(nextHref);
     }, [router, searchParamsString, user?.userId, userName]);
 
@@ -365,12 +364,12 @@ export default function UserPage() {
             tags: post.tags || [],
             author: user
                 ? {
-                      id: user.id,
-                      userId: user.userId || null,
-                      name: user.name || null,
-                      email: user.email || null,
-                      image: user.image || null,
-                  }
+                    id: user.id,
+                    userId: user.userId || null,
+                    name: user.name || null,
+                    email: user.email || null,
+                    image: user.image || null,
+                }
                 : null,
         });
         setOverlayPostId(post.id);
@@ -458,13 +457,7 @@ export default function UserPage() {
     const recommendProducts = products.slice(0, 2);
 
     const pinnedBlogs = posts.filter((p: any) => p.pinned);
-    let recommendBlogs = [...pinnedBlogs];
-    if (recommendBlogs.length < 3) {
-        const unpinnedBlogs = posts.filter((p: any) => !p.pinned);
-        recommendBlogs = [...recommendBlogs, ...unpinnedBlogs.slice(0, 3 - recommendBlogs.length)];
-    } else {
-        recommendBlogs = recommendBlogs.slice(0, 3);
-    }
+    const recommendBlogs = pinnedBlogs.slice(0, 3);
 
     const scrollTo = (id: string) => {
         const el = document.getElementById(id);
@@ -485,10 +478,10 @@ export default function UserPage() {
             const res = isPinned
                 ? await fetch(`/api/pins?userId=${encodeURIComponent(user.id)}`, { method: "DELETE" })
                 : await fetch("/api/pins", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ userId: user.id }),
-                  });
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ userId: user.id }),
+                });
 
             if (res.ok) {
                 setIsPinned(!isPinned);
@@ -578,10 +571,10 @@ export default function UserPage() {
                                     style={
                                         isPinned
                                             ? {
-                                                  background: "rgba(146,92,92,0.14)",
-                                                  borderColor: "rgba(146,92,92,0.35)",
-                                                  color: "var(--azuki-deep)",
-                                              }
+                                                background: "rgba(146,92,92,0.14)",
+                                                borderColor: "rgba(146,92,92,0.35)",
+                                                color: "var(--azuki-deep)",
+                                            }
                                             : undefined
                                     }
                                 >

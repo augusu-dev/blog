@@ -98,7 +98,22 @@ export default function UnreadDmButton({
                 </svg>
             </span>
             {unreadCount > 0 ? (
-                <span className="dm-unread-badge">{unreadCount > MAX_BADGE ? `${MAX_BADGE}+` : unreadCount}</span>
+                <span
+                    style={{
+                        position: "absolute",
+                        top: "-4px",
+                        right: "-6px",
+                        fontSize: "9px",
+                        fontWeight: "bold",
+                        backgroundColor: "#e84545",
+                        color: "white",
+                        borderRadius: "10px",
+                        padding: "2px 5px",
+                        lineHeight: "1",
+                    }}
+                >
+                    {unreadCount > MAX_BADGE ? `${MAX_BADGE}+` : unreadCount}
+                </span>
             ) : null}
         </Link>
     );

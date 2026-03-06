@@ -274,6 +274,7 @@ export default function SettingsPage() {
 
     useEffect(() => {
         if (session && !loadedRef.current) {
+            loadedRef.current = true;
             setEmail(session.user?.email || "");
             setName(session.user?.name || "");
             setImage((session.user as { image?: string | null } | undefined)?.image || "");
@@ -287,7 +288,6 @@ export default function SettingsPage() {
                     return;
                 }
                 applySettingsPayload(data as Record<string, any>);
-                loadedRef.current = true;
                 setMessage("");
             };
 
