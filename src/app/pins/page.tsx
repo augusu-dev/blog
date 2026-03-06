@@ -82,31 +82,32 @@ export default function PinsPage() {
         if (status === "unauthenticated") {
             router.push("/login");
         }
-    }, [status, router]);
+    }, [router, status]);
 
     const loadFeed = useCallback(
         async (attempt = 0): Promise<void> => {
             if (status !== "authenticated" || !session?.user) return;
 
             setLoading(true);
-            setError("");
+            if (attempt === 0) {
+                setError("");
+            }
 
             try {
-                const res = await fetch("/api/pins/feed", { cache: "no-store" });
+                const res = await fetch("/api/pins/feed", {
+                    cache: "no-store",
+                    credentials: "same-origin",
+                });
                 const data = (await res.json().catch(() => ({}))) as Partial<FeedPayload>;
 
                 if (!res.ok) {
-                    if (res.status === 401 && attempt < 2) {
+                    const shouldRetry = res.status === 401 || res.status >= 500;
+                    if (shouldRetry && attempt < 3) {
                         await wait(350 * (attempt + 1));
                         await loadFeed(attempt + 1);
                         return;
                     }
-                    if (attempt < 1) {
-                        await wait(400);
-                        await loadFeed(attempt + 1);
-                        return;
-                    }
-                    setError("ピン新着の読み込みに失敗しました。");
+                    setError("ピン中ユーザーの読み込みに失敗しました。");
                     return;
                 }
 
@@ -117,12 +118,12 @@ export default function PinsPage() {
                 });
                 setError("");
             } catch {
-                if (attempt < 1) {
-                    await wait(400);
+                if (attempt < 3) {
+                    await wait(350 * (attempt + 1));
                     await loadFeed(attempt + 1);
                     return;
                 }
-                setError("ピン新着の読み込みに失敗しました。");
+                setError("ピン中ユーザーの読み込みに失敗しました。");
             } finally {
                 setLoading(false);
             }
@@ -134,7 +135,7 @@ export default function PinsPage() {
         if (status === "authenticated" && session?.user) {
             void loadFeed();
         }
-    }, [session?.user, status, loadFeed]);
+    }, [loadFeed, session?.user, status]);
 
     const unpinUser = async (targetUserId: string) => {
         if (!targetUserId || deletingPinId) return;
@@ -145,6 +146,7 @@ export default function PinsPage() {
         try {
             const res = await fetch(`/api/pins?userId=${encodeURIComponent(targetUserId)}`, {
                 method: "DELETE",
+                credentials: "same-origin",
             });
             const result = await res.json().catch(() => ({} as { error?: string }));
             if (!res.ok) {

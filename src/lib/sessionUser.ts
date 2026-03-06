@@ -14,10 +14,12 @@ function buildSessionCacheKeys(session: Session | null): string[] {
     const primaryId = normalizeString(session?.user?.id);
     const publicUserId = normalizeString((session?.user as { userId?: string } | undefined)?.userId).toLowerCase();
     const email = normalizeString(session?.user?.email).toLowerCase();
+    const name = normalizeString(session?.user?.name).toLowerCase();
 
     if (primaryId) keys.add(`id:${primaryId}`);
     if (publicUserId) keys.add(`public:${publicUserId}`);
     if (email) keys.add(`email:${email}`);
+    if (name) keys.add(`name:${name}`);
 
     return [...keys];
 }
@@ -74,6 +76,25 @@ async function findUserIdByEmailRaw(email: string): Promise<string | null> {
             LIMIT 1
         `,
         email
+    );
+
+    return rows[0]?.id || null;
+}
+
+async function findUserIdByNameRaw(name: string): Promise<string | null> {
+    const columns = await getTableColumns("User");
+    if (!columns.has("id") || !columns.has("name")) {
+        return null;
+    }
+
+    const rows = await prisma.$queryRawUnsafe<Array<{ id: string }>>(
+        `
+            SELECT "id"::text AS "id"
+            FROM "User"
+            WHERE LOWER(COALESCE("name"::text, '')) = LOWER($1)
+            LIMIT 1
+        `,
+        name
     );
 
     return rows[0]?.id || null;
@@ -193,19 +214,41 @@ export async function resolveSessionUserId(session: Session | null): Promise<str
     }
 
     const sessionEmail = normalizeString(session?.user?.email);
-    if (!sessionEmail) {
+    if (sessionEmail) {
+        try {
+            const user = await prisma.user.findFirst({
+                where: { email: { equals: sessionEmail, mode: "insensitive" } },
+                select: { id: true },
+            });
+            if (user?.id) {
+                return writeCachedSessionUserId(cacheKeys, user.id);
+            }
+        } catch {
+            try {
+                const rawResolvedId = await findUserIdByEmailRaw(sessionEmail);
+                if (rawResolvedId) {
+                    return writeCachedSessionUserId(cacheKeys, rawResolvedId);
+                }
+            } catch {
+                // Fall through to name-based lookup.
+            }
+        }
+    }
+
+    const sessionName = normalizeString(session?.user?.name);
+    if (!sessionName) {
         return null;
     }
 
     try {
         const user = await prisma.user.findFirst({
-            where: { email: { equals: sessionEmail, mode: "insensitive" } },
+            where: { name: { equals: sessionName, mode: "insensitive" } },
             select: { id: true },
         });
         return user?.id ? writeCachedSessionUserId(cacheKeys, user.id) : null;
     } catch {
         try {
-            const rawResolvedId = await findUserIdByEmailRaw(sessionEmail);
+            const rawResolvedId = await findUserIdByNameRaw(sessionName);
             return rawResolvedId ? writeCachedSessionUserId(cacheKeys, rawResolvedId) : null;
         } catch {
             return null;

@@ -1,7 +1,7 @@
 /* eslint-disable @next/next/no-img-element */
 "use client";
 
-import { useCallback, useEffect, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -76,6 +76,7 @@ export default function MessagesPage() {
     const [selectMode, setSelectMode] = useState(false);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [bulkDeleting, setBulkDeleting] = useState(false);
+    const messageListRef = useRef<HTMLDivElement | null>(null);
 
     const currentUserId = (session?.user as { id?: string } | undefined)?.id ?? "";
     const sessionUser = session?.user as {
@@ -87,15 +88,28 @@ export default function MessagesPage() {
     } | undefined;
     const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-    const fetchWithAuthRetry = useCallback(
-        async (input: string, init?: RequestInit, attempts = 3): Promise<Response> => {
+    const scrollMessagesToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
+        const node = messageListRef.current;
+        if (!node) return;
+        node.scrollTo({ top: node.scrollHeight, behavior });
+    }, []);
+
+    const fetchReadWithRetry = useCallback(
+        async (input: string, attempts = 4): Promise<Response> => {
             let lastResponse: Response | null = null;
 
             for (let attempt = 0; attempt < attempts; attempt += 1) {
-                const response = await fetch(input, init);
+                const response = await fetch(input, {
+                    cache: "no-store",
+                    credentials: "same-origin",
+                });
                 lastResponse = response;
 
-                if (response.status !== 401 || status !== "authenticated" || attempt === attempts - 1) {
+                const shouldRetry =
+                    (response.status === 401 && status === "authenticated") ||
+                    response.status >= 500;
+
+                if (!shouldRetry || attempt === attempts - 1) {
                     return response;
                 }
 
@@ -163,7 +177,7 @@ export default function MessagesPage() {
         setError("");
         setLoadingThreads(true);
         try {
-            const res = await fetchWithAuthRetry("/api/direct-messages?mode=threads");
+            const res = await fetchReadWithRetry("/api/direct-messages?mode=threads");
             const payload = await res.json().catch(() => ({}));
             if (!res.ok) {
                 setError("DM一覧の読み込みに失敗しました。");
@@ -183,7 +197,7 @@ export default function MessagesPage() {
         } finally {
             setLoadingThreads(false);
         }
-    }, [fetchWithAuthRetry, presetTarget, session?.user, status]);
+    }, [fetchReadWithRetry, presetTarget, session?.user, status]);
 
     useEffect(() => {
         if (status !== "authenticated" || !session?.user) return;
@@ -225,7 +239,7 @@ export default function MessagesPage() {
         setError("");
 
         Promise.all([
-            fetchWithAuthRetry(`/api/direct-messages?mode=thread&userId=${encodeURIComponent(selectedUserId)}`),
+            fetchReadWithRetry(`/api/direct-messages?mode=thread&userId=${encodeURIComponent(selectedUserId)}`),
             fetch(`/api/user/${encodeURIComponent(selectedUserId)}`),
         ])
             .then(async ([threadRes, userRes]) => {
@@ -261,19 +275,26 @@ export default function MessagesPage() {
         return () => {
             active = false;
         };
-    }, [fetchWithAuthRetry, selectedUserId, session?.user, status]);
+    }, [fetchReadWithRetry, selectedUserId, session?.user, status]);
+
+    useEffect(() => {
+        if (!selectedUserId || messages.length === 0) return;
+        requestAnimationFrame(() => {
+            scrollMessagesToBottom();
+        });
+    }, [messages.length, scrollMessagesToBottom, selectedUserId]);
 
     const refreshCurrentThread = useCallback(async () => {
         if (!selectedUserId) return;
         try {
-            const res = await fetchWithAuthRetry(`/api/direct-messages?mode=thread&userId=${encodeURIComponent(selectedUserId)}`);
+            const res = await fetchReadWithRetry(`/api/direct-messages?mode=thread&userId=${encodeURIComponent(selectedUserId)}`);
             const payload = await res.json().catch(() => ({}));
             if (!res.ok) return;
             setMessages(Array.isArray(payload.messages) ? payload.messages : []);
         } catch {
             // ignore silent refresh failures
         }
-    }, [fetchWithAuthRetry, selectedUserId]);
+    }, [fetchReadWithRetry, selectedUserId]);
 
     const sendMessage = async () => {
         const content = draft.trim();
@@ -319,12 +340,16 @@ export default function MessagesPage() {
         setError("");
         setMessages((prev) => [...prev, optimisticMessage]);
         syncThreadFromMessage(optimisticMessage);
+        requestAnimationFrame(() => {
+            scrollMessagesToBottom("smooth");
+        });
 
         try {
-            const res = await fetchWithAuthRetry("/api/direct-messages", {
+            const res = await fetch("/api/direct-messages", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ recipientId: selectedUserId, content }),
+                credentials: "same-origin",
             });
             const payload = await res.json().catch(() => ({}));
             if (!res.ok) {
@@ -401,6 +426,7 @@ export default function MessagesPage() {
         try {
             const res = await fetch(`/api/direct-messages/${encodeURIComponent(messageId)}/good`, {
                 method: "POST",
+                credentials: "same-origin",
             });
             const payload = await res.json().catch(() => ({}));
             if (!res.ok) {
@@ -450,6 +476,7 @@ export default function MessagesPage() {
         try {
             const res = await fetch(`/api/direct-messages/${encodeURIComponent(messageId)}`, {
                 method: "DELETE",
+                credentials: "same-origin",
             });
             const payload = await res.json().catch(() => ({}));
             if (!res.ok) {
@@ -485,7 +512,10 @@ export default function MessagesPage() {
         try {
             await Promise.all(
                 ids.map((id) =>
-                    fetch(`/api/direct-messages/${encodeURIComponent(id)}`, { method: "DELETE" })
+                    fetch(`/api/direct-messages/${encodeURIComponent(id)}`, {
+                        method: "DELETE",
+                        credentials: "same-origin",
+                    })
                 )
             );
             setMessages((prev) => prev.filter((m) => !selectedIds.has(m.id)));
@@ -552,8 +582,8 @@ export default function MessagesPage() {
                 </div>
             </nav>
 
-            <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", padding: "0 16px 12px", maxWidth: 980, width: "100%", margin: "0 auto", boxSizing: "border-box" }}>
-                <h1 style={{ fontFamily: "var(--serif)", fontSize: 26, fontWeight: 400, margin: "10px 0 10px", flexShrink: 0 }}>DM</h1>
+            <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", padding: "78px 16px 12px", maxWidth: 960, width: "100%", margin: "0 auto", boxSizing: "border-box" }}>
+                <h1 style={{ fontFamily: "var(--serif)", fontSize: 26, fontWeight: 400, margin: "0 0 10px", flexShrink: 0 }}>DM</h1>
 
                 {error && <div className="login-message login-error" style={{ marginBottom: 8, flexShrink: 0 }}>{error}</div>}
 
@@ -672,7 +702,7 @@ export default function MessagesPage() {
                     ) : null}
 
                     {/* Chat messages — scrollable area */}
-                    <div style={{ flex: 1, overflowY: "auto", padding: 14, display: "flex", flexDirection: "column", gap: 10, minHeight: 0 }}>
+                    <div ref={messageListRef} style={{ flex: 1, overflowY: "auto", padding: 14, display: "flex", flexDirection: "column", gap: 10, minHeight: 0 }}>
                         {loadingMessages ? (
                             <p style={{ fontSize: 12, color: "var(--text-soft)" }}>読み込み中...</p>
                         ) : !selectedUserId ? (

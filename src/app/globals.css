@@ -1443,6 +1443,32 @@ body {
     letter-spacing: 0;
   }
 
+  .profile-navbar {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 8px;
+  }
+
+  .profile-navbar-brand {
+    gap: 6px;
+  }
+
+  .profile-navbar-tabs {
+    gap: 4px;
+  }
+
+  .profile-tab-btn {
+    min-width: 32px;
+    padding: 5px 8px;
+  }
+
+  .profile-tab-btn.active {
+    padding-inline: 10px;
+  }
+
+  .profile-tab-label {
+    font-size: 11px;
+  }
+
   .nav-write-btn {
     width: 32px;
     height: 32px;
@@ -1934,6 +1960,53 @@ body {
 
 .home-navbar-pin-btn {
   flex-shrink: 0;
+}
+
+.profile-navbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  justify-content: stretch !important;
+  gap: 16px;
+}
+
+.profile-navbar-brand {
+  justify-self: start;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.profile-navbar-tabs {
+  justify-self: center;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.profile-navbar-actions {
+  position: static;
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.profile-tab-btn {
+  min-width: 38px;
+  justify-content: center;
+  padding: 7px 10px;
+  flex-shrink: 0;
+}
+
+.profile-tab-btn.active {
+  padding-inline: 14px;
+}
+
+.profile-tab-label {
+  white-space: nowrap;
 }
 
 /* ========================================

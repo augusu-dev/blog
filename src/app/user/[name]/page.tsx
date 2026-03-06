@@ -556,8 +556,8 @@ export default function UserPage() {
     return (
         <>
             {/* ─── Navbar ─── */}
-            <nav className="navbar home-navbar" id="navbar" style={{ justifyContent: "space-between" }}>
-                <div className="home-navbar-brand">
+            <nav className="navbar profile-navbar" id="navbar">
+                <div className="profile-navbar-brand">
                     <Link
                         href="/"
                         className="nav-logo"
@@ -577,30 +577,25 @@ export default function UserPage() {
                         </Link>
                     ) : null}
                 </div>
-                <div className="nav-links" style={{ gap: 6 }}>
+                <div className="profile-navbar-tabs">
                     {SECTION_TABS.map((tab) => {
                         const isActive = activeSection === tab.id;
                         return (
                             <button
                                 key={tab.id}
-                                className={`nav-link ${isActive ? "active" : ""}`}
+                                className={`nav-link profile-tab-btn ${isActive ? "active" : ""}`}
                                 data-section={tab.id}
                                 onClick={() => scrollTo(tab.id)}
                                 aria-label={tab.label}
                                 title={tab.label}
-                                style={{
-                                    minWidth: isActive ? undefined : 38,
-                                    justifyContent: "center",
-                                    padding: isActive ? "7px 14px" : "7px 10px",
-                                }}
                             >
                                 <SectionTabIcon section={tab.id} />
-                                {isActive ? <span>{tab.label}</span> : null}
+                                {isActive ? <span className="profile-tab-label">{tab.label}</span> : null}
                             </button>
                         );
                     })}
                 </div>
-                <div className="nav-auth home-navbar-actions">
+                <div className="nav-auth profile-navbar-actions">
                     {session ? (
                         <>
                             {canShowPinButton && (
