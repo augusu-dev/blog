@@ -25,16 +25,7 @@ function buildSessionCacheKeys(session: Session | null): string[] {
 }
 
 function getFastSessionPrimaryId(session: Session | null): string {
-    const primaryId = normalizeString(session?.user?.id);
-    const publicUserId = normalizeString(
-        (session?.user as { userId?: string } | undefined)?.userId
-    ).toLowerCase();
-
-    if (primaryId && publicUserId && publicUserId !== primaryId.toLowerCase()) {
-        return primaryId;
-    }
-
-    return "";
+    return normalizeString(session?.user?.id);
 }
 
 function readCachedSessionUserId(keys: string[]): string | null {
