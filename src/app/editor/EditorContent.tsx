@@ -550,6 +550,31 @@ export default function EditorPage() {
                     onChange={(e) => setExcerpt(e.target.value)}
                 />
 
+                {postType === "product" && (
+                    <div style={{ marginBottom: 12 }}>
+                        <button
+                            type="button"
+                            className="editor-btn editor-btn-secondary"
+                            style={{ fontSize: 12, padding: "6px 14px" }}
+                            onClick={() => {
+                                const now = new Date();
+                                const dateStr = new Intl.DateTimeFormat("ja-JP", {
+                                    timeZone: "Asia/Tokyo",
+                                    year: "numeric",
+                                    month: "2-digit",
+                                    day: "2-digit",
+                                }).format(now).replace(/\//g, ".");
+                                const updateHtml =
+                                    `<hr class="product-update-divider"><p class="product-update-date">${dateStr} 更新</p><p><br></p>`;
+                                setContent((prev) => prev + updateHtml);
+                                contentKeyRef.current += 1;
+                            }}
+                        >
+                            ＋ 更新を追加
+                        </button>
+                    </div>
+                )}
+
                 <RichEditor
                     key={contentKeyRef.current}
                     value={content}
