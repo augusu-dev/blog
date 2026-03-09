@@ -10,6 +10,7 @@ import PostComments from "@/components/PostComments";
 import UnreadDmButton from "@/components/UnreadDmButton";
 import HomeShortPosts from "@/components/HomeShortPosts";
 import { useMyPageHref } from "@/hooks/useMyPageHref";
+import { prepareRenderedPostHtml } from "@/lib/postContent";
 
 interface Post {
   id: string;
@@ -61,8 +62,10 @@ export default function HomePage() {
   const [translateTarget, setTranslateTarget] = useState<string>(language === 'ja' ? 'en' : 'ja');
   const [overlayMeta, setOverlayMeta] = useState({
     date: "",
+    createdAt: "",
     tags: [] as string[],
     author: null as Post["author"] | null,
+    isProduct: false,
   });
   const [searchQuery, setSearchQuery] = useState("");
   const [postsError, setPostsError] = useState("");
@@ -111,8 +114,10 @@ export default function HomePage() {
   const openPost = (post: Post) => {
     setOverlayMeta({
       date: fmtDate(post.createdAt),
+      createdAt: post.createdAt || "",
       tags: post.tags || [],
       author: post.author || null,
+      isProduct: !!post.tags?.includes("product"),
     });
     setOverlayPostId(post.id);
     setOverlayContent(post.content || "<p>記事の内容がありません。</p>");
@@ -139,20 +144,12 @@ export default function HomePage() {
     return () => document.removeEventListener("keydown", handler);
   }, []);
 
-  useEffect(() => {
-    if (!overlayOpen) return;
-    const anchors = document.querySelectorAll<HTMLAnchorElement>(".post-overlay.open .md-content a[href]");
-    anchors.forEach((anchor) => {
-      const href = anchor.getAttribute("href") || "";
-      if (!href.startsWith("#") && !href.toLowerCase().startsWith("javascript:")) {
-        anchor.setAttribute("target", "_blank");
-        anchor.setAttribute("rel", "noopener noreferrer");
-      }
-    });
-  }, [overlayOpen, overlayContent, translatedContent]);
-
   const blogPosts = posts.filter((p) => !p.tags?.includes("product"));
   const productPosts = posts.filter((p) => p.tags?.includes("product"));
+  const renderedOverlayContent = prepareRenderedPostHtml(translatedContent || overlayContent, {
+    isProduct: overlayMeta.isProduct,
+    createdAt: overlayMeta.createdAt,
+  });
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -364,7 +361,7 @@ export default function HomePage() {
 
       {/* ─── Overlay ─── */}
       < div className={`post-overlay ${overlayOpen ? "open" : ""}`} onClick={closeOverlay} >
-        <div className="post-panel" onClick={(e) => e.stopPropagation()}>
+        <div className={`post-panel ${overlayMeta.isProduct ? "product-post-panel" : ""}`} onClick={(e) => e.stopPropagation()}>
           <div className="post-panel-header">
             <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
               {overlayMeta.author?.id && (
@@ -442,7 +439,7 @@ export default function HomePage() {
                 </div>
               </div>
             )}
-            <div className="md-content" dangerouslySetInnerHTML={{ __html: translatedContent || overlayContent }} />
+            <div className="md-content" dangerouslySetInnerHTML={{ __html: renderedOverlayContent }} />
             <PostComments
               postId={overlayPostId}
               isSignedIn={!!session?.user}

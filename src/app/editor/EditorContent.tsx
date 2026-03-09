@@ -550,12 +550,19 @@ export default function EditorPage() {
                     onChange={(e) => setExcerpt(e.target.value)}
                 />
 
+                {postType === "product" ? (
+                    <p style={{ margin: "0 0 12px", fontSize: 12, color: "var(--text-soft)" }}>
+                        更新を追記するときは「更新線」を入れると、公開側で日付ごとの更新ログとして表示されます。
+                    </p>
+                ) : null}
+
                 <RichEditor
                     key={contentKeyRef.current}
                     value={content}
                     onChange={setContent}
                     aiGenerated={aiGenerated}
                     onAiGeneratedChange={setAiGenerated}
+                    showProductUpdateMarkerButton={postType === "product"}
                     placeholder={postType === "blog"
                         ? "ここに記事を書きましょう..."
                         : "プロダクトの詳細を書きましょう..."

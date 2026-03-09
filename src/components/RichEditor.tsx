@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useCallback, useEffect } from "react";
+import { createProductUpdateMarkerHtml, linkifyPastedText } from "@/lib/postContent";
 
 interface RichEditorProps {
     value: string;
@@ -8,6 +9,7 @@ interface RichEditorProps {
     placeholder?: string;
     aiGenerated?: boolean;
     onAiGeneratedChange?: (checked: boolean) => void;
+    showProductUpdateMarkerButton?: boolean;
 }
 
 export default function RichEditor({
@@ -16,6 +18,7 @@ export default function RichEditor({
     placeholder,
     aiGenerated = false,
     onAiGeneratedChange,
+    showProductUpdateMarkerButton = false,
 }: RichEditorProps) {
     const editorRef = useRef<HTMLDivElement>(null);
     const isInitialized = useRef(false);
@@ -60,8 +63,23 @@ export default function RichEditor({
     const handlePaste = useCallback((e: React.ClipboardEvent) => {
         e.preventDefault();
         const text = e.clipboardData.getData("text/plain");
-        document.execCommand("insertText", false, text);
-    }, []);
+        document.execCommand("insertHTML", false, linkifyPastedText(text));
+        requestAnimationFrame(() => {
+            if (editorRef.current) {
+                onChange(editorRef.current.innerHTML);
+            }
+        });
+    }, [onChange]);
+
+    const insertProductUpdateMarker = useCallback(() => {
+        editorRef.current?.focus();
+        document.execCommand("insertHTML", false, createProductUpdateMarkerHtml(new Date()));
+        requestAnimationFrame(() => {
+            if (editorRef.current) {
+                onChange(editorRef.current.innerHTML);
+            }
+        });
+    }, [onChange]);
 
     type ToolItem = { cmd: string; label: React.ReactNode; title: string; val?: string; prompt?: boolean };
     const tools: { group: string; items: ToolItem[] }[] = [
@@ -111,6 +129,22 @@ export default function RichEditor({
                         ))}
                     </div>
                 ))}
+                {showProductUpdateMarkerButton ? (
+                    <>
+                        <div className="rich-toolbar-divider" />
+                        <button
+                            type="button"
+                            className="rich-tool-btn rich-tool-btn-wide"
+                            title="更新区切りを追加"
+                            onMouseDown={(e) => {
+                                e.preventDefault();
+                                insertProductUpdateMarker();
+                            }}
+                        >
+                            更新線
+                        </button>
+                    </>
+                ) : null}
                 </div>
                 {onAiGeneratedChange && (
                     <label

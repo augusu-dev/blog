@@ -10,6 +10,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import PostComments from "@/components/PostComments";
 import UnreadDmButton from "@/components/UnreadDmButton";
 import { useMyPageHref } from "@/hooks/useMyPageHref";
+import { prepareRenderedPostHtml } from "@/lib/postContent";
 
 /* ─── Types ─── */
 interface Post {
@@ -200,9 +201,11 @@ export default function UserPage() {
     const [translateTarget, setTranslateTarget] = useState<string>(language === 'ja' ? 'en' : 'ja');
     const [overlayMeta, setOverlayMeta] = useState<{
         date: string;
+        createdAt: string;
         tags: string[];
         author: { id: string; userId?: string | null; name: string | null; email: string | null; image: string | null } | null;
-    }>({ date: "", tags: [], author: null });
+        isProduct: boolean;
+    }>({ date: "", createdAt: "", tags: [], author: null, isProduct: false });
     const [isPinned, setIsPinned] = useState(false);
     const [pinLoading, setPinLoading] = useState(false);
     const [activeSection, setActiveSection] = useState<SectionId>("home");
@@ -477,6 +480,7 @@ export default function UserPage() {
     const openPost = (post: Post) => {
         setOverlayMeta({
             date: fmtDate(post.date || post.createdAt),
+            createdAt: post.createdAt || "",
             tags: post.tags || [],
             author: user
                 ? {
@@ -487,6 +491,7 @@ export default function UserPage() {
                     image: user.image || null,
                 }
                 : null,
+            isProduct: !!post.tags?.includes("product"),
         });
         setOverlayPostId(post.id);
         setOverlayOpen(true);
@@ -538,18 +543,6 @@ export default function UserPage() {
             document.body.style.overflow = "";
         };
     }, []);
-
-    useEffect(() => {
-        if (!overlayOpen) return;
-        const anchors = document.querySelectorAll<HTMLAnchorElement>(".post-overlay.open .md-content a[href]");
-        anchors.forEach((anchor) => {
-            const href = anchor.getAttribute("href") || "";
-            if (!href.startsWith("#") && !href.toLowerCase().startsWith("javascript:")) {
-                anchor.setAttribute("target", "_blank");
-                anchor.setAttribute("rel", "noopener noreferrer");
-            }
-        });
-    }, [overlayOpen, overlayContent, translatedContent]);
 
     useEffect(() => {
         if (!requestedPostId) {
@@ -647,6 +640,10 @@ export default function UserPage() {
     const currentUserId = (session?.user as { id?: string } | undefined)?.id ?? null;
     const canShowAboutDmButton = !isOwnProfile && (user.dmSetting || "OPEN") === "OPEN";
     const canShowPinButton = !!session?.user && !isOwnProfile;
+    const renderedOverlayContent = prepareRenderedPostHtml(translatedContent || overlayContent, {
+        isProduct: overlayMeta.isProduct,
+        createdAt: overlayMeta.createdAt,
+    });
     const renderProfileSectionTabs = (keyPrefix: string) =>
         SECTION_TABS.map((tab) => {
             const isActive = activeSection === tab.id;
@@ -957,7 +954,7 @@ export default function UserPage() {
 
             {/* ─── Overlay ─── */}
             <div className={`post-overlay ${overlayOpen ? "open" : ""}`} onClick={closeOverlay}>
-                <div className="post-panel" onClick={(e) => e.stopPropagation()}>
+                <div className={`post-panel ${overlayMeta.isProduct ? "product-post-panel" : ""}`} onClick={(e) => e.stopPropagation()}>
                     <div className="post-panel-header">
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                             {overlayMeta.author?.id && (
@@ -1025,7 +1022,7 @@ export default function UserPage() {
                                 </button>
                             </div>
                         </div>
-                        <div className="md-content" dangerouslySetInnerHTML={{ __html: translatedContent || overlayContent }} />
+                        <div className="md-content" dangerouslySetInnerHTML={{ __html: renderedOverlayContent }} />
                         <PostComments
                             postId={overlayPostId}
                             isSignedIn={!!session?.user}
