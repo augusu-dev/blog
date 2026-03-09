@@ -168,8 +168,18 @@ export default function PinsPage() {
                     pinnedUsers: Array.isArray(data.pinnedUsers) ? (data.pinnedUsers as PinUser[]) : [],
                     posts: Array.isArray(data.posts) ? (data.posts as PinFeedPost[]).slice(0, 15) : [],
                 };
+                if (
+                    nextPayload.pinnedUsers.length === 0 &&
+                    nextPayload.posts.length === 0 &&
+                    hasVisibleFeed
+                ) {
+                    setError("");
+                    return;
+                }
                 setPayload(nextPayload);
-                writeCachedFeed(nextPayload);
+                if (nextPayload.pinnedUsers.length > 0 || nextPayload.posts.length > 0) {
+                    writeCachedFeed(nextPayload);
+                }
                 setError("");
             } catch {
                 if (attempt < 1) {

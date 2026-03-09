@@ -48,19 +48,32 @@ export async function GET() {
         authorRefs.length <= 1 ? { authorId: authorRefs[0] || userId } : { authorId: { in: authorRefs } };
 
     try {
-        const payload = await readThroughCache(readCacheKeys.userPosts(userId), USER_POSTS_CACHE_TTL_MS, async () => {
-            try {
-                const posts = await prisma.post.findMany({
-                    where: authorWhere,
-                    orderBy: { updatedAt: "desc" },
-                });
-                return posts;
-            } catch (error) {
-                if (!isSchemaMismatchError(error)) throw error;
-            }
+        const payload = await readThroughCache(
+            readCacheKeys.userPosts(userId),
+            USER_POSTS_CACHE_TTL_MS,
+            async () => {
+                try {
+                    const posts = await prisma.post.findMany({
+                        where: authorWhere,
+                        orderBy: { updatedAt: "desc" },
+                    });
+                    return posts;
+                } catch (error) {
+                    if (!isSchemaMismatchError(error)) throw error;
+                }
 
-            return getPostsByAuthorFallback(authorRefs, { publishedOnly: false, limit: 300 });
-        });
+                return getPostsByAuthorFallback(authorRefs, { publishedOnly: false, limit: 300 });
+            },
+            {
+                shouldCache: (value) => Array.isArray(value) && value.length > 0,
+                useStaleOnError: true,
+                useStaleWhen: (value, staleValue) =>
+                    Array.isArray(value) &&
+                    value.length === 0 &&
+                    Array.isArray(staleValue) &&
+                    staleValue.length > 0,
+            }
+        );
 
         return NextResponse.json(payload);
     } catch (error) {
@@ -69,9 +82,7 @@ export async function GET() {
                 await getPostsByAuthorFallback(authorRefs, { publishedOnly: false, limit: 300 })
             );
         } catch (fallbackError) {
-            if (isSchemaMismatchError(error) || isSchemaMismatchError(fallbackError)) {
-                return NextResponse.json([]);
-            }
+            void fallbackError;
         }
         console.error("Failed to fetch my posts:", error);
         return NextResponse.json({ error: "Failed to fetch posts" }, { status: 500 });

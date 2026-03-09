@@ -53,8 +53,10 @@ export async function GET() {
     };
 
     try {
-        const payload = await readThroughCache(readCacheKeys.publicPosts(), PUBLIC_POSTS_CACHE_TTL_MS, async () => {
-            try {
+        const payload = await readThroughCache(
+            readCacheKeys.publicPosts(),
+            PUBLIC_POSTS_CACHE_TTL_MS,
+            async () => {
                 try {
                     const posts = await prisma.post.findMany({
                         where: { published: true },
@@ -89,25 +91,25 @@ export async function GET() {
                     if (!isSchemaMismatchError(error)) throw error;
                 }
 
-                return await attachPublicUserIds(await getPublicPostsFallback(300));
-            } catch (error) {
-                try {
-                    const fallbackPosts = await getPublicPostsFallback(300);
-                    return await fillMissingPublicUserIds(fallbackPosts.map((post) => post.author)).then((authors) => {
-                        const authorById = new Map(authors.map((author) => [author.id, author]));
-                        return fallbackPosts.map((post) => ({
-                            ...post,
-                            author: authorById.get(post.author.id) || post.author,
-                        }));
-                    });
-                } catch (fallbackError) {
-                    if (isSchemaMismatchError(error) || isSchemaMismatchError(fallbackError)) {
-                        return [];
-                    }
-                }
-                throw error;
+                const fallbackPosts = await getPublicPostsFallback(300);
+                return await fillMissingPublicUserIds(fallbackPosts.map((post) => post.author)).then((authors) => {
+                    const authorById = new Map(authors.map((author) => [author.id, author]));
+                    return fallbackPosts.map((post) => ({
+                        ...post,
+                        author: authorById.get(post.author.id) || post.author,
+                    }));
+                });
+            },
+            {
+                shouldCache: (value) => Array.isArray(value) && value.length > 0,
+                useStaleOnError: true,
+                useStaleWhen: (value, staleValue) =>
+                    Array.isArray(value) &&
+                    value.length === 0 &&
+                    Array.isArray(staleValue) &&
+                    staleValue.length > 0,
             }
-        });
+        );
 
         return NextResponse.json(payload);
     } catch (error) {

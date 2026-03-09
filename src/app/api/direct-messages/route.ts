@@ -21,6 +21,24 @@ const DM_USER_SELECT = {
     image: true,
 } as const;
 
+function hasDmPayloadContent(value: unknown): boolean {
+    if (!value || typeof value !== "object") {
+        return false;
+    }
+
+    const payload = value as {
+        threads?: unknown;
+        messages?: unknown;
+        user?: unknown;
+    };
+
+    return (
+        (Array.isArray(payload.threads) && payload.threads.length > 0) ||
+        (Array.isArray(payload.messages) && payload.messages.length > 0) ||
+        !!payload.user
+    );
+}
+
 function normalizeString(value: unknown): string {
     return typeof value === "string" ? value.trim() : "";
 }
@@ -291,6 +309,10 @@ export async function GET(request: NextRequest) {
                 );
 
                 return { mode, messages };
+            },
+            {
+                shouldCache: (value) => hasDmPayloadContent(value),
+                useStaleOnError: true,
             }
         );
 
@@ -303,15 +325,6 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ error: "Target user not found" }, { status: 404 });
         }
         console.error("Failed to fetch direct messages:", error);
-        if (mode === "threads") {
-            return NextResponse.json({ mode, threads: [] });
-        }
-        if (mode === "thread") {
-            return NextResponse.json({ mode, userId: targetUserId, messages: [] });
-        }
-        if (mode === "sent" || mode === "inbox") {
-            return NextResponse.json({ mode, messages: [] });
-        }
         return NextResponse.json({ error: "Failed to fetch direct messages" }, { status: 500 });
     }
 }

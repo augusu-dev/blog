@@ -123,8 +123,15 @@ export default function HomeShortPosts() {
                 return;
             }
             const nextPosts = Array.isArray(payload) ? payload.slice(0, 30) : [];
+            if (nextPosts.length === 0 && cachedPosts && cachedPosts.length > 0) {
+                setPosts(cachedPosts);
+                setError("");
+                return;
+            }
             setPosts(nextPosts);
-            writeSessionCache(SHORT_POSTS_CACHE_KEY, nextPosts);
+            if (nextPosts.length > 0) {
+                writeSessionCache(SHORT_POSTS_CACHE_KEY, nextPosts);
+            }
             setError("");
         } catch {
             if (attempt < 2) {

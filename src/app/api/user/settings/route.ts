@@ -74,6 +74,13 @@ type RawSettingsRow = {
     links: string | null;
 };
 
+type CacheableUserSettings = Omit<UserSettingsPayload, "links"> & {
+    links?: unknown;
+    dmSetting?: DmSetting;
+    theme?: ThemeName;
+    themeCustomColor?: string;
+};
+
 function parseDmSetting(value: unknown): DmSetting | undefined {
     if (value === undefined) return undefined;
     if (value === "OPEN" || value === "PR_ONLY" || value === "CLOSED") {
@@ -283,6 +290,22 @@ function shouldHydrateUserSettingsFromRaw(
     );
 }
 
+function hasMeaningfulUserSettings(
+    user: UserSettingsPayload | RawSettingsRow | CacheableUserSettings | null
+): boolean {
+    if (!user) return false;
+
+    return (
+        hasResolvedValue(user.name) ||
+        hasResolvedValue(user.email) ||
+        hasResolvedValue(user.image) ||
+        hasResolvedValue(user.headerImage) ||
+        hasResolvedValue(user.bio) ||
+        hasResolvedValue(user.aboutMe) ||
+        hasResolvedValue(user.links)
+    );
+}
+
 async function fetchUserSettingsRecord(userId: string) {
     try {
         const user = await prisma.user.findUnique({
@@ -375,34 +398,44 @@ export async function GET() {
     }
 
     try {
-        const payload = await readThroughCache(readCacheKeys.userSettings(userId), USER_SETTINGS_CACHE_TTL_MS, async () => {
-            const { user: fetchedUser } = await fetchUserSettingsRecord(userId);
-            const rawUser = shouldHydrateUserSettingsFromRaw(fetchedUser)
-                ? (await fetchUserSettingsRecordRaw(userId)).user
-                : null;
-            const user = mergeUserSettingsPayload(fetchedUser, rawUser);
-            if (!user) {
-                throw new Error("USER_NOT_FOUND");
+        const payload = await readThroughCache(
+            readCacheKeys.userSettings(userId),
+            USER_SETTINGS_CACHE_TTL_MS,
+            async () => {
+                const { user: fetchedUser } = await fetchUserSettingsRecord(userId);
+                const rawUser = shouldHydrateUserSettingsFromRaw(fetchedUser)
+                    ? (await fetchUserSettingsRecordRaw(userId)).user
+                    : null;
+                const user = mergeUserSettingsPayload(fetchedUser, rawUser);
+                if (!user) {
+                    throw new Error("USER_NOT_FOUND");
+                }
+
+                const unpacked = unpackLinks(("links" in user ? user.links : null) as string | null | undefined);
+                const publicUserId = resolveReadablePublicUserId(user);
+
+                return {
+                    id: user.id,
+                    userId: publicUserId || null,
+                    name: ("name" in user ? user.name : null) ?? null,
+                    email: ("email" in user ? user.email : null) ?? null,
+                    image: ("image" in user ? user.image : null) ?? null,
+                    headerImage: ("headerImage" in user ? user.headerImage : null) ?? null,
+                    bio: ("bio" in user ? user.bio : null) ?? null,
+                    aboutMe: ("aboutMe" in user ? user.aboutMe : null) ?? null,
+                    links: unpacked.links,
+                    dmSetting: unpacked.dmSetting,
+                    theme: unpacked.theme,
+                    themeCustomColor: unpacked.themeCustomColor,
+                };
+            },
+            {
+                shouldCache: (value) => hasMeaningfulUserSettings(value),
+                useStaleOnError: true,
+                useStaleWhen: (value, staleValue) =>
+                    !hasMeaningfulUserSettings(value) && hasMeaningfulUserSettings(staleValue),
             }
-
-            const unpacked = unpackLinks(("links" in user ? user.links : null) as string | null | undefined);
-            const publicUserId = resolveReadablePublicUserId(user);
-
-            return {
-                id: user.id,
-                userId: publicUserId || null,
-                name: ("name" in user ? user.name : null) ?? null,
-                email: ("email" in user ? user.email : null) ?? null,
-                image: ("image" in user ? user.image : null) ?? null,
-                headerImage: ("headerImage" in user ? user.headerImage : null) ?? null,
-                bio: ("bio" in user ? user.bio : null) ?? null,
-                aboutMe: ("aboutMe" in user ? user.aboutMe : null) ?? null,
-                links: unpacked.links,
-                dmSetting: unpacked.dmSetting,
-                theme: unpacked.theme,
-                themeCustomColor: unpacked.themeCustomColor,
-            };
-        });
+        );
 
         return NextResponse.json(payload);
     } catch (error) {

@@ -165,6 +165,21 @@ function writeCachedUserProfile(profile: UserProfile, ...refs: Array<string | nu
     }
 }
 
+function mergeProfileWithCachedPosts(nextProfile: UserProfile, cachedProfile: UserProfile | null): UserProfile {
+    if (!cachedProfile || !Array.isArray(cachedProfile.posts) || cachedProfile.posts.length === 0) {
+        return nextProfile;
+    }
+
+    if (Array.isArray(nextProfile.posts) && nextProfile.posts.length > 0) {
+        return nextProfile;
+    }
+
+    return {
+        ...nextProfile,
+        posts: cachedProfile.posts,
+    };
+}
+
 export default function UserPage() {
     const { data: session } = useSession();
     const router = useRouter();
@@ -273,10 +288,11 @@ export default function UserPage() {
                 return { ok: false as const, data: null, status: 0 };
             };
 
-            const applyUserProfile = (data: UserProfile) => {
+            const applyUserProfile = (data: UserProfile, cachedProfileForMerge?: UserProfile | null) => {
+                const mergedProfile = mergeProfileWithCachedPosts(data, cachedProfileForMerge ?? null);
                 setLoadError("");
-                setUser(data);
-                const allPosts = data.posts.map((p) => ({
+                setUser(mergedProfile);
+                const allPosts = mergedProfile.posts.map((p) => ({
                     ...p,
                     date: p.date || p.createdAt,
                     excerpt: p.excerpt || "",
@@ -284,12 +300,12 @@ export default function UserPage() {
                 setPosts(allPosts.filter((p) => !p.tags?.includes("product")));
                 setProducts(allPosts.filter((p) => p.tags?.includes("product")));
                 writeCachedUserProfile(
-                    data,
+                    mergedProfile,
                     normalizedUserName,
-                    data.id,
-                    data.userId || null,
-                    data.name || null,
-                    data.email || null
+                    mergedProfile.id,
+                    mergedProfile.userId || null,
+                    mergedProfile.name || null,
+                    mergedProfile.email || null
                 );
             };
 
@@ -354,7 +370,7 @@ export default function UserPage() {
 
             setLoadError("");
             if (cachedProfile) {
-                applyUserProfile(cachedProfile);
+                applyUserProfile(cachedProfile, cachedProfile);
                 setLoading(false);
             } else {
                 setLoading(true);
@@ -366,13 +382,13 @@ export default function UserPage() {
             try {
                 const ownProfile = isOwnRequestedPage ? await loadOwnProfileFallback() : null;
                 if (ownProfile) {
-                    applyUserProfile(ownProfile);
+                    applyUserProfile(ownProfile, cachedProfile);
                     setLoading(false);
                 }
 
                 const result = await loadPublicProfile(cachedProfile || ownProfile ? 1 : 2);
                 if (result.ok && result.data) {
-                    applyUserProfile(result.data as UserProfile);
+                    applyUserProfile(result.data as UserProfile, ownProfile || cachedProfile);
                     setLoading(false);
                     return;
                 }

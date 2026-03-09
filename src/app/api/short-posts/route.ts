@@ -66,51 +66,64 @@ async function attachPublicUserIds<
 
 export async function GET() {
     try {
-        const payload = await readThroughCache(readCacheKeys.shortPosts(), SHORT_POSTS_CACHE_TTL_MS, async () => {
-            let posts:
-                | Array<{
-                      id: string;
-                      content: string;
-                      createdAt: string | Date;
-                      authorId: string;
-                      author: {
+        const payload = await readThroughCache(
+            readCacheKeys.shortPosts(),
+            SHORT_POSTS_CACHE_TTL_MS,
+            async () => {
+                let posts:
+                    | Array<{
                           id: string;
-                          userId?: string | null;
-                          name: string | null;
-                          email: string | null;
-                          image: string | null;
-                      };
-                  }>
-                | null = null;
+                          content: string;
+                          createdAt: string | Date;
+                          authorId: string;
+                          author: {
+                              id: string;
+                              userId?: string | null;
+                              name: string | null;
+                              email: string | null;
+                              image: string | null;
+                          };
+                      }>
+                    | null = null;
 
-            try {
-                posts = await withShortPostTable(() =>
-                    prisma.shortPost.findMany({
-                        orderBy: { createdAt: "desc" },
-                        take: LIST_LIMIT,
-                        include: {
-                            author: {
-                                select: {
-                                    id: true,
-                                    userId: true,
-                                    name: true,
-                                    email: true,
-                                    image: true,
+                try {
+                    posts = await withShortPostTable(() =>
+                        prisma.shortPost.findMany({
+                            orderBy: { createdAt: "desc" },
+                            take: LIST_LIMIT,
+                            include: {
+                                author: {
+                                    select: {
+                                        id: true,
+                                        userId: true,
+                                        name: true,
+                                        email: true,
+                                        image: true,
+                                    },
                                 },
                             },
-                        },
-                    })
-                );
-            } catch (error) {
-                if (!isUserIdColumnMissing(error)) throw error;
-            }
+                        })
+                    );
+                } catch (error) {
+                    if (!isUserIdColumnMissing(error)) throw error;
+                }
 
-            if (!posts) {
-                posts = await getShortPostsFallback(LIST_LIMIT);
-            }
+                if (!posts) {
+                    posts = await getShortPostsFallback(LIST_LIMIT);
+                }
 
-            return attachPublicUserIds(posts);
-        });
+                return attachPublicUserIds(posts);
+            },
+            {
+                shouldCache: (value) => Array.isArray(value) && value.length > 0,
+                useStaleOnError: true,
+                useStaleWhen: (value, staleValue) =>
+                    Array.isArray(value) &&
+                    value.length === 0 &&
+                    Array.isArray(staleValue) &&
+                    staleValue.length > 0,
+            }
+        );
 
         return NextResponse.json(payload);
     } catch (error) {

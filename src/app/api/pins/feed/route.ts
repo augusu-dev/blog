@@ -222,50 +222,70 @@ export async function GET() {
     }
 
     try {
-        const payload = await readThroughCache(readCacheKeys.pinsFeed(ownerId), PINS_FEED_CACHE_TTL_MS, async () => {
-            const pinnedRows = await fetchPinnedRows(ownerId);
+        const payload = await readThroughCache(
+            readCacheKeys.pinsFeed(ownerId),
+            PINS_FEED_CACHE_TTL_MS,
+            async () => {
+                const pinnedRows = await fetchPinnedRows(ownerId);
 
-            const pinnedUserRefs = pinnedRows.map((row) => row.pinnedUserId);
-            if (pinnedUserRefs.length === 0) {
-                return { pinnedCount: 0, pinnedUsers: [], posts: [] };
+                const pinnedUserRefs = pinnedRows.map((row) => row.pinnedUserId);
+                if (pinnedUserRefs.length === 0) {
+                    return { pinnedCount: 0, pinnedUsers: [], posts: [] };
+                }
+
+                const users = await fetchUsersByRefs(pinnedUserRefs);
+                const userMap = new Map<string, PublicUser>();
+                for (const user of users) {
+                    registerUserRef(userMap, user);
+                }
+
+                const normalizedPinnedRows = pinnedRows
+                    .map((row) => {
+                        const pinnedUser = userMap.get(normalizeRef(row.pinnedUserId));
+                        if (!pinnedUser) return null;
+                        return {
+                            pinnedUserId: pinnedUser.id,
+                            createdAt: row.createdAt,
+                            pinnedUser,
+                        };
+                    })
+                    .filter((row): row is NonNullable<typeof row> => !!row);
+
+                if (normalizedPinnedRows.length === 0) {
+                    return { pinnedCount: 0, pinnedUsers: [], posts: [] };
+                }
+
+                const posts = await fetchPinnedPosts(normalizedPinnedRows.map((row) => row.pinnedUser));
+
+                return {
+                    pinnedCount: normalizedPinnedRows.length,
+                    pinnedUsers: normalizedPinnedRows,
+                    posts,
+                };
+            },
+            {
+                shouldCache: (value) =>
+                    !!value &&
+                    typeof value === "object" &&
+                    ((Array.isArray(value.pinnedUsers) && value.pinnedUsers.length > 0) ||
+                        (Array.isArray(value.posts) && value.posts.length > 0)),
+                useStaleOnError: true,
+                useStaleWhen: (value, staleValue) =>
+                    !!value &&
+                    typeof value === "object" &&
+                    Array.isArray(value.pinnedUsers) &&
+                    value.pinnedUsers.length === 0 &&
+                    Array.isArray(value.posts) &&
+                    value.posts.length === 0 &&
+                    !!staleValue &&
+                    typeof staleValue === "object" &&
+                    ((Array.isArray(staleValue.pinnedUsers) && staleValue.pinnedUsers.length > 0) ||
+                        (Array.isArray(staleValue.posts) && staleValue.posts.length > 0)),
             }
-
-            const users = await fetchUsersByRefs(pinnedUserRefs);
-            const userMap = new Map<string, PublicUser>();
-            for (const user of users) {
-                registerUserRef(userMap, user);
-            }
-
-            const normalizedPinnedRows = pinnedRows
-                .map((row) => {
-                    const pinnedUser = userMap.get(normalizeRef(row.pinnedUserId));
-                    if (!pinnedUser) return null;
-                    return {
-                        pinnedUserId: pinnedUser.id,
-                        createdAt: row.createdAt,
-                        pinnedUser,
-                    };
-                })
-                .filter((row): row is NonNullable<typeof row> => !!row);
-
-            if (normalizedPinnedRows.length === 0) {
-                return { pinnedCount: 0, pinnedUsers: [], posts: [] };
-            }
-
-            const posts = await fetchPinnedPosts(normalizedPinnedRows.map((row) => row.pinnedUser));
-
-            return {
-                pinnedCount: normalizedPinnedRows.length,
-                pinnedUsers: normalizedPinnedRows,
-                posts,
-            };
-        });
+        );
 
         return NextResponse.json(payload);
     } catch (error) {
-        if (isSchemaCompatibilityError(error)) {
-            return NextResponse.json({ pinnedCount: 0, pinnedUsers: [], posts: [] });
-        }
         console.error("Failed to fetch pin feed:", error);
         return NextResponse.json({ error: "Failed to fetch pin feed" }, { status: 500 });
     }

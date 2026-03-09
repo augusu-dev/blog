@@ -87,9 +87,9 @@ export default function HomePage() {
       if (!cachedPosts || cachedPosts.length === 0) {
         setPostsError("");
       }
-      try {
-        const res = await fetch("/api/posts");
-        const data = await res.json().catch(() => []);
+        try {
+            const res = await fetch("/api/posts");
+            const data = await res.json().catch(() => []);
         if (!res.ok || !Array.isArray(data)) {
           if (res.status >= 400 && res.status < 500) {
             throw new Error("Failed to fetch posts");
@@ -101,15 +101,22 @@ export default function HomePage() {
           }
           throw new Error("Failed to fetch posts");
         }
-        if (!active) return;
-        const nextPosts = data.map((p: Post) => ({
-          ...p,
-          excerpt: p.excerpt || "",
-        }));
-        setPosts(nextPosts);
-        writeSessionCache(HOME_POSTS_CACHE_KEY, nextPosts);
-        setPostsError("");
-      } catch (error) {
+            if (!active) return;
+            const nextPosts = data.map((p: Post) => ({
+              ...p,
+              excerpt: p.excerpt || "",
+            }));
+            if (nextPosts.length === 0 && cachedPosts && cachedPosts.length > 0) {
+              setPosts(cachedPosts);
+              setPostsError("");
+              return;
+            }
+            setPosts(nextPosts);
+            if (nextPosts.length > 0) {
+              writeSessionCache(HOME_POSTS_CACHE_KEY, nextPosts);
+            }
+            setPostsError("");
+        } catch (error) {
         if (!active) return;
         console.error(error);
         if (!cachedPosts || cachedPosts.length === 0) {
