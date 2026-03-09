@@ -165,9 +165,9 @@ body {
 
 .dm-unread-badge {
   position: absolute;
-  top: 0;
-  left: 0;
-  transform: translate(-38%, -38%);
+  top: -4px;
+  left: -6px;
+  transform: none;
   min-width: 16px;
   height: 16px;
   border-radius: 999px;

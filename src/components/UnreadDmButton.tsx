@@ -160,10 +160,8 @@ export default function UnreadDmButton({
             </span>
             {unreadCount > 0 ? (
                 <span
+                    className="dm-unread-badge"
                     style={{
-                        position: "absolute",
-                        top: "-4px",
-                        right: "-6px",
                         fontSize: "9px",
                         fontWeight: "bold",
                         backgroundColor: "#e84545",
