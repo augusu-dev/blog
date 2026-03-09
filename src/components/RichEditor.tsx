@@ -73,7 +73,11 @@ export default function RichEditor({
 
     const insertProductUpdateMarker = useCallback(() => {
         editorRef.current?.focus();
-        document.execCommand("insertHTML", false, createProductUpdateMarkerHtml(new Date()));
+        document.execCommand(
+            "insertHTML",
+            false,
+            createProductUpdateMarkerHtml(new Date(), { withSpacer: true })
+        );
         requestAnimationFrame(() => {
             if (editorRef.current) {
                 onChange(editorRef.current.innerHTML);

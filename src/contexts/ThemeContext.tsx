@@ -235,8 +235,10 @@ function getSessionThemeUserRef(
 function readStoredTheme(userRef: string): { theme: ThemeName; customColor: string } | null {
     if (typeof window === "undefined") return null;
 
-    const storedTheme = localStorage.getItem(getThemeStorageKey(userRef));
-    const storedColor = localStorage.getItem(getCustomColorStorageKey(userRef));
+    const storedTheme =
+        localStorage.getItem(getThemeStorageKey(userRef)) || localStorage.getItem(STORAGE_THEME_KEY);
+    const storedColor =
+        localStorage.getItem(getCustomColorStorageKey(userRef)) || localStorage.getItem(STORAGE_CUSTOM_COLOR_KEY);
     const parsedTheme = parseThemeName(storedTheme);
     const parsedColor = parseThemeColor(storedColor) || DEFAULT_CUSTOM_COLOR;
 
@@ -254,6 +256,8 @@ function writeStoredTheme(userRef: string, theme: ThemeName, customColor: string
     if (typeof window === "undefined") return;
     localStorage.setItem(getThemeStorageKey(userRef), theme);
     localStorage.setItem(getCustomColorStorageKey(userRef), customColor);
+    localStorage.setItem(STORAGE_THEME_KEY, theme);
+    localStorage.setItem(STORAGE_CUSTOM_COLOR_KEY, customColor);
 }
 
 type ThemeContextType = {

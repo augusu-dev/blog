@@ -446,12 +446,20 @@ export default function UserPage() {
     const SECTIONS: SectionId[] = ["home", "blog", "product", "about"];
 
     const updateNav = useCallback(() => {
-        const sy = window.scrollY + 120;
+        const probeY = window.innerWidth <= 640 ? window.innerHeight * 0.34 : window.innerHeight * 0.28;
         let cur: SectionId = "home";
-        SECTIONS.forEach((id) => {
+        for (const id of SECTIONS) {
             const el = document.getElementById(id);
-            if (el && el.offsetTop <= sy) cur = id;
-        });
+            if (!el) continue;
+            const rect = el.getBoundingClientRect();
+            if (rect.top <= probeY && rect.bottom >= probeY) {
+                cur = id;
+                break;
+            }
+            if (rect.top <= probeY) {
+                cur = id;
+            }
+        }
         setActiveSection((current) => (current === cur ? current : cur));
         const nb = document.getElementById("navbar");
         if (nb) nb.classList.toggle("scrolled", window.scrollY > 10);
@@ -579,7 +587,10 @@ export default function UserPage() {
 
     const scrollTo = (id: string) => {
         const el = document.getElementById(id);
-        if (el) el.scrollIntoView({ behavior: "smooth" });
+        if (!el) return;
+        const offset = window.innerWidth <= 640 ? 156 : 120;
+        const top = el.getBoundingClientRect().top + window.scrollY - offset;
+        window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
     };
 
     const togglePinUser = async () => {

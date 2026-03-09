@@ -98,13 +98,24 @@ export function formatProductUpdateDate(value: string | Date): string {
     return `${year}.${month}.${day}`;
 }
 
-export function createProductUpdateMarkerHtml(value: string | Date = new Date()): string {
+export function createProductUpdateMarkerHtml(
+    value: string | Date = new Date(),
+    options?: { withSpacer?: boolean }
+): string {
     const formatted = formatProductUpdateDate(value) || formatProductUpdateDate(new Date());
-    return `<div class="product-update-marker" data-product-update-marker="true"><span>${formatted}</span></div><p><br></p>`;
+    const marker = `<div class="product-update-marker" data-product-update-marker="true"><span>${formatted}</span></div>`;
+    return options?.withSpacer ? `${marker}<div data-product-update-spacer="true"><br></div>` : marker;
 }
 
 function hasProductUpdateMarker(html: string): boolean {
     return /data-product-update-marker\s*=\s*["']true["']/i.test(html);
+}
+
+function normalizeProductUpdateMarkup(html: string): string {
+    return html.replace(
+        /(<div class="product-update-marker"[^>]*>[\s\S]*?<\/div>)(?:\s*(?:<p>\s*(?:<br\s*\/?>)?\s*<\/p>|<div(?:\s+data-product-update-spacer="true")?>\s*(?:<br\s*\/?>)?\s*<\/div>))+/gi,
+        "$1"
+    );
 }
 
 export function prepareRenderedPostHtml(
@@ -112,11 +123,14 @@ export function prepareRenderedPostHtml(
     options?: { isProduct?: boolean; createdAt?: string | null }
 ): string {
     const normalized = openLinksInNewTab(html || "");
+    const normalizedProductMarkup = options?.isProduct
+        ? normalizeProductUpdateMarkup(normalized)
+        : normalized;
 
-    if (!options?.isProduct || hasProductUpdateMarker(normalized)) {
-        return normalized;
+    if (!options?.isProduct || hasProductUpdateMarker(normalizedProductMarkup)) {
+        return normalizedProductMarkup;
     }
 
     const marker = createProductUpdateMarkerHtml(options.createdAt || new Date());
-    return `${marker}${normalized}`;
+    return `${marker}${normalizedProductMarkup}`;
 }

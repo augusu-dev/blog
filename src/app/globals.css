@@ -985,6 +985,10 @@ body {
   margin-top: 6px;
 }
 
+.main-content.profile-main-content .section {
+  scroll-margin-top: 120px;
+}
+
 .md-content ul,
 .md-content ol {
   padding-left: 24px;
@@ -2239,6 +2243,10 @@ body {
 
   .main-content.profile-main-content {
     padding: 148px 16px 0;
+  }
+
+  .main-content.profile-main-content .section {
+    scroll-margin-top: 156px;
   }
 }
 
