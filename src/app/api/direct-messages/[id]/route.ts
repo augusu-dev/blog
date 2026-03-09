@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { withDirectMessageTable } from "@/lib/directMessages";
 import { resolveSessionUserId } from "@/lib/sessionUser";
+import { invalidateReadCachePrefix } from "@/lib/readCache";
 
 export async function DELETE(
     _request: NextRequest,
@@ -40,6 +41,9 @@ export async function DELETE(
                 where: { id: message.id },
             })
         );
+
+        invalidateReadCachePrefix("direct-messages:");
+        invalidateReadCachePrefix("unread:");
 
         return NextResponse.json({ ok: true, id: message.id });
     } catch (error) {

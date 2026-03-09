@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
+import { readSessionCache, writeSessionCache } from "@/lib/clientSessionCache";
 
 type ShortPostAuthor = {
     id: string;
@@ -25,6 +26,9 @@ type ShortPostItem = {
 const SHORT_POST_LIMIT = 300;
 const LOAD_ERROR_MESSAGE = "短文ポストの読み込みに失敗しました。";
 const SUBMIT_ERROR_MESSAGE = "短文ポストの投稿に失敗しました。";
+
+const SHORT_POSTS_CACHE_KEY = "home-short-posts-cache:v1";
+const SHORT_POSTS_CACHE_TTL_MS = 60 * 1000;
 
 function formatDate(value: string): string {
     try {
@@ -94,7 +98,14 @@ export default function HomeShortPosts() {
     const remaining = useMemo(() => SHORT_POST_LIMIT - content.length, [content.length]);
 
     const loadPosts = useCallback(async (attempt = 0): Promise<void> => {
-        setLoading(true);
+        const cachedPosts = readSessionCache<ShortPostItem[]>(SHORT_POSTS_CACHE_KEY, SHORT_POSTS_CACHE_TTL_MS);
+        if (attempt === 0 && cachedPosts && cachedPosts.length > 0) {
+            setPosts(cachedPosts);
+            setLoading(false);
+            setError("");
+        } else {
+            setLoading(true);
+        }
         try {
             const res = await fetch("/api/short-posts");
             const payload = await res.json().catch(() => []);
@@ -111,7 +122,9 @@ export default function HomeShortPosts() {
                 setError(LOAD_ERROR_MESSAGE);
                 return;
             }
-            setPosts(Array.isArray(payload) ? payload.slice(0, 30) : []);
+            const nextPosts = Array.isArray(payload) ? payload.slice(0, 30) : [];
+            setPosts(nextPosts);
+            writeSessionCache(SHORT_POSTS_CACHE_KEY, nextPosts);
             setError("");
         } catch {
             if (attempt < 2) {
@@ -119,7 +132,9 @@ export default function HomeShortPosts() {
                 await loadPosts(attempt + 1);
                 return;
             }
-            setError(LOAD_ERROR_MESSAGE);
+            if (!cachedPosts || cachedPosts.length === 0) {
+                setError(LOAD_ERROR_MESSAGE);
+            }
         } finally {
             setLoading(false);
         }
@@ -158,7 +173,11 @@ export default function HomeShortPosts() {
 
             setContent("");
             setOpenComposer(false);
-            setPosts((prev) => [payload as ShortPostItem, ...prev].slice(0, 30));
+            setPosts((prev) => {
+                const nextPosts = [payload as ShortPostItem, ...prev].slice(0, 30);
+                writeSessionCache(SHORT_POSTS_CACHE_KEY, nextPosts);
+                return nextPosts;
+            });
         } catch {
             setError(SUBMIT_ERROR_MESSAGE);
         } finally {

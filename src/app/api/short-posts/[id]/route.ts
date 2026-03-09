@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { withShortPostTable } from "@/lib/shortPosts";
 import { resolveSessionUserId } from "@/lib/sessionUser";
+import { invalidateReadCachePrefix, readCacheKeys } from "@/lib/readCache";
 
 export async function DELETE(
     _request: NextRequest,
@@ -40,6 +41,8 @@ export async function DELETE(
                 where: { id: post.id },
             })
         );
+
+        invalidateReadCachePrefix(readCacheKeys.shortPosts());
 
         return NextResponse.json({ ok: true, id: post.id });
     } catch (error) {

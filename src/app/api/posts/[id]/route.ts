@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { resolveSessionUserId } from "@/lib/sessionUser";
+import { invalidateReadCachePrefix, readCacheKeys } from "@/lib/readCache";
 
 // GET: 記事詳細取得
 export async function GET(
@@ -58,6 +59,11 @@ export async function PUT(
             },
         });
 
+        invalidateReadCachePrefix(readCacheKeys.publicPosts());
+        invalidateReadCachePrefix("user-profile:");
+        invalidateReadCachePrefix("user-posts:");
+        invalidateReadCachePrefix("pins-feed:");
+
         return NextResponse.json(post);
     } catch (error) {
         console.error("Failed to update post:", error);
@@ -79,6 +85,10 @@ export async function DELETE(
     const { id } = await params;
     try {
         await prisma.post.delete({ where: { id } });
+        invalidateReadCachePrefix(readCacheKeys.publicPosts());
+        invalidateReadCachePrefix("user-profile:");
+        invalidateReadCachePrefix("user-posts:");
+        invalidateReadCachePrefix("pins-feed:");
         return NextResponse.json({ success: true });
     } catch (error) {
         console.error("Failed to delete post:", error);

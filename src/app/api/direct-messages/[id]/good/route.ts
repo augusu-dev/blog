@@ -6,6 +6,7 @@ import {
     withDirectMessageTable,
 } from "@/lib/directMessages";
 import { resolveSessionUserId } from "@/lib/sessionUser";
+import { invalidateReadCachePrefix } from "@/lib/readCache";
 
 async function getGoodState(messageId: string, userId: string) {
     const [goodCount, mine] = await Promise.all([
@@ -100,6 +101,8 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
                 });
             })
         );
+
+        invalidateReadCachePrefix("direct-messages:");
 
         return NextResponse.json({
             messageId,

@@ -11,6 +11,7 @@ import UnreadDmButton from "@/components/UnreadDmButton";
 import HomeShortPosts from "@/components/HomeShortPosts";
 import { useMyPageHref } from "@/hooks/useMyPageHref";
 import { prepareRenderedPostHtml } from "@/lib/postContent";
+import { readSessionCache, writeSessionCache } from "@/lib/clientSessionCache";
 
 interface Post {
   id: string;
@@ -27,6 +28,9 @@ const TAG_COLORS: Record<string, string> = {
   "3D": "#8a6b7a", "哲学": "#7a6b8a", "テクノロジー": "#d4877a",
   "社会": "#6b8a7a", "作品": "#7a8a6b", "ツール": "#6b8a8a",
 };
+
+const HOME_POSTS_CACHE_KEY = "home-posts-cache:v1";
+const HOME_POSTS_CACHE_TTL_MS = 60 * 1000;
 
 function renderTagLabel(tag: string): string {
   return tag === "ai-generated" ? "AIで作成" : tag;
@@ -72,8 +76,17 @@ export default function HomePage() {
 
   useEffect(() => {
     let active = true;
-    const loadPosts = async (attempt = 0): Promise<void> => {
+    const cachedPosts = readSessionCache<Post[]>(HOME_POSTS_CACHE_KEY, HOME_POSTS_CACHE_TTL_MS);
+    if (cachedPosts && cachedPosts.length > 0) {
+      setPosts(cachedPosts);
+      setLoadingPosts(false);
       setPostsError("");
+    }
+
+    const loadPosts = async (attempt = 0): Promise<void> => {
+      if (!cachedPosts || cachedPosts.length === 0) {
+        setPostsError("");
+      }
       try {
         const res = await fetch("/api/posts");
         const data = await res.json().catch(() => []);
@@ -89,17 +102,20 @@ export default function HomePage() {
           throw new Error("Failed to fetch posts");
         }
         if (!active) return;
-        setPosts(
-          data.map((p: Post) => ({
-            ...p,
-            excerpt: p.excerpt || "",
-          }))
-        );
+        const nextPosts = data.map((p: Post) => ({
+          ...p,
+          excerpt: p.excerpt || "",
+        }));
+        setPosts(nextPosts);
+        writeSessionCache(HOME_POSTS_CACHE_KEY, nextPosts);
+        setPostsError("");
       } catch (error) {
         if (!active) return;
         console.error(error);
-        setPosts([]);
-        setPostsError("記事の読み込みに失敗しました。時間をおいて再読み込みしてください。");
+        if (!cachedPosts || cachedPosts.length === 0) {
+          setPosts([]);
+          setPostsError("記事の読み込みに失敗しました。時間をおいて再読み込みしてください。");
+        }
       } finally {
         if (active) setLoadingPosts(false);
       }
@@ -110,6 +126,15 @@ export default function HomePage() {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!session) return;
+    router.prefetch(myPageHref);
+    router.prefetch("/pins");
+    router.prefetch("/messages");
+    router.prefetch("/settings");
+    router.prefetch("/editor");
+  }, [myPageHref, router, session]);
 
   const openPost = (post: Post) => {
     setOverlayMeta({

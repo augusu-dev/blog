@@ -6,6 +6,7 @@ import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { markDmPrSeen } from "@/lib/dmUnreadClient";
+import { readSessionCache, writeSessionCache } from "@/lib/clientSessionCache";
 
 type ThreadUser = {
     id: string;
@@ -39,6 +40,17 @@ type DirectMessage = {
     likedByMe?: boolean;
     pending?: boolean;
 };
+
+const DM_THREADS_CACHE_TTL_MS = 60 * 1000;
+const DM_THREAD_CACHE_TTL_MS = 60 * 1000;
+
+function buildDmThreadsCacheKey(userId: string): string {
+    return `dm-threads-cache:${userId}`;
+}
+
+function buildDmThreadCacheKey(userId: string, threadId: string): string {
+    return `dm-thread-cache:${userId}:${threadId}`;
+}
 
 function formatMessageTime(value: string): string {
     if (!value) return "";
@@ -79,6 +91,7 @@ export default function MessagesPage() {
     const messageListRef = useRef<HTMLDivElement | null>(null);
     const threadMessagesCacheRef = useRef<Map<string, DirectMessage[]>>(new Map());
     const threadUserCacheRef = useRef<Map<string, ThreadUser>>(new Map());
+    const restoredThreadsRef = useRef(false);
 
     const currentUserId = (session?.user as { id?: string } | undefined)?.id ?? "";
     const sessionUser = session?.user as {
@@ -89,6 +102,14 @@ export default function MessagesPage() {
         image?: string | null;
     } | undefined;
     const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    const persistThreads = useCallback(
+        (nextThreads: Thread[]) => {
+            if (!currentUserId) return;
+            writeSessionCache(buildDmThreadsCacheKey(currentUserId), nextThreads);
+        },
+        [currentUserId]
+    );
 
     const scrollMessagesToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
         const node = messageListRef.current;
@@ -103,8 +124,11 @@ export default function MessagesPage() {
 
     const replaceMessagesForThread = useCallback((threadId: string, nextMessages: DirectMessage[]) => {
         threadMessagesCacheRef.current.set(threadId, nextMessages);
+        if (currentUserId) {
+            writeSessionCache(buildDmThreadCacheKey(currentUserId, threadId), nextMessages);
+        }
         setMessages(nextMessages);
-    }, []);
+    }, [currentUserId]);
 
     const updateCurrentThreadMessages = useCallback(
         (updater: (previous: DirectMessage[]) => DirectMessage[]) => {
@@ -112,11 +136,14 @@ export default function MessagesPage() {
                 const nextMessages = updater(previous);
                 if (selectedUserId) {
                     threadMessagesCacheRef.current.set(selectedUserId, nextMessages);
+                    if (currentUserId) {
+                        writeSessionCache(buildDmThreadCacheKey(currentUserId, selectedUserId), nextMessages);
+                    }
                 }
                 return nextMessages;
             });
         },
-        [selectedUserId]
+        [currentUserId, selectedUserId]
     );
 
     const deriveThreadUserFromMessages = useCallback((items: DirectMessage[], threadUserId: string) => {
@@ -152,7 +179,7 @@ export default function MessagesPage() {
                     }
                 }
 
-                await wait(140 * (attempt + 1));
+                await wait(80 * (attempt + 1));
             }
 
             return lastResponse as Response;
@@ -184,6 +211,9 @@ export default function MessagesPage() {
                             ? (payload.messages as DirectMessage[])
                             : [];
                         threadMessagesCacheRef.current.set(threadId, nextMessages);
+                        if (currentUserId) {
+                            writeSessionCache(buildDmThreadCacheKey(currentUserId, threadId), nextMessages);
+                        }
 
                         const payloadUser =
                             payload.user && typeof payload.user === "object"
@@ -198,7 +228,7 @@ export default function MessagesPage() {
                 })
             );
         },
-        [cacheThreadUser, deriveThreadUserFromMessages, fetchReadWithRetry]
+        [cacheThreadUser, currentUserId, deriveThreadUserFromMessages, fetchReadWithRetry]
     );
 
     const syncThreadFromMessage = useCallback(
@@ -219,11 +249,15 @@ export default function MessagesPage() {
                 },
             };
 
-            setThreads((prev) => [nextThread, ...prev.filter((thread) => thread.id !== otherUser.id)]);
+            setThreads((prev) => {
+                const nextThreads = [nextThread, ...prev.filter((thread) => thread.id !== otherUser.id)];
+                persistThreads(nextThreads);
+                return nextThreads;
+            });
             cacheThreadUser(otherUser);
             setSelectedUser((current) => current || otherUser);
         },
-        [cacheThreadUser, currentUserId]
+        [cacheThreadUser, currentUserId, persistThreads]
     );
 
     useEffect(() => {
@@ -236,6 +270,26 @@ export default function MessagesPage() {
         if (!presetTarget) return;
         setSelectedUserId(presetTarget);
     }, [presetTarget]);
+
+    useEffect(() => {
+        if (!currentUserId || restoredThreadsRef.current) return;
+
+        const cachedThreads = readSessionCache<Thread[]>(
+            buildDmThreadsCacheKey(currentUserId),
+            DM_THREADS_CACHE_TTL_MS
+        );
+        restoredThreadsRef.current = true;
+
+        if (!cachedThreads || cachedThreads.length === 0) {
+            return;
+        }
+
+        setThreads(cachedThreads);
+        cachedThreads.forEach((thread) => cacheThreadUser(thread.user));
+        if (!presetTarget) {
+            setSelectedUserId((current) => current || cachedThreads[0]?.id || null);
+        }
+    }, [cacheThreadUser, currentUserId, presetTarget]);
 
     useEffect(() => {
         if (status === "unauthenticated") {
@@ -255,8 +309,11 @@ export default function MessagesPage() {
     const loadThreads = useCallback(async () => {
         if (status !== "authenticated" || !session?.user) return;
 
+        const hadThreads = threads.length > 0;
         setError("");
-        setLoadingThreads(true);
+        if (!hadThreads) {
+            setLoadingThreads(true);
+        }
         try {
             const res = await fetchReadWithRetry("/api/direct-messages?mode=threads");
             const payload = await res.json().catch(() => ({}));
@@ -267,6 +324,7 @@ export default function MessagesPage() {
 
             const nextThreads = Array.isArray(payload.threads) ? (payload.threads as Thread[]) : [];
             setThreads(nextThreads);
+            persistThreads(nextThreads);
             nextThreads.forEach((thread) => cacheThreadUser(thread.user));
             void warmThreadCache(nextThreads.map((thread) => thread.id));
 
@@ -280,7 +338,7 @@ export default function MessagesPage() {
         } finally {
             setLoadingThreads(false);
         }
-    }, [cacheThreadUser, fetchReadWithRetry, presetTarget, session?.user, status, warmThreadCache]);
+    }, [cacheThreadUser, fetchReadWithRetry, persistThreads, presetTarget, session?.user, status, threads.length, warmThreadCache]);
 
     useEffect(() => {
         if (status !== "authenticated" || !session?.user) return;
@@ -322,6 +380,15 @@ export default function MessagesPage() {
         setThreadDrawerOpen(false);
 
         let active = true;
+        if (!threadMessagesCacheRef.current.has(selectedUserId) && currentUserId) {
+            const cachedThreadMessages = readSessionCache<DirectMessage[]>(
+                buildDmThreadCacheKey(currentUserId, selectedUserId),
+                DM_THREAD_CACHE_TTL_MS
+            );
+            if (cachedThreadMessages) {
+                threadMessagesCacheRef.current.set(selectedUserId, cachedThreadMessages);
+            }
+        }
         const cachedMessages = threadMessagesCacheRef.current.get(selectedUserId) || [];
         if (cachedMessages.length > 0) {
             setMessages(cachedMessages);
@@ -371,7 +438,7 @@ export default function MessagesPage() {
         return () => {
             active = false;
         };
-    }, [cacheThreadUser, deriveThreadUserFromMessages, fetchReadWithRetry, replaceMessagesForThread, selectedUserId, session?.user, status]);
+    }, [cacheThreadUser, currentUserId, deriveThreadUserFromMessages, fetchReadWithRetry, replaceMessagesForThread, selectedUserId, session?.user, status]);
 
     useEffect(() => {
         if (!selectedUserId || messages.length === 0) return;

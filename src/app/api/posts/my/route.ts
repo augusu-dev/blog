@@ -3,6 +3,9 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { resolveSessionUserId } from "@/lib/sessionUser";
 import { getPostsByAuthorFallback } from "@/lib/publicContentFallback";
+import { readCacheKeys, readThroughCache } from "@/lib/readCache";
+
+const USER_POSTS_CACHE_TTL_MS = 15 * 1000;
 
 function isSchemaMismatchError(error: unknown): boolean {
     if (error && typeof error === "object" && "code" in error) {
@@ -45,19 +48,21 @@ export async function GET() {
         authorRefs.length <= 1 ? { authorId: authorRefs[0] || userId } : { authorId: { in: authorRefs } };
 
     try {
-        try {
-            const posts = await prisma.post.findMany({
-                where: authorWhere,
-                orderBy: { updatedAt: "desc" },
-            });
-            return NextResponse.json(posts);
-        } catch (error) {
-            if (!isSchemaMismatchError(error)) throw error;
-        }
+        const payload = await readThroughCache(readCacheKeys.userPosts(userId), USER_POSTS_CACHE_TTL_MS, async () => {
+            try {
+                const posts = await prisma.post.findMany({
+                    where: authorWhere,
+                    orderBy: { updatedAt: "desc" },
+                });
+                return posts;
+            } catch (error) {
+                if (!isSchemaMismatchError(error)) throw error;
+            }
 
-        return NextResponse.json(
-            await getPostsByAuthorFallback(authorRefs, { publishedOnly: false, limit: 300 })
-        );
+            return getPostsByAuthorFallback(authorRefs, { publishedOnly: false, limit: 300 });
+        });
+
+        return NextResponse.json(payload);
     } catch (error) {
         try {
             return NextResponse.json(

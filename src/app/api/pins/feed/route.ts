@@ -4,8 +4,10 @@ import { prisma } from "@/lib/db";
 import { withPinnedUserTable } from "@/lib/pinnedUsers";
 import { getPostsByAuthorFallback, getUserProfileByRefFallback } from "@/lib/publicContentFallback";
 import { resolveSessionUserId } from "@/lib/sessionUser";
+import { readCacheKeys, readThroughCache } from "@/lib/readCache";
 
 const FEED_LIMIT = 15;
+const PINS_FEED_CACHE_TTL_MS = 15 * 1000;
 
 const USER_PUBLIC_SELECT_WITH_USER_ID = {
     id: true,
@@ -220,42 +222,46 @@ export async function GET() {
     }
 
     try {
-        const pinnedRows = await fetchPinnedRows(ownerId);
+        const payload = await readThroughCache(readCacheKeys.pinsFeed(ownerId), PINS_FEED_CACHE_TTL_MS, async () => {
+            const pinnedRows = await fetchPinnedRows(ownerId);
 
-        const pinnedUserRefs = pinnedRows.map((row) => row.pinnedUserId);
-        if (pinnedUserRefs.length === 0) {
-            return NextResponse.json({ pinnedCount: 0, pinnedUsers: [], posts: [] });
-        }
+            const pinnedUserRefs = pinnedRows.map((row) => row.pinnedUserId);
+            if (pinnedUserRefs.length === 0) {
+                return { pinnedCount: 0, pinnedUsers: [], posts: [] };
+            }
 
-        const users = await fetchUsersByRefs(pinnedUserRefs);
-        const userMap = new Map<string, PublicUser>();
-        for (const user of users) {
-            registerUserRef(userMap, user);
-        }
+            const users = await fetchUsersByRefs(pinnedUserRefs);
+            const userMap = new Map<string, PublicUser>();
+            for (const user of users) {
+                registerUserRef(userMap, user);
+            }
 
-        const normalizedPinnedRows = pinnedRows
-            .map((row) => {
-                const pinnedUser = userMap.get(normalizeRef(row.pinnedUserId));
-                if (!pinnedUser) return null;
-                return {
-                    pinnedUserId: pinnedUser.id,
-                    createdAt: row.createdAt,
-                    pinnedUser,
-                };
-            })
-            .filter((row): row is NonNullable<typeof row> => !!row);
+            const normalizedPinnedRows = pinnedRows
+                .map((row) => {
+                    const pinnedUser = userMap.get(normalizeRef(row.pinnedUserId));
+                    if (!pinnedUser) return null;
+                    return {
+                        pinnedUserId: pinnedUser.id,
+                        createdAt: row.createdAt,
+                        pinnedUser,
+                    };
+                })
+                .filter((row): row is NonNullable<typeof row> => !!row);
 
-        if (normalizedPinnedRows.length === 0) {
-            return NextResponse.json({ pinnedCount: 0, pinnedUsers: [], posts: [] });
-        }
+            if (normalizedPinnedRows.length === 0) {
+                return { pinnedCount: 0, pinnedUsers: [], posts: [] };
+            }
 
-        const posts = await fetchPinnedPosts(normalizedPinnedRows.map((row) => row.pinnedUser));
+            const posts = await fetchPinnedPosts(normalizedPinnedRows.map((row) => row.pinnedUser));
 
-        return NextResponse.json({
-            pinnedCount: normalizedPinnedRows.length,
-            pinnedUsers: normalizedPinnedRows,
-            posts,
+            return {
+                pinnedCount: normalizedPinnedRows.length,
+                pinnedUsers: normalizedPinnedRows,
+                posts,
+            };
         });
+
+        return NextResponse.json(payload);
     } catch (error) {
         if (isSchemaCompatibilityError(error)) {
             return NextResponse.json({ pinnedCount: 0, pinnedUsers: [], posts: [] });

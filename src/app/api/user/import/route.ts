@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { tryEnsureProfileAndPostSchema } from "@/lib/schemaCompat";
 import { resolveSessionUserId } from "@/lib/sessionUser";
 import { ensureShortPostSchema } from "@/lib/shortPosts";
+import { invalidateReadCachePrefix, readCacheKeys } from "@/lib/readCache";
 
 type DmSetting = "OPEN" | "PR_ONLY" | "CLOSED";
 type ThemeName = "default" | "lightblue" | "sand" | "apricot" | "white" | "black" | "custom";
@@ -238,6 +239,13 @@ export async function POST(request: NextRequest) {
         if (!updatedUser) {
             return NextResponse.json({ error: "User not found" }, { status: 404 });
         }
+
+        invalidateReadCachePrefix("user-settings:");
+        invalidateReadCachePrefix("user-profile:");
+        invalidateReadCachePrefix("user-posts:");
+        invalidateReadCachePrefix(readCacheKeys.publicPosts());
+        invalidateReadCachePrefix(readCacheKeys.shortPosts());
+        invalidateReadCachePrefix("pins-feed:");
 
         return NextResponse.json({
             message: "Import completed",

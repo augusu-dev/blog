@@ -1,9 +1,10 @@
 "use client";
 
-import { CSSProperties, useCallback, useEffect, useState } from "react";
+import { CSSProperties, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { getDmUnreadRefreshEventName, getDmUnreadSince } from "@/lib/dmUnreadClient";
+import { writeSessionCache } from "@/lib/clientSessionCache";
 
 type UnreadDmButtonProps = {
     href?: string;
@@ -20,8 +21,9 @@ export default function UnreadDmButton({
     style,
     title = "DM",
 }: UnreadDmButtonProps) {
-    const { status } = useSession();
+    const { data: session, status } = useSession();
     const [unreadCount, setUnreadCount] = useState(0);
+    const warmedThreadsForRef = useRef("");
 
     const refreshUnread = useCallback(async () => {
         if (status !== "authenticated") {
@@ -65,6 +67,65 @@ export default function UnreadDmButton({
             window.removeEventListener("focus", onRefresh);
         };
     }, [refreshUnread]);
+
+    useEffect(() => {
+        const currentUserId = (session?.user as { id?: string } | undefined)?.id ?? "";
+        if (status !== "authenticated" || !currentUserId) {
+            return;
+        }
+        if (warmedThreadsForRef.current === currentUserId) {
+            return;
+        }
+
+        warmedThreadsForRef.current = currentUserId;
+        const timer = window.setTimeout(() => {
+            void fetch("/api/direct-messages?mode=threads", {
+                cache: "no-store",
+                credentials: "same-origin",
+            })
+                .then((res) => res.json().then((payload) => ({ ok: res.ok, payload })))
+                .then(({ ok, payload }) => {
+                    if (!ok || !payload || !Array.isArray(payload.threads)) {
+                        return;
+                    }
+                    writeSessionCache(`dm-threads-cache:${currentUserId}`, payload.threads);
+                    const topThreadIds = payload.threads
+                        .map((thread: { id?: unknown }) => (typeof thread?.id === "string" ? thread.id : ""))
+                        .filter(Boolean)
+                        .slice(0, 2);
+                    void Promise.all(
+                        topThreadIds.map(async (threadId: string) => {
+                            try {
+                                const threadRes = await fetch(
+                                    `/api/direct-messages?mode=thread&userId=${encodeURIComponent(threadId)}`,
+                                    {
+                                        cache: "no-store",
+                                        credentials: "same-origin",
+                                    }
+                                );
+                                const threadPayload = await threadRes.json().catch(() => null);
+                                if (!threadRes.ok || !threadPayload || !Array.isArray(threadPayload.messages)) {
+                                    return;
+                                }
+                                writeSessionCache(
+                                    `dm-thread-cache:${currentUserId}:${threadId}`,
+                                    threadPayload.messages
+                                );
+                            } catch {
+                                // Ignore background warm-up failures.
+                            }
+                        })
+                    );
+                })
+                .catch(() => {
+                    // Ignore background warm-up failures.
+                });
+        }, 180);
+
+        return () => {
+            window.clearTimeout(timer);
+        };
+    }, [session, status]);
 
     return (
         <Link

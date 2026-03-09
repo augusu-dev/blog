@@ -217,6 +217,15 @@ export default function UserPage() {
     const sectionsRef = useRef<HTMLElement[]>([]);
     const autoOpenedPostRef = useRef<string | null>(null);
 
+    useEffect(() => {
+        if (!session) return;
+        router.prefetch(myPageHref);
+        router.prefetch("/pins");
+        router.prefetch("/messages");
+        router.prefetch("/settings");
+        router.prefetch("/editor");
+    }, [myPageHref, router, session]);
+
     /* ─── Fetch user data ─── */
     useEffect(() => {
         async function loadUser() {

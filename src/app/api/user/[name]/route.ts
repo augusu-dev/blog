@@ -5,9 +5,11 @@ import { resolveSessionUserId } from "@/lib/sessionUser";
 import { getUserProfileByRefFallback } from "@/lib/publicContentFallback";
 import { getPostsByAuthorFallback } from "@/lib/publicContentFallback";
 import { resolveReadablePublicUserId } from "@/lib/userId";
+import { readCacheKeys, readThroughCache, writeReadCache } from "@/lib/readCache";
 
 type DmSetting = "OPEN" | "PR_ONLY" | "CLOSED";
 const DEFAULT_DM_SETTING: DmSetting = "OPEN";
+const USER_PROFILE_CACHE_TTL_MS = 20 * 1000;
 
 const USER_PUBLIC_SELECT_WITH_USER_ID = {
     id: true,
@@ -439,62 +441,76 @@ export async function GET(_req: Request, { params }: { params: Promise<{ name: s
     const userRefLower = userRef.toLowerCase();
 
     try {
-        const prismaUser = await findUserProfileByRef(userRef, userRefLower);
-        let rawUser = null;
-        if (shouldHydrateUserProfileFromFallback(prismaUser) || (Array.isArray(prismaUser?.posts) && prismaUser.posts.length === 0)) {
-            try {
-                rawUser = await getUserProfileByRefFallback(userRef);
-            } catch (fallbackError) {
-                console.error("Failed to hydrate user profile from raw fallback:", fallbackError);
+        const payload = await readThroughCache(readCacheKeys.userProfile(userRef), USER_PROFILE_CACHE_TTL_MS, async () => {
+            const prismaUser = await findUserProfileByRef(userRef, userRefLower);
+            let rawUser = null;
+            if (shouldHydrateUserProfileFromFallback(prismaUser) || (Array.isArray(prismaUser?.posts) && prismaUser.posts.length === 0)) {
+                try {
+                    rawUser = await getUserProfileByRefFallback(userRef);
+                } catch (fallbackError) {
+                    console.error("Failed to hydrate user profile from raw fallback:", fallbackError);
+                }
             }
-        }
-        const mergedUser = mergeUserProfileCandidates(prismaUser, rawUser);
-        let sessionUser = null;
-        if (!mergedUser) {
-            try {
-                sessionUser = await findCurrentSessionUserFallback(userRef);
-            } catch (sessionFallbackError) {
-                console.error("Failed to hydrate current session user fallback:", sessionFallbackError);
+            const mergedUser = mergeUserProfileCandidates(prismaUser, rawUser);
+            let sessionUser = null;
+            if (!mergedUser) {
+                try {
+                    sessionUser = await findCurrentSessionUserFallback(userRef);
+                } catch (sessionFallbackError) {
+                    console.error("Failed to hydrate current session user fallback:", sessionFallbackError);
+                }
             }
-        }
-        const resolvedUser = mergeUserProfileCandidates(
-            mergedUser,
-            sessionUser
-        );
+            const resolvedUser = mergeUserProfileCandidates(
+                mergedUser,
+                sessionUser
+            );
 
-        if (!resolvedUser) {
+            if (!resolvedUser) {
+                throw new Error("USER_NOT_FOUND");
+            }
+
+            const unpacked = unpackLinks(resolvedUser.links);
+
+            const ensuredUserId = resolveReadablePublicUserId({
+                id: resolvedUser.id,
+                userId: "userId" in resolvedUser ? resolvedUser.userId : null,
+                name: resolvedUser.name ?? null,
+                email: resolvedUser.email ?? null,
+            });
+            const resolvedPosts = Array.isArray(resolvedUser.posts) ? resolvedUser.posts : [];
+            let fallbackPosts: Awaited<ReturnType<typeof getPostsByAuthorFallback>> = [];
+            if (resolvedPosts.length === 0) {
+                try {
+                    fallbackPosts = await getPostsByAuthorFallback([resolvedUser.id, ensuredUserId || null, userRef], {
+                        publishedOnly: true,
+                        limit: 300,
+                    });
+                } catch (postsFallbackError) {
+                    console.error("Failed to hydrate profile posts from raw fallback:", postsFallbackError);
+                }
+            }
+
+            const responsePayload = {
+                ...resolvedUser,
+                userId: ensuredUserId || null,
+                posts: resolvedPosts.length >= fallbackPosts.length ? resolvedPosts : fallbackPosts,
+                links: unpacked.links,
+                dmSetting: unpacked.dmSetting,
+            };
+
+            for (const ref of [userRef, resolvedUser.id, ensuredUserId || null, resolvedUser.name || null, resolvedUser.email || null]) {
+                if (!ref) continue;
+                writeReadCache(readCacheKeys.userProfile(ref), responsePayload, USER_PROFILE_CACHE_TTL_MS);
+            }
+
+            return responsePayload;
+        });
+
+        return NextResponse.json(payload);
+    } catch (error) {
+        if (error instanceof Error && error.message === "USER_NOT_FOUND") {
             return NextResponse.json({ error: "User not found" }, { status: 404 });
         }
-
-        const unpacked = unpackLinks(resolvedUser.links);
-
-        const ensuredUserId = resolveReadablePublicUserId({
-            id: resolvedUser.id,
-            userId: "userId" in resolvedUser ? resolvedUser.userId : null,
-            name: resolvedUser.name ?? null,
-            email: resolvedUser.email ?? null,
-        });
-        const resolvedPosts = Array.isArray(resolvedUser.posts) ? resolvedUser.posts : [];
-        let fallbackPosts: Awaited<ReturnType<typeof getPostsByAuthorFallback>> = [];
-        if (resolvedPosts.length === 0) {
-            try {
-                fallbackPosts = await getPostsByAuthorFallback([resolvedUser.id, ensuredUserId || null, userRef], {
-                    publishedOnly: true,
-                    limit: 300,
-                });
-            } catch (postsFallbackError) {
-                console.error("Failed to hydrate profile posts from raw fallback:", postsFallbackError);
-            }
-        }
-
-        return NextResponse.json({
-            ...resolvedUser,
-            userId: ensuredUserId || null,
-            posts: resolvedPosts.length >= fallbackPosts.length ? resolvedPosts : fallbackPosts,
-            links: unpacked.links,
-            dmSetting: unpacked.dmSetting,
-        });
-    } catch (error) {
         console.error("Failed to fetch user:", error);
         return NextResponse.json({ error: "Failed to fetch user" }, { status: 500 });
     }

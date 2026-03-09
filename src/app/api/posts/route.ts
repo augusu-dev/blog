@@ -5,6 +5,9 @@ import { resolveSessionUserId } from "@/lib/sessionUser";
 import { tryEnsureProfileAndPostSchema } from "@/lib/schemaCompat";
 import { getPublicPostsFallback } from "@/lib/publicContentFallback";
 import { fillMissingPublicUserIds } from "@/lib/userId";
+import { invalidateReadCachePrefix, readCacheKeys, readThroughCache } from "@/lib/readCache";
+
+const PUBLIC_POSTS_CACHE_TTL_MS = 20 * 1000;
 
 function isSchemaMismatchError(error: unknown): boolean {
     if (error && typeof error === "object" && "code" in error) {
@@ -20,88 +23,94 @@ function isSchemaMismatchError(error: unknown): boolean {
 }
 
 export async function GET() {
+    const attachPublicUserIds = async <
+        T extends Array<{
+            author?: {
+                id: string;
+                userId?: string | null;
+                name: string | null;
+                email: string | null;
+                image: string | null;
+            } | null;
+        }>,
+    >(
+        posts: T
+    ): Promise<T> => {
+        const authors = posts
+            .map((post) => post.author)
+            .filter((author): author is NonNullable<(typeof posts)[number]["author"]> => !!author?.id);
+        const hydratedAuthors = await fillMissingPublicUserIds(authors);
+        const authorById = new Map(hydratedAuthors.map((author) => [author.id, author]));
+
+        return posts.map((post) =>
+            post.author?.id
+                ? {
+                      ...post,
+                      author: authorById.get(post.author.id) || post.author,
+                  }
+                : post
+        ) as T;
+    };
+
     try {
-        const attachPublicUserIds = async <
-            T extends Array<{
-                author?: {
-                    id: string;
-                    userId?: string | null;
-                    name: string | null;
-                    email: string | null;
-                    image: string | null;
-                } | null;
-            }>,
-        >(
-            posts: T
-        ): Promise<T> => {
-            const authors = posts
-                .map((post) => post.author)
-                .filter((author): author is NonNullable<(typeof posts)[number]["author"]> => !!author?.id);
-            const hydratedAuthors = await fillMissingPublicUserIds(authors);
-            const authorById = new Map(hydratedAuthors.map((author) => [author.id, author]));
+        const payload = await readThroughCache(readCacheKeys.publicPosts(), PUBLIC_POSTS_CACHE_TTL_MS, async () => {
+            try {
+                try {
+                    const posts = await prisma.post.findMany({
+                        where: { published: true },
+                        orderBy: { createdAt: "desc" },
+                        include: {
+                            author: {
+                                select: { id: true, userId: true, name: true, email: true, image: true },
+                            },
+                        },
+                    });
+                    if (posts.length > 0) {
+                        return await attachPublicUserIds(posts);
+                    }
+                } catch (error) {
+                    if (!isSchemaMismatchError(error)) throw error;
+                }
 
-            return posts.map((post) =>
-                post.author?.id
-                    ? {
-                          ...post,
-                          author: authorById.get(post.author.id) || post.author,
-                      }
-                    : post
-            ) as T;
-        };
+                try {
+                    const posts = await prisma.post.findMany({
+                        where: { published: true },
+                        orderBy: { createdAt: "desc" },
+                        include: {
+                            author: {
+                                select: { id: true, name: true, email: true, image: true },
+                            },
+                        },
+                    });
+                    if (posts.length > 0) {
+                        return await attachPublicUserIds(posts);
+                    }
+                } catch (error) {
+                    if (!isSchemaMismatchError(error)) throw error;
+                }
 
-        try {
-            const posts = await prisma.post.findMany({
-                where: { published: true },
-                orderBy: { createdAt: "desc" },
-                include: {
-                    author: {
-                        select: { id: true, userId: true, name: true, email: true, image: true },
-                    },
-                },
-            });
-            if (posts.length > 0) {
-                return NextResponse.json(await attachPublicUserIds(posts));
+                return await attachPublicUserIds(await getPublicPostsFallback(300));
+            } catch (error) {
+                try {
+                    const fallbackPosts = await getPublicPostsFallback(300);
+                    return await fillMissingPublicUserIds(fallbackPosts.map((post) => post.author)).then((authors) => {
+                        const authorById = new Map(authors.map((author) => [author.id, author]));
+                        return fallbackPosts.map((post) => ({
+                            ...post,
+                            author: authorById.get(post.author.id) || post.author,
+                        }));
+                    });
+                } catch (fallbackError) {
+                    if (isSchemaMismatchError(error) || isSchemaMismatchError(fallbackError)) {
+                        return [];
+                    }
+                }
+                throw error;
             }
-        } catch (error) {
-            if (!isSchemaMismatchError(error)) throw error;
-        }
+        });
 
-        try {
-            const posts = await prisma.post.findMany({
-                where: { published: true },
-                orderBy: { createdAt: "desc" },
-                include: {
-                    author: {
-                        select: { id: true, name: true, email: true, image: true },
-                    },
-                },
-            });
-            if (posts.length > 0) {
-                return NextResponse.json(await attachPublicUserIds(posts));
-            }
-        } catch (error) {
-            if (!isSchemaMismatchError(error)) throw error;
-        }
-
-        return NextResponse.json(await attachPublicUserIds(await getPublicPostsFallback(300)));
+        return NextResponse.json(payload);
     } catch (error) {
-        try {
-            const fallbackPosts = await getPublicPostsFallback(300);
-            return NextResponse.json(await fillMissingPublicUserIds(
-                fallbackPosts.map((post) => post.author)
-            ).then((authors) => {
-                const authorById = new Map(authors.map((author) => [author.id, author]));
-                return fallbackPosts.map((post) => ({
-                    ...post,
-                    author: authorById.get(post.author.id) || post.author,
-                }));
-            }));
-        } catch (fallbackError) {
-            if (isSchemaMismatchError(error) || isSchemaMismatchError(fallbackError)) {
-                return NextResponse.json([]);
-            }
-        }
         console.error("Failed to fetch posts:", error);
         return NextResponse.json({ error: "Failed to fetch posts" }, { status: 500 });
     }
@@ -137,6 +146,11 @@ export async function POST(request: NextRequest) {
                 authorId: userId,
             },
         });
+
+        invalidateReadCachePrefix(readCacheKeys.publicPosts());
+        invalidateReadCachePrefix("user-profile:");
+        invalidateReadCachePrefix("user-posts:");
+        invalidateReadCachePrefix("pins-feed:");
 
         return NextResponse.json(post, { status: 201 });
     } catch (error) {

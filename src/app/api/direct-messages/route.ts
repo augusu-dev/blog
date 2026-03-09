@@ -8,9 +8,11 @@ import {
     withDirectMessageTable,
 } from "@/lib/directMessages";
 import { resolveSessionUserId } from "@/lib/sessionUser";
+import { invalidateReadCachePrefix, readCacheKeys, readThroughCache } from "@/lib/readCache";
 
 type DmSetting = "OPEN" | "PR_ONLY" | "CLOSED";
 const DEFAULT_DM_SETTING: DmSetting = "OPEN";
+const DIRECT_MESSAGES_CACHE_TTL_MS = 5 * 1000;
 const DM_USER_SELECT = {
     id: true,
     userId: true,
@@ -165,127 +167,141 @@ export async function GET(request: NextRequest) {
     const targetUserId = normalizeString(request.nextUrl.searchParams.get("userId"));
 
     try {
-        if (mode === "thread") {
-            if (!targetUserId) {
-                return NextResponse.json({ error: "userId is required for thread mode" }, { status: 400 });
-            }
+        const payload = await readThroughCache(
+            readCacheKeys.directMessages(userId, mode, targetUserId),
+            DIRECT_MESSAGES_CACHE_TTL_MS,
+            async () => {
+                if (mode === "thread") {
+                    if (!targetUserId) {
+                        throw new Error("THREAD_USER_REQUIRED");
+                    }
 
-            const resolvedTargetUserId = await resolveUserPrimaryId(targetUserId);
-            if (!resolvedTargetUserId) {
-                return NextResponse.json({ error: "Target user not found" }, { status: 404 });
-            }
+                    const resolvedTargetUserId = await resolveUserPrimaryId(targetUserId);
+                    if (!resolvedTargetUserId) {
+                        throw new Error("THREAD_TARGET_NOT_FOUND");
+                    }
 
-            const messages = await withDirectMessageTable(() =>
-                prisma.directMessage.findMany({
-                    where: {
-                        OR: [
-                            { senderId: userId, recipientId: resolvedTargetUserId },
-                            { senderId: resolvedTargetUserId, recipientId: userId },
-                        ],
-                    },
-                    orderBy: { createdAt: "asc" },
-                    include: {
-                        sender: { select: DM_USER_SELECT },
-                        recipient: { select: DM_USER_SELECT },
-                    },
-                })
-            );
+                    const messages = await withDirectMessageTable(() =>
+                        prisma.directMessage.findMany({
+                            where: {
+                                OR: [
+                                    { senderId: userId, recipientId: resolvedTargetUserId },
+                                    { senderId: resolvedTargetUserId, recipientId: userId },
+                                ],
+                            },
+                            orderBy: { createdAt: "asc" },
+                            include: {
+                                sender: { select: DM_USER_SELECT },
+                                recipient: { select: DM_USER_SELECT },
+                            },
+                        })
+                    );
 
-            const targetUser =
-                messages.find((message) => message.senderId === resolvedTargetUserId)?.sender ||
-                messages.find((message) => message.recipientId === resolvedTargetUserId)?.recipient ||
-                (await prisma.user.findUnique({
-                    where: { id: resolvedTargetUserId },
-                    select: DM_USER_SELECT,
-                }).catch(() => null));
+                    const targetUser =
+                        messages.find((message) => message.senderId === resolvedTargetUserId)?.sender ||
+                        messages.find((message) => message.recipientId === resolvedTargetUserId)?.recipient ||
+                        (await prisma.user.findUnique({
+                            where: { id: resolvedTargetUserId },
+                            select: DM_USER_SELECT,
+                        }).catch(() => null));
 
-            return NextResponse.json({
-                mode,
-                userId: resolvedTargetUserId,
-                user: targetUser,
-                messages: await appendDirectMessageGoodState(messages, userId),
-            });
-        }
-
-        if (mode === "threads") {
-            const messages = await withDirectMessageTable(() =>
-                prisma.directMessage.findMany({
-                    where: {
-                        OR: [{ senderId: userId }, { recipientId: userId }],
-                    },
-                    orderBy: { createdAt: "desc" },
-                    include: {
-                        sender: { select: DM_USER_SELECT },
-                        recipient: { select: DM_USER_SELECT },
-                    },
-                })
-            );
-
-            const threadMap = new Map<
-                string,
-                {
-                    id: string;
-                    user: { id: string; name: string | null; email: string | null; image: string | null };
-                    lastMessage: {
-                        id: string;
-                        content: string;
-                        createdAt: Date;
-                        senderId: string;
-                        recipientId: string;
+                    return {
+                        mode,
+                        userId: resolvedTargetUserId,
+                        user: targetUser,
+                        messages: await appendDirectMessageGoodState(messages, userId),
                     };
                 }
-            >();
 
-            for (const message of messages) {
-                const otherUser = message.senderId === userId ? message.recipient : message.sender;
-                if (!otherUser || threadMap.has(otherUser.id)) continue;
-                threadMap.set(otherUser.id, {
-                    id: otherUser.id,
-                    user: otherUser,
-                    lastMessage: {
-                        id: message.id,
-                        content: message.content,
-                        createdAt: message.createdAt,
-                        senderId: message.senderId,
-                        recipientId: message.recipientId,
-                    },
-                });
+                if (mode === "threads") {
+                    const messages = await withDirectMessageTable(() =>
+                        prisma.directMessage.findMany({
+                            where: {
+                                OR: [{ senderId: userId }, { recipientId: userId }],
+                            },
+                            orderBy: { createdAt: "desc" },
+                            include: {
+                                sender: { select: DM_USER_SELECT },
+                                recipient: { select: DM_USER_SELECT },
+                            },
+                        })
+                    );
+
+                    const threadMap = new Map<
+                        string,
+                        {
+                            id: string;
+                            user: { id: string; name: string | null; email: string | null; image: string | null };
+                            lastMessage: {
+                                id: string;
+                                content: string;
+                                createdAt: Date;
+                                senderId: string;
+                                recipientId: string;
+                            };
+                        }
+                    >();
+
+                    for (const message of messages) {
+                        const otherUser = message.senderId === userId ? message.recipient : message.sender;
+                        if (!otherUser || threadMap.has(otherUser.id)) continue;
+                        threadMap.set(otherUser.id, {
+                            id: otherUser.id,
+                            user: otherUser,
+                            lastMessage: {
+                                id: message.id,
+                                content: message.content,
+                                createdAt: message.createdAt,
+                                senderId: message.senderId,
+                                recipientId: message.recipientId,
+                            },
+                        });
+                    }
+
+                    return { mode, threads: Array.from(threadMap.values()) };
+                }
+
+                if (mode === "sent") {
+                    const messages = await withDirectMessageTable(() =>
+                        prisma.directMessage.findMany({
+                            where: {
+                                senderId: userId,
+                                context: DirectMessageContext.GENERAL,
+                            },
+                            orderBy: { createdAt: "desc" },
+                            include: {
+                                recipient: { select: DM_USER_SELECT },
+                            },
+                        })
+                    );
+                    return { mode, messages };
+                }
+
+                const messages = await withDirectMessageTable(() =>
+                    prisma.directMessage.findMany({
+                        where: {
+                            recipientId: userId,
+                            context: DirectMessageContext.GENERAL,
+                        },
+                        orderBy: { createdAt: "desc" },
+                        include: {
+                            sender: { select: DM_USER_SELECT },
+                        },
+                    })
+                );
+
+                return { mode, messages };
             }
+        );
 
-            return NextResponse.json({ mode, threads: Array.from(threadMap.values()) });
-        }
-
-        if (mode === "sent") {
-            const messages = await withDirectMessageTable(() =>
-                prisma.directMessage.findMany({
-                    where: {
-                        senderId: userId,
-                        context: DirectMessageContext.GENERAL,
-                    },
-                    orderBy: { createdAt: "desc" },
-                    include: {
-                        recipient: { select: DM_USER_SELECT },
-                    },
-                })
-            );
-            return NextResponse.json({ mode, messages });
-        }
-
-        const messages = await withDirectMessageTable(() =>
-                prisma.directMessage.findMany({
-                where: {
-                    recipientId: userId,
-                    context: DirectMessageContext.GENERAL,
-                },
-                orderBy: { createdAt: "desc" },
-                    include: {
-                        sender: { select: DM_USER_SELECT },
-                    },
-                })
-            );
-
-        return NextResponse.json({ mode, messages });
+        return NextResponse.json(payload);
     } catch (error) {
+        if (error instanceof Error && error.message === "THREAD_USER_REQUIRED") {
+            return NextResponse.json({ error: "userId is required for thread mode" }, { status: 400 });
+        }
+        if (error instanceof Error && error.message === "THREAD_TARGET_NOT_FOUND") {
+            return NextResponse.json({ error: "Target user not found" }, { status: 404 });
+        }
         console.error("Failed to fetch direct messages:", error);
         if (mode === "threads") {
             return NextResponse.json({ mode, threads: [] });
@@ -367,6 +383,9 @@ export async function POST(request: NextRequest) {
                 },
             })
         );
+
+        invalidateReadCachePrefix("direct-messages:");
+        invalidateReadCachePrefix("unread:");
 
         return NextResponse.json(
             {

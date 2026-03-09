@@ -4,6 +4,9 @@ import { prisma } from "@/lib/db";
 import { withPinnedUserTable } from "@/lib/pinnedUsers";
 import { getUserProfileByRefFallback } from "@/lib/publicContentFallback";
 import { resolveSessionUserId } from "@/lib/sessionUser";
+import { invalidateReadCachePrefix, readCacheKeys, readThroughCache } from "@/lib/readCache";
+
+const PINS_STATE_CACHE_TTL_MS = 15 * 1000;
 
 const PINNED_USER_PUBLIC_SELECT_WITH_USER_ID = {
     id: true,
@@ -233,28 +236,40 @@ export async function GET(request: NextRequest) {
 
     try {
         if (targetRef) {
-            const { targetUserId, candidateRefs } = await resolvePinnedTargetRefs(targetRef);
-            if (!targetUserId) {
-                return NextResponse.json({ pinned: false, userId: targetRef });
-            }
-            const existing = await withPinnedUserTable(() =>
-                prisma.pinnedUser.findFirst({
-                    where: { ownerId, pinnedUserId: { in: candidateRefs } },
-                    select: { id: true, pinnedUserId: true },
-                })
+            const payload = await readThroughCache(
+                readCacheKeys.pinsState(ownerId, targetRef),
+                PINS_STATE_CACHE_TTL_MS,
+                async () => {
+                    const { targetUserId, candidateRefs } = await resolvePinnedTargetRefs(targetRef);
+                    if (!targetUserId) {
+                        return { pinned: false, userId: targetRef };
+                    }
+                    const existing = await withPinnedUserTable(() =>
+                        prisma.pinnedUser.findFirst({
+                            where: { ownerId, pinnedUserId: { in: candidateRefs } },
+                            select: { id: true, pinnedUserId: true },
+                        })
+                    );
+                    return {
+                        pinned: !!existing,
+                        userId: targetUserId,
+                        pinnedUserId: existing?.pinnedUserId || targetUserId,
+                    };
+                }
             );
-            return NextResponse.json({
-                pinned: !!existing,
-                userId: targetUserId,
-                pinnedUserId: existing?.pinnedUserId || targetUserId,
-            });
+
+            return NextResponse.json(payload);
         }
 
-        const pinnedUsers = await fetchPinnedUsers(ownerId);
-        return NextResponse.json({
-            count: pinnedUsers.length,
-            users: pinnedUsers,
+        const payload = await readThroughCache(readCacheKeys.pinsList(ownerId), PINS_STATE_CACHE_TTL_MS, async () => {
+            const pinnedUsers = await fetchPinnedUsers(ownerId);
+            return {
+                count: pinnedUsers.length,
+                users: pinnedUsers,
+            };
         });
+
+        return NextResponse.json(payload);
     } catch (error) {
         console.error("Failed to fetch pinned users:", error);
         return NextResponse.json({ error: "Failed to fetch pinned users" }, { status: 500 });
@@ -293,6 +308,9 @@ export async function POST(request: NextRequest) {
                     where: { id: existing.id },
                 })
             );
+            invalidateReadCachePrefix("pins-feed:");
+            invalidateReadCachePrefix("pins-state:");
+            invalidateReadCachePrefix("pins-list:");
             return NextResponse.json({ pinned: false, pinnedUserId });
         }
 
@@ -301,6 +319,10 @@ export async function POST(request: NextRequest) {
                 data: { ownerId, pinnedUserId },
             })
         );
+
+        invalidateReadCachePrefix("pins-feed:");
+        invalidateReadCachePrefix("pins-state:");
+        invalidateReadCachePrefix("pins-list:");
 
         return NextResponse.json({ pinned: true, pinnedUserId }, { status: 201 });
     } catch (error) {
@@ -339,6 +361,9 @@ export async function DELETE(request: NextRequest) {
                 where: { id: existing.id },
             })
         );
+        invalidateReadCachePrefix("pins-feed:");
+        invalidateReadCachePrefix("pins-state:");
+        invalidateReadCachePrefix("pins-list:");
         return NextResponse.json({ ok: true, pinned: false, pinnedUserId });
     } catch (error) {
         console.error("Failed to unpin user:", error);

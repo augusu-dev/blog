@@ -4,6 +4,9 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { withDirectMessageTable } from "@/lib/directMessages";
 import { resolveSessionUserId } from "@/lib/sessionUser";
+import { readCacheKeys, readThroughCache } from "@/lib/readCache";
+
+const UNREAD_CACHE_TTL_MS = 3 * 1000;
 
 function parseSince(raw: string | null): Date {
     if (!raw) return new Date(0);
@@ -22,30 +25,38 @@ export async function GET(request: NextRequest) {
     const since = parseSince(request.nextUrl.searchParams.get("since"));
 
     try {
-        const [dmCount, prCount] = await Promise.all([
-            withDirectMessageTable(() =>
-                prisma.directMessage.count({
-                    where: {
-                        recipientId: userId,
-                        context: DirectMessageContext.GENERAL,
-                        createdAt: { gt: since },
-                    },
-                })
-            ),
-            prisma.articlePullRequest.count({
-                where: {
-                    recipientId: userId,
-                    createdAt: { gt: since },
-                },
-            }),
-        ]);
+        const payload = await readThroughCache(
+            readCacheKeys.unread(userId, since.toISOString()),
+            UNREAD_CACHE_TTL_MS,
+            async () => {
+                const [dmCount, prCount] = await Promise.all([
+                    withDirectMessageTable(() =>
+                        prisma.directMessage.count({
+                            where: {
+                                recipientId: userId,
+                                context: DirectMessageContext.GENERAL,
+                                createdAt: { gt: since },
+                            },
+                        })
+                    ),
+                    prisma.articlePullRequest.count({
+                        where: {
+                            recipientId: userId,
+                            createdAt: { gt: since },
+                        },
+                    }),
+                ]);
 
-        return NextResponse.json({
-            total: dmCount + prCount,
-            dm: dmCount,
-            pr: prCount,
-            since: since.toISOString(),
-        });
+                return {
+                    total: dmCount + prCount,
+                    dm: dmCount,
+                    pr: prCount,
+                    since: since.toISOString(),
+                };
+            }
+        );
+
+        return NextResponse.json(payload);
     } catch (error) {
         console.error("Failed to fetch unread notifications:", error);
         return NextResponse.json({ total: 0, dm: 0, pr: 0, since: since.toISOString() });

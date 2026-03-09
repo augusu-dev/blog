@@ -10,6 +10,7 @@ import {
 } from "@/lib/userId";
 import { tryEnsureProfileAndPostSchema } from "@/lib/schemaCompat";
 import { getTableColumns } from "@/lib/tableSchema";
+import { invalidateReadCachePrefix, readCacheKeys, readThroughCache } from "@/lib/readCache";
 
 type DmSetting = "OPEN" | "PR_ONLY" | "CLOSED";
 type ThemeName = "default" | "lightblue" | "sand" | "apricot" | "white" | "black" | "custom";
@@ -17,6 +18,7 @@ type ThemeName = "default" | "lightblue" | "sand" | "apricot" | "white" | "black
 const DEFAULT_DM_SETTING: DmSetting = "OPEN";
 const DEFAULT_THEME: ThemeName = "default";
 const DEFAULT_THEME_CUSTOM_COLOR = "#925c5c";
+const USER_SETTINGS_CACHE_TTL_MS = 15 * 1000;
 
 const USER_SETTINGS_SELECT_WITH_USER_ID = {
     id: true,
@@ -373,33 +375,40 @@ export async function GET() {
     }
 
     try {
-        const { user: fetchedUser } = await fetchUserSettingsRecord(userId);
-        const rawUser = shouldHydrateUserSettingsFromRaw(fetchedUser)
-            ? (await fetchUserSettingsRecordRaw(userId)).user
-            : null;
-        const user = mergeUserSettingsPayload(fetchedUser, rawUser);
-        if (!user) {
+        const payload = await readThroughCache(readCacheKeys.userSettings(userId), USER_SETTINGS_CACHE_TTL_MS, async () => {
+            const { user: fetchedUser } = await fetchUserSettingsRecord(userId);
+            const rawUser = shouldHydrateUserSettingsFromRaw(fetchedUser)
+                ? (await fetchUserSettingsRecordRaw(userId)).user
+                : null;
+            const user = mergeUserSettingsPayload(fetchedUser, rawUser);
+            if (!user) {
+                throw new Error("USER_NOT_FOUND");
+            }
+
+            const unpacked = unpackLinks(("links" in user ? user.links : null) as string | null | undefined);
+            const publicUserId = resolveReadablePublicUserId(user);
+
+            return {
+                id: user.id,
+                userId: publicUserId || null,
+                name: ("name" in user ? user.name : null) ?? null,
+                email: ("email" in user ? user.email : null) ?? null,
+                image: ("image" in user ? user.image : null) ?? null,
+                headerImage: ("headerImage" in user ? user.headerImage : null) ?? null,
+                bio: ("bio" in user ? user.bio : null) ?? null,
+                aboutMe: ("aboutMe" in user ? user.aboutMe : null) ?? null,
+                links: unpacked.links,
+                dmSetting: unpacked.dmSetting,
+                theme: unpacked.theme,
+                themeCustomColor: unpacked.themeCustomColor,
+            };
+        });
+
+        return NextResponse.json(payload);
+    } catch (error) {
+        if (error instanceof Error && error.message === "USER_NOT_FOUND") {
             return NextResponse.json({ error: "User not found" }, { status: 404 });
         }
-
-        const unpacked = unpackLinks(("links" in user ? user.links : null) as string | null | undefined);
-        const publicUserId = resolveReadablePublicUserId(user);
-
-        return NextResponse.json({
-            id: user.id,
-            userId: publicUserId || null,
-            name: ("name" in user ? user.name : null) ?? null,
-            email: ("email" in user ? user.email : null) ?? null,
-            image: ("image" in user ? user.image : null) ?? null,
-            headerImage: ("headerImage" in user ? user.headerImage : null) ?? null,
-            bio: ("bio" in user ? user.bio : null) ?? null,
-            aboutMe: ("aboutMe" in user ? user.aboutMe : null) ?? null,
-            links: unpacked.links,
-            dmSetting: unpacked.dmSetting,
-            theme: unpacked.theme,
-            themeCustomColor: unpacked.themeCustomColor,
-        });
-    } catch (error) {
         console.error("Failed to fetch user settings:", error);
         return NextResponse.json({ error: "Failed to fetch user settings" }, { status: 500 });
     }
@@ -546,6 +555,9 @@ export async function PUT(request: NextRequest) {
         );
         const publicUserId = resolveReadablePublicUserId(responseUser);
 
+        invalidateReadCachePrefix("user-settings:");
+        invalidateReadCachePrefix("user-profile:");
+
         return NextResponse.json({
             id: responseUser.id,
             userId: publicUserId || null,
@@ -576,6 +588,17 @@ export async function DELETE() {
     await prisma.user.delete({
         where: { id: userId },
     });
+
+    invalidateReadCachePrefix("user-settings:");
+    invalidateReadCachePrefix("user-profile:");
+    invalidateReadCachePrefix("user-posts:");
+    invalidateReadCachePrefix(readCacheKeys.publicPosts());
+    invalidateReadCachePrefix(readCacheKeys.shortPosts());
+    invalidateReadCachePrefix("pins-feed:");
+    invalidateReadCachePrefix("pins-state:");
+    invalidateReadCachePrefix("pins-list:");
+    invalidateReadCachePrefix("direct-messages:");
+    invalidateReadCachePrefix("unread:");
 
     return NextResponse.json({ message: "Account deleted" });
 }

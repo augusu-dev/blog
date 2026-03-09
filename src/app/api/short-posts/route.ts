@@ -5,9 +5,11 @@ import { withShortPostTable } from "@/lib/shortPosts";
 import { resolveSessionUserId } from "@/lib/sessionUser";
 import { getShortPostsFallback } from "@/lib/publicContentFallback";
 import { fillMissingPublicUserIds } from "@/lib/userId";
+import { invalidateReadCachePrefix, readCacheKeys, readThroughCache } from "@/lib/readCache";
 
 const SHORT_POST_LIMIT = 300;
 const LIST_LIMIT = 30;
+const SHORT_POSTS_CACHE_TTL_MS = 20 * 1000;
 
 function isUserIdColumnMissing(error: unknown): boolean {
     if (error && typeof error === "object" && "code" in error) {
@@ -64,49 +66,53 @@ async function attachPublicUserIds<
 
 export async function GET() {
     try {
-        let posts:
-            | Array<{
-                  id: string;
-                  content: string;
-                  createdAt: string | Date;
-                  authorId: string;
-                  author: {
+        const payload = await readThroughCache(readCacheKeys.shortPosts(), SHORT_POSTS_CACHE_TTL_MS, async () => {
+            let posts:
+                | Array<{
                       id: string;
-                      userId?: string | null;
-                      name: string | null;
-                      email: string | null;
-                      image: string | null;
-                  };
-              }>
-            | null = null;
+                      content: string;
+                      createdAt: string | Date;
+                      authorId: string;
+                      author: {
+                          id: string;
+                          userId?: string | null;
+                          name: string | null;
+                          email: string | null;
+                          image: string | null;
+                      };
+                  }>
+                | null = null;
 
-        try {
-            posts = await withShortPostTable(() =>
-                prisma.shortPost.findMany({
-                    orderBy: { createdAt: "desc" },
-                    take: LIST_LIMIT,
-                    include: {
-                        author: {
-                            select: {
-                                id: true,
-                                userId: true,
-                                name: true,
-                                email: true,
-                                image: true,
+            try {
+                posts = await withShortPostTable(() =>
+                    prisma.shortPost.findMany({
+                        orderBy: { createdAt: "desc" },
+                        take: LIST_LIMIT,
+                        include: {
+                            author: {
+                                select: {
+                                    id: true,
+                                    userId: true,
+                                    name: true,
+                                    email: true,
+                                    image: true,
+                                },
                             },
                         },
-                    },
-                })
-            );
-        } catch (error) {
-            if (!isUserIdColumnMissing(error)) throw error;
-        }
+                    })
+                );
+            } catch (error) {
+                if (!isUserIdColumnMissing(error)) throw error;
+            }
 
-        if (!posts) {
-            posts = await getShortPostsFallback(LIST_LIMIT);
-        }
+            if (!posts) {
+                posts = await getShortPostsFallback(LIST_LIMIT);
+            }
 
-        return NextResponse.json(await attachPublicUserIds(posts));
+            return attachPublicUserIds(posts);
+        });
+
+        return NextResponse.json(payload);
     } catch (error) {
         try {
             return NextResponse.json(await attachPublicUserIds(await getShortPostsFallback(LIST_LIMIT)));
@@ -191,6 +197,8 @@ export async function POST(request: NextRequest) {
                 })
             );
         }
+
+        invalidateReadCachePrefix(readCacheKeys.shortPosts());
 
         return NextResponse.json((await attachPublicUserIds([post]))[0], { status: 201 });
     } catch (error) {
