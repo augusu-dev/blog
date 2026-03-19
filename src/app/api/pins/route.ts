@@ -49,6 +49,19 @@ function isUserIdColumnMissing(error: unknown): boolean {
     return false;
 }
 
+function isPinnedUserUnavailableError(error: unknown): boolean {
+    if (error && typeof error === "object" && "code" in error) {
+        const code = String((error as { code?: unknown }).code || "");
+        if (code === "P2021" || code === "P2022") return true;
+    }
+    if (error instanceof Error) {
+        return /PinnedUser|relation .*PinnedUser.* does not exist|column .* does not exist|permission denied|must be owner/i.test(
+            error.message
+        );
+    }
+    return false;
+}
+
 async function resolveTargetUserId(rawRef: string): Promise<string | null> {
     const userRef = normalizeString(rawRef);
     if (!userRef) return null;
@@ -81,13 +94,18 @@ async function resolveTargetUserId(rawRef: string): Promise<string | null> {
 }
 
 async function fetchPinnedUsers(ownerId: string) {
-    const rows = await withPinnedUserTable(() =>
-        prisma.pinnedUser.findMany({
+    const rows = await prisma.pinnedUser
+        .findMany({
             where: { ownerId },
             orderBy: { createdAt: "desc" },
             select: { pinnedUserId: true, createdAt: true },
         })
-    );
+        .catch((error) => {
+            if (isPinnedUserUnavailableError(error)) {
+                return [];
+            }
+            throw error;
+        });
 
     const pinnedUserIds = [...new Set(rows.map((row) => row.pinnedUserId))];
     if (pinnedUserIds.length === 0) return [];
@@ -244,12 +262,17 @@ export async function GET(request: NextRequest) {
                     if (!targetUserId) {
                         return { pinned: false, userId: targetRef };
                     }
-                    const existing = await withPinnedUserTable(() =>
-                        prisma.pinnedUser.findFirst({
+                    const existing = await prisma.pinnedUser
+                        .findFirst({
                             where: { ownerId, pinnedUserId: { in: candidateRefs } },
                             select: { id: true, pinnedUserId: true },
                         })
-                    );
+                        .catch((error) => {
+                            if (isPinnedUserUnavailableError(error)) {
+                                return null;
+                            }
+                            throw error;
+                        });
                     return {
                         pinned: !!existing,
                         userId: targetUserId,

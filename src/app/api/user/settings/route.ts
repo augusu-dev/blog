@@ -122,34 +122,38 @@ function normalizeNullableString(value: unknown): string | null {
 }
 
 async function fetchUserSettingsRecordRaw(userId: string) {
-    const columns = await getTableColumns("User");
-    if (!columns.has("id")) {
+    try {
+        const columns = await getTableColumns("User");
+        if (!columns.has("id")) {
+            return { user: null, hasUserIdColumn: false as const };
+        }
+
+        const rows = await prisma.$queryRawUnsafe<RawSettingsRow[]>(
+            `
+                SELECT
+                    "id"::text AS "id",
+                    ${columns.has("userId") ? `"userId"::text` : `NULL::text`} AS "userId",
+                    ${columns.has("name") ? `"name"::text` : `NULL::text`} AS "name",
+                    ${columns.has("email") ? `"email"::text` : `NULL::text`} AS "email",
+                    ${columns.has("image") ? `"image"::text` : `NULL::text`} AS "image",
+                    ${columns.has("headerImage") ? `"headerImage"::text` : `NULL::text`} AS "headerImage",
+                    ${columns.has("bio") ? `"bio"::text` : `NULL::text`} AS "bio",
+                    ${columns.has("aboutMe") ? `"aboutMe"::text` : `NULL::text`} AS "aboutMe",
+                    ${columns.has("links") ? `"links"::text` : `NULL::text`} AS "links"
+                FROM "User"
+                WHERE "id"::text = $1
+                LIMIT 1
+            `,
+            userId
+        );
+
+        return {
+            user: rows[0] || null,
+            hasUserIdColumn: columns.has("userId") as boolean,
+        };
+    } catch {
         return { user: null, hasUserIdColumn: false as const };
     }
-
-    const rows = await prisma.$queryRawUnsafe<RawSettingsRow[]>(
-        `
-            SELECT
-                "id"::text AS "id",
-                ${columns.has("userId") ? `"userId"::text` : `NULL::text`} AS "userId",
-                ${columns.has("name") ? `"name"::text` : `NULL::text`} AS "name",
-                ${columns.has("email") ? `"email"::text` : `NULL::text`} AS "email",
-                ${columns.has("image") ? `"image"::text` : `NULL::text`} AS "image",
-                ${columns.has("headerImage") ? `"headerImage"::text` : `NULL::text`} AS "headerImage",
-                ${columns.has("bio") ? `"bio"::text` : `NULL::text`} AS "bio",
-                ${columns.has("aboutMe") ? `"aboutMe"::text` : `NULL::text`} AS "aboutMe",
-                ${columns.has("links") ? `"links"::text` : `NULL::text`} AS "links"
-            FROM "User"
-            WHERE "id"::text = $1
-            LIMIT 1
-        `,
-        userId
-    );
-
-    return {
-        user: rows[0] || null,
-        hasUserIdColumn: columns.has("userId") as boolean,
-    };
 }
 
 function unpackLinks(raw: string | null | undefined): {

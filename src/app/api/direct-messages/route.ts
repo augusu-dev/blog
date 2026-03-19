@@ -4,7 +4,6 @@ import { prisma } from "@/lib/db";
 import { DirectMessageContext, PullRequestStatus } from "@prisma/client";
 import {
     ensureDirectMessageCapacity,
-    withDirectMessageGoodTable,
     withDirectMessageTable,
 } from "@/lib/directMessages";
 import { resolveSessionUserId } from "@/lib/sessionUser";
@@ -197,6 +196,23 @@ function normalizeDirectMessagePullRequest(pullRequest: unknown): DmSerializedPu
     };
 }
 
+function isDirectMessageReadUnavailableError(error: unknown): boolean {
+    if (error && typeof error === "object" && "code" in error) {
+        const code = String((error as { code?: unknown }).code || "");
+        if (code === "P2021" || code === "P2022") {
+            return true;
+        }
+    }
+
+    if (error instanceof Error) {
+        return /DirectMessage|DirectMessageGood|relation .* does not exist|column .* does not exist|permission denied|must be owner/i.test(
+            error.message
+        );
+    }
+
+    return false;
+}
+
 async function hasOnHoldPullRequestBetweenUsers(userAId: string, userBId: string): Promise<boolean> {
     try {
         const match = await prisma.articlePullRequest.findFirst({
@@ -271,23 +287,33 @@ async function getDirectMessageGoodState(messageIds: string[], currentUserId: st
 
     try {
         const [counts, mine] = await Promise.all([
-            withDirectMessageGoodTable(() =>
-                prisma.directMessageGood.groupBy({
+            prisma.directMessageGood
+                .groupBy({
                     by: ["messageId"],
                     where: { messageId: { in: messageIds } },
                     _count: { _all: true },
                 })
-            ),
+                .catch((error) => {
+                    if (isDirectMessageReadUnavailableError(error)) {
+                        return [] as Array<{ messageId: string; _count: { _all: number } }>;
+                    }
+                    throw error;
+                }),
             currentUserId
-                ? withDirectMessageGoodTable(() =>
-                      prisma.directMessageGood.findMany({
+                ? prisma.directMessageGood
+                      .findMany({
                           where: {
                               messageId: { in: messageIds },
                               userId: currentUserId,
                           },
                           select: { messageId: true },
                       })
-                  )
+                      .catch((error) => {
+                          if (isDirectMessageReadUnavailableError(error)) {
+                              return [] as Array<{ messageId: string }>;
+                          }
+                          throw error;
+                      })
                 : Promise.resolve([] as Array<{ messageId: string }>),
         ]);
 
@@ -396,30 +422,32 @@ export async function GET(request: NextRequest) {
                     let messages;
 
                     try {
-                        rawMessages = await withDirectMessageTable(() =>
-                            prisma.directMessage.findMany({
-                                where: {
-                                    OR: [
-                                        { senderId: userId, recipientId: resolvedTargetUserId },
-                                        { senderId: resolvedTargetUserId, recipientId: userId },
-                                    ],
-                                },
-                                orderBy: { createdAt: "asc" },
-                                include: {
-                                    sender: { select: DM_USER_SELECT },
-                                    recipient: { select: DM_USER_SELECT },
-                                    pullRequest: { select: DM_PULL_REQUEST_SELECT },
-                                },
-                            })
-                        );
+                        rawMessages = await prisma.directMessage.findMany({
+                            where: {
+                                OR: [
+                                    { senderId: userId, recipientId: resolvedTargetUserId },
+                                    { senderId: resolvedTargetUserId, recipientId: userId },
+                                ],
+                            },
+                            orderBy: { createdAt: "asc" },
+                            include: {
+                                sender: { select: DM_USER_SELECT },
+                                recipient: { select: DM_USER_SELECT },
+                                pullRequest: { select: DM_PULL_REQUEST_SELECT },
+                            },
+                        });
 
                         messages = rawMessages.map((message) => ({
                             ...message,
                             pullRequest: normalizeDirectMessagePullRequest(message.pullRequest),
                         }));
-                    } catch {
-                        rawMessages = await withDirectMessageTable(() =>
-                            prisma.directMessage.findMany({
+                    } catch (error) {
+                        if (!isDirectMessageReadUnavailableError(error)) {
+                            throw error;
+                        }
+
+                        rawMessages = await prisma.directMessage
+                            .findMany({
                                 where: {
                                     OR: [
                                         { senderId: userId, recipientId: resolvedTargetUserId },
@@ -433,7 +461,22 @@ export async function GET(request: NextRequest) {
                                     pullRequest: { select: LEGACY_DM_PULL_REQUEST_SELECT },
                                 },
                             })
-                        );
+                            .catch((legacyError) => {
+                                if (isDirectMessageReadUnavailableError(legacyError)) {
+                                    return [] as Array<{
+                                        id: string;
+                                        content: string;
+                                        createdAt: Date;
+                                        senderId: string;
+                                        recipientId: string;
+                                        sender: typeof DM_USER_SELECT;
+                                        recipient: typeof DM_USER_SELECT;
+                                        context: DirectMessageContext;
+                                        pullRequest: null;
+                                    }>;
+                                }
+                                throw legacyError;
+                            });
 
                         messages = rawMessages.map((message) => ({
                             ...message,
@@ -465,22 +508,24 @@ export async function GET(request: NextRequest) {
                 if (mode === "threads") {
                     let rawMessages;
                     try {
-                        rawMessages = await withDirectMessageTable(() =>
-                            prisma.directMessage.findMany({
-                                where: {
-                                    OR: [{ senderId: userId }, { recipientId: userId }],
-                                },
-                                orderBy: { createdAt: "desc" },
-                                include: {
-                                    sender: { select: DM_USER_SELECT },
-                                    recipient: { select: DM_USER_SELECT },
-                                    pullRequest: { select: DM_PULL_REQUEST_SELECT },
-                                },
-                            })
-                        );
-                    } catch {
-                        rawMessages = await withDirectMessageTable(() =>
-                            prisma.directMessage.findMany({
+                        rawMessages = await prisma.directMessage.findMany({
+                            where: {
+                                OR: [{ senderId: userId }, { recipientId: userId }],
+                            },
+                            orderBy: { createdAt: "desc" },
+                            include: {
+                                sender: { select: DM_USER_SELECT },
+                                recipient: { select: DM_USER_SELECT },
+                                pullRequest: { select: DM_PULL_REQUEST_SELECT },
+                            },
+                        });
+                    } catch (error) {
+                        if (!isDirectMessageReadUnavailableError(error)) {
+                            throw error;
+                        }
+
+                        rawMessages = await prisma.directMessage
+                            .findMany({
                                 where: {
                                     OR: [{ senderId: userId }, { recipientId: userId }],
                                 },
@@ -491,7 +536,12 @@ export async function GET(request: NextRequest) {
                                     pullRequest: { select: LEGACY_DM_PULL_REQUEST_SELECT },
                                 },
                             })
-                        );
+                            .catch((legacyError) => {
+                                if (isDirectMessageReadUnavailableError(legacyError)) {
+                                    return [];
+                                }
+                                throw legacyError;
+                            });
                     }
 
                     const threadMap = new Map<
@@ -565,8 +615,8 @@ export async function GET(request: NextRequest) {
                 }
 
                 if (mode === "sent") {
-                    const messages = await withDirectMessageTable(() =>
-                        prisma.directMessage.findMany({
+                    const messages = await prisma.directMessage
+                        .findMany({
                             where: {
                                 senderId: userId,
                                 context: DirectMessageContext.GENERAL,
@@ -576,12 +626,17 @@ export async function GET(request: NextRequest) {
                                 recipient: { select: DM_USER_SELECT },
                             },
                         })
-                    );
+                        .catch((error) => {
+                            if (isDirectMessageReadUnavailableError(error)) {
+                                return [];
+                            }
+                            throw error;
+                        });
                     return { mode, messages };
                 }
 
-                const messages = await withDirectMessageTable(() =>
-                    prisma.directMessage.findMany({
+                const messages = await prisma.directMessage
+                    .findMany({
                         where: {
                             recipientId: userId,
                             context: DirectMessageContext.GENERAL,
@@ -591,7 +646,12 @@ export async function GET(request: NextRequest) {
                             sender: { select: DM_USER_SELECT },
                         },
                     })
-                );
+                    .catch((error) => {
+                        if (isDirectMessageReadUnavailableError(error)) {
+                            return [];
+                        }
+                        throw error;
+                    });
 
                 return { mode, messages };
             },

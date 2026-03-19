@@ -87,25 +87,44 @@ export async function GET() {
                     | null = null;
 
                 try {
-                    posts = await withShortPostTable(() =>
-                        prisma.shortPost.findMany({
+                    posts = await prisma.shortPost.findMany({
+                        orderBy: { createdAt: "desc" },
+                        take: LIST_LIMIT,
+                        include: {
+                            author: {
+                                select: {
+                                    id: true,
+                                    userId: true,
+                                    name: true,
+                                    email: true,
+                                    image: true,
+                                },
+                            },
+                        },
+                    });
+                } catch (error) {
+                    if (!isUserIdColumnMissing(error) && !isShortPostUnavailableError(error)) throw error;
+                }
+
+                if (!posts) {
+                    try {
+                        posts = await prisma.shortPost.findMany({
                             orderBy: { createdAt: "desc" },
                             take: LIST_LIMIT,
                             include: {
                                 author: {
                                     select: {
                                         id: true,
-                                        userId: true,
                                         name: true,
                                         email: true,
                                         image: true,
                                     },
                                 },
                             },
-                        })
-                    );
-                } catch (error) {
-                    if (!isUserIdColumnMissing(error)) throw error;
+                        });
+                    } catch (error) {
+                        if (!isShortPostUnavailableError(error)) throw error;
+                    }
                 }
 
                 if (!posts) {

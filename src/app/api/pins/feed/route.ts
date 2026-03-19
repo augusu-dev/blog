@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { withPinnedUserTable } from "@/lib/pinnedUsers";
 import { getPostsByAuthorFallback, getUserProfileByRefFallback } from "@/lib/publicContentFallback";
 import { resolveSessionUserId } from "@/lib/sessionUser";
 import { readCacheKeys, readThroughCache } from "@/lib/readCache";
@@ -45,17 +44,35 @@ function isSchemaCompatibilityError(error: unknown): boolean {
     return false;
 }
 
+function isPinnedUserUnavailableError(error: unknown): boolean {
+    if (error && typeof error === "object" && "code" in error) {
+        const code = String((error as { code?: unknown }).code || "");
+        if (code === "P2021" || code === "P2022") return true;
+    }
+    if (error instanceof Error) {
+        return /PinnedUser|relation .*PinnedUser.* does not exist|column .* does not exist|permission denied|must be owner/i.test(
+            error.message
+        );
+    }
+    return false;
+}
+
 async function fetchPinnedRows(ownerId: string) {
-    return withPinnedUserTable(() =>
-        prisma.pinnedUser.findMany({
+    try {
+        return await prisma.pinnedUser.findMany({
             where: { ownerId },
             orderBy: { createdAt: "desc" },
             select: {
                 pinnedUserId: true,
                 createdAt: true,
             },
-        })
-    );
+        });
+    } catch (error) {
+        if (isPinnedUserUnavailableError(error)) {
+            return [];
+        }
+        throw error;
+    }
 }
 
 function normalizeRef(value: string | null | undefined): string {

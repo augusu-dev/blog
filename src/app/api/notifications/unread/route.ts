@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { DirectMessageContext, PullRequestStatus } from "@prisma/client";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { withDirectMessageTable } from "@/lib/directMessages";
 import { resolveSessionUserId } from "@/lib/sessionUser";
 import { readCacheKeys, readThroughCache } from "@/lib/readCache";
 
@@ -30,15 +29,15 @@ export async function GET(request: NextRequest) {
             UNREAD_CACHE_TTL_MS,
             async () => {
                 const [dmCount, prCount] = await Promise.all([
-                    withDirectMessageTable(() =>
-                        prisma.directMessage.count({
+                    prisma.directMessage
+                        .count({
                             where: {
                                 recipientId: userId,
                                 context: DirectMessageContext.GENERAL,
                                 createdAt: { gt: since },
                             },
                         })
-                    ),
+                        .catch(() => 0),
                     prisma.articlePullRequest.count({
                         where: {
                             recipientId: userId,
