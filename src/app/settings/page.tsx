@@ -101,7 +101,7 @@ export default function SettingsPage() {
 
     const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-    const loadJsonWithRetry = async (url: string, maxAttempts = 4) => {
+    const loadJsonWithRetry = async (url: string, maxAttempts = 2) => {
         for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
             try {
                 const res = await fetch(url, { cache: "no-store" });
@@ -117,7 +117,7 @@ export default function SettingsPage() {
             }
 
             if (attempt < maxAttempts - 1) {
-                await wait(300 * (attempt + 1));
+                await wait(250 * (attempt + 1));
             }
         }
 
@@ -138,7 +138,7 @@ export default function SettingsPage() {
 
             let profile: Record<string, any> | null = null;
             for (const ref of refs) {
-                const result = await loadJsonWithRetry(`/api/user/${encodeURIComponent(ref)}`, 3);
+                const result = await loadJsonWithRetry(`/api/user/${encodeURIComponent(ref)}`, 1);
                 if (result.ok && result.data && typeof result.data === "object") {
                     profile = result.data as Record<string, any>;
                     break;
@@ -173,7 +173,7 @@ export default function SettingsPage() {
     };
 
     const loadSettingsData = async (options?: { silent?: boolean }): Promise<boolean> => {
-        const result = await loadJsonWithRetry("/api/user/settings", 4);
+        const result = await loadJsonWithRetry("/api/user/settings", 2);
         const data = result.data;
         if (result.ok && data && typeof data === "object") {
             applySettingsPayload(data as Record<string, any>);
@@ -192,7 +192,7 @@ export default function SettingsPage() {
     };
 
     const loadMyPosts = async (): Promise<void> => {
-        const result = await loadJsonWithRetry("/api/posts/my", 4);
+        const result = await loadJsonWithRetry("/api/posts/my", 2);
         if (!result.ok || !Array.isArray(result.data)) {
             setMyPosts([]);
             return;
@@ -295,8 +295,10 @@ export default function SettingsPage() {
             setEmail(session.user?.email || "");
             setName(session.user?.name || "");
             setImage((session.user as { image?: string | null } | undefined)?.image || "");
-            void loadSettingsData({ silent: true });
-            void loadMyPosts();
+            void (async () => {
+                await loadSettingsData({ silent: true });
+                await loadMyPosts();
+            })();
             return;
 
             const loadSettings = async (): Promise<void> => {

@@ -94,22 +94,14 @@ export default function HomePage() {
       setPostsError("");
     }
 
-    const loadPosts = async (attempt = 0): Promise<void> => {
+    const loadPosts = async (): Promise<void> => {
       if (!cachedPosts || cachedPosts.length === 0) {
         setPostsError("");
       }
         try {
-            const res = await fetch("/api/posts");
+            const res = await fetch("/api/posts", { cache: "no-store" });
             const data = await res.json().catch(() => []);
         if (!res.ok || !Array.isArray(data)) {
-          if (res.status >= 400 && res.status < 500) {
-            throw new Error("Failed to fetch posts");
-          }
-          if (attempt < 2) {
-            await new Promise((resolve) => setTimeout(resolve, 350));
-            await loadPosts(attempt + 1);
-            return;
-          }
           throw new Error("Failed to fetch posts");
         }
             if (!active) return;

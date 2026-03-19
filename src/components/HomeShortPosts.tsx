@@ -97,9 +97,9 @@ export default function HomeShortPosts() {
 
     const remaining = useMemo(() => SHORT_POST_LIMIT - content.length, [content.length]);
 
-    const loadPosts = useCallback(async (attempt = 0): Promise<void> => {
+    const loadPosts = useCallback(async (): Promise<void> => {
         const cachedPosts = readSessionCache<ShortPostItem[]>(SHORT_POSTS_CACHE_KEY, SHORT_POSTS_CACHE_TTL_MS);
-        if (attempt === 0 && cachedPosts && cachedPosts.length > 0) {
+        if (cachedPosts && cachedPosts.length > 0) {
             setPosts(cachedPosts);
             setLoading(false);
             setError("");
@@ -107,18 +107,9 @@ export default function HomeShortPosts() {
             setLoading(true);
         }
         try {
-            const res = await fetch("/api/short-posts");
+            const res = await fetch("/api/short-posts", { cache: "no-store" });
             const payload = await res.json().catch(() => []);
             if (!res.ok) {
-                if (res.status >= 400 && res.status < 500) {
-                    setError(LOAD_ERROR_MESSAGE);
-                    return;
-                }
-                if (attempt < 2) {
-                    await new Promise((resolve) => setTimeout(resolve, 350));
-                    await loadPosts(attempt + 1);
-                    return;
-                }
                 setError(LOAD_ERROR_MESSAGE);
                 return;
             }
@@ -134,11 +125,6 @@ export default function HomeShortPosts() {
             }
             setError("");
         } catch {
-            if (attempt < 2) {
-                await new Promise((resolve) => setTimeout(resolve, 350));
-                await loadPosts(attempt + 1);
-                return;
-            }
             if (!cachedPosts || cachedPosts.length === 0) {
                 setError(LOAD_ERROR_MESSAGE);
             }

@@ -6,6 +6,7 @@ import { getUserProfileByRefFallback } from "@/lib/publicContentFallback";
 import { getPostsByAuthorFallback } from "@/lib/publicContentFallback";
 import { hydratePullRequestProposers } from "@/lib/pullRequestPostMeta";
 import { formatIsoDate } from "@/lib/pullRequestPublication";
+import { isSchemaCompatibilityError, isTransientDatabaseError } from "@/lib/prismaErrors";
 import { resolveReadablePublicUserId } from "@/lib/userId";
 import { readCacheKeys, readThroughCache, writeReadCache } from "@/lib/readCache";
 
@@ -88,17 +89,7 @@ function unpackLinks(raw: string | null | undefined): { links: unknown[]; dmSett
 }
 
 function isUserSchemaCompatibilityError(error: unknown): boolean {
-    if (error && typeof error === "object" && "code" in error) {
-        const code = String((error as { code?: unknown }).code || "");
-        if (code === "P2021" || code === "P2022") return true;
-    }
-
-    if (error instanceof Error) {
-        return /unknown arg|column .* does not exist|relation .* does not exist|permission denied|must be owner/i.test(
-            error.message
-        );
-    }
-    return false;
+    return isSchemaCompatibilityError(error);
 }
 
 async function findByNameFallback(
@@ -640,6 +631,39 @@ export async function GET(_req: Request, { params }: { params: Promise<{ name: s
     } catch (error) {
         if (error instanceof Error && error.message === "USER_NOT_FOUND") {
             return NextResponse.json({ error: "User not found" }, { status: 404 });
+        }
+        if (isTransientDatabaseError(error)) {
+            const session = await auth();
+            const sessionUserId = await resolveSessionUserId(session);
+            const sessionPublicUserId =
+                typeof session?.user?.userId === "string" ? session.user.userId.trim().toLowerCase() : "";
+            const sessionRefs = new Set(
+                [
+                    sessionUserId?.trim().toLowerCase() || "",
+                    sessionPublicUserId,
+                    typeof session?.user?.name === "string" ? session.user.name.trim().toLowerCase() : "",
+                    typeof session?.user?.email === "string" ? session.user.email.trim().toLowerCase() : "",
+                ].filter(Boolean)
+            );
+
+            if (sessionUserId && sessionRefs.has(userRefLower)) {
+                return NextResponse.json({
+                    id: sessionUserId,
+                    userId: typeof session?.user?.userId === "string" ? session.user.userId : null,
+                    name: session?.user?.name ?? null,
+                    email: session?.user?.email ?? null,
+                    image:
+                        typeof (session?.user as { image?: string | null } | undefined)?.image === "string"
+                            ? (session?.user as { image?: string | null }).image
+                            : null,
+                    headerImage: null,
+                    bio: null,
+                    aboutMe: null,
+                    links: [],
+                    dmSetting: DEFAULT_DM_SETTING,
+                    posts: [],
+                });
+            }
         }
         console.error("Failed to fetch user:", error);
         return NextResponse.json({ error: "Failed to fetch user" }, { status: 500 });

@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { withPinnedUserTable } from "@/lib/pinnedUsers";
 import { getUserProfileByRefFallback } from "@/lib/publicContentFallback";
+import { isRecoverableReadError, isTransientDatabaseError } from "@/lib/prismaErrors";
 import { resolveSessionUserId } from "@/lib/sessionUser";
 import { invalidateReadCachePrefix, readCacheKeys, readThroughCache } from "@/lib/readCache";
 
@@ -50,16 +51,9 @@ function isUserIdColumnMissing(error: unknown): boolean {
 }
 
 function isPinnedUserUnavailableError(error: unknown): boolean {
-    if (error && typeof error === "object" && "code" in error) {
-        const code = String((error as { code?: unknown }).code || "");
-        if (code === "P2021" || code === "P2022") return true;
-    }
-    if (error instanceof Error) {
-        return /PinnedUser|relation .*PinnedUser.* does not exist|column .* does not exist|permission denied|must be owner/i.test(
-            error.message
-        );
-    }
-    return false;
+    return isRecoverableReadError(error) || (error instanceof Error
+        ? /PinnedUser|relation .*PinnedUser.* does not exist/i.test(error.message)
+        : false);
 }
 
 async function resolveTargetUserId(rawRef: string): Promise<string | null> {
@@ -294,6 +288,12 @@ export async function GET(request: NextRequest) {
 
         return NextResponse.json(payload);
     } catch (error) {
+        if (isTransientDatabaseError(error)) {
+            if (targetRef) {
+                return NextResponse.json({ pinned: false, userId: targetRef });
+            }
+            return NextResponse.json({ count: 0, users: [] });
+        }
         console.error("Failed to fetch pinned users:", error);
         return NextResponse.json({ error: "Failed to fetch pinned users" }, { status: 500 });
     }

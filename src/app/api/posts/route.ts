@@ -6,6 +6,7 @@ import { tryEnsureProfileAndPostSchema } from "@/lib/schemaCompat";
 import { getPublicPostsFallback } from "@/lib/publicContentFallback";
 import { hydratePullRequestProposers } from "@/lib/pullRequestPostMeta";
 import { formatIsoDate } from "@/lib/pullRequestPublication";
+import { isRecoverableReadError, isTransientDatabaseError } from "@/lib/prismaErrors";
 import { fillMissingPublicUserIds } from "@/lib/userId";
 import { invalidateReadCachePrefix, readCacheKeys, readThroughCache } from "@/lib/readCache";
 
@@ -17,19 +18,6 @@ const PUBLIC_USER_SELECT = {
     email: true,
     image: true,
 } as const;
-
-function isSchemaMismatchError(error: unknown): boolean {
-    if (error && typeof error === "object" && "code" in error) {
-        const code = String((error as { code?: unknown }).code || "");
-        if (code === "P2021" || code === "P2022") return true;
-    }
-    if (error instanceof Error) {
-        return /userId|unknown arg|column .* does not exist|relation .* does not exist|permission denied|must be owner/i.test(
-            error.message
-        );
-    }
-    return false;
-}
 
 async function attachPostUsers<
     T extends Array<{
@@ -106,18 +94,24 @@ export async function GET() {
                 const now = new Date();
 
                 try {
-                    const [publishedPosts, hostedPosts] = await Promise.all([
-                        prisma.post.findMany({
-                            where: { published: true },
-                            orderBy: { createdAt: "desc" },
-                            include: {
-                                author: {
-                                    select: PUBLIC_USER_SELECT,
-                                },
+                    const publishedPosts = await prisma.post.findMany({
+                        where: { published: true },
+                        orderBy: { createdAt: "desc" },
+                        include: {
+                            author: {
+                                select: PUBLIC_USER_SELECT,
                             },
-                        }),
-                        loadHostedPublicPosts(now),
-                    ]);
+                        },
+                    });
+
+                    let hostedPosts: Awaited<ReturnType<typeof loadHostedPublicPosts>> = [];
+                    try {
+                        hostedPosts = await loadHostedPublicPosts(now);
+                    } catch (error) {
+                        if (!isRecoverableReadError(error)) {
+                            throw error;
+                        }
+                    }
 
                     const combinedPosts = [...publishedPosts, ...hostedPosts].sort(
                         (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
@@ -127,7 +121,7 @@ export async function GET() {
                         return await attachPostUsers(combinedPosts);
                     }
                 } catch (error) {
-                    if (!isSchemaMismatchError(error)) throw error;
+                    if (!isRecoverableReadError(error)) throw error;
                 }
 
                 const fallbackPosts = await getPublicPostsFallback(300);
@@ -153,6 +147,9 @@ export async function GET() {
 
         return NextResponse.json(payload);
     } catch (error) {
+        if (isTransientDatabaseError(error)) {
+            return NextResponse.json(await getPublicPostsFallback(300));
+        }
         console.error("Failed to fetch posts:", error);
         return NextResponse.json({ error: "Failed to fetch posts" }, { status: 500 });
     }

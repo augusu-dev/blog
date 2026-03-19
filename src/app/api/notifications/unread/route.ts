@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { DirectMessageContext, PullRequestStatus } from "@prisma/client";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { isTransientDatabaseError } from "@/lib/prismaErrors";
 import { resolveSessionUserId } from "@/lib/sessionUser";
 import { readCacheKeys, readThroughCache } from "@/lib/readCache";
 
@@ -28,24 +29,24 @@ export async function GET(request: NextRequest) {
             readCacheKeys.unread(userId, since.toISOString()),
             UNREAD_CACHE_TTL_MS,
             async () => {
-                const [dmCount, prCount] = await Promise.all([
-                    prisma.directMessage
-                        .count({
-                            where: {
-                                recipientId: userId,
-                                context: DirectMessageContext.GENERAL,
-                                createdAt: { gt: since },
-                            },
-                        })
-                        .catch(() => 0),
-                    prisma.articlePullRequest.count({
+                const dmCount = await prisma.directMessage
+                    .count({
+                        where: {
+                            recipientId: userId,
+                            context: DirectMessageContext.GENERAL,
+                            createdAt: { gt: since },
+                        },
+                    })
+                    .catch(() => 0);
+                const prCount = await prisma.articlePullRequest
+                    .count({
                         where: {
                             recipientId: userId,
                             status: PullRequestStatus.PENDING,
                             createdAt: { gt: since },
                         },
-                    }).catch(() => 0),
-                ]);
+                    })
+                    .catch(() => 0);
 
                 return {
                     total: dmCount + prCount,
@@ -58,6 +59,9 @@ export async function GET(request: NextRequest) {
 
         return NextResponse.json(payload);
     } catch (error) {
+        if (isTransientDatabaseError(error)) {
+            return NextResponse.json({ total: 0, dm: 0, pr: 0, since: since.toISOString() });
+        }
         console.error("Failed to fetch unread notifications:", error);
         return NextResponse.json({ total: 0, dm: 0, pr: 0, since: since.toISOString() });
     }

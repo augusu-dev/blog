@@ -6,6 +6,10 @@ import {
     ensureDirectMessageCapacity,
     withDirectMessageTable,
 } from "@/lib/directMessages";
+import {
+    isSchemaCompatibilityError,
+    isTransientDatabaseError,
+} from "@/lib/prismaErrors";
 import { resolveSessionUserId } from "@/lib/sessionUser";
 import { invalidateReadCachePrefix, readCacheKeys, readThroughCache } from "@/lib/readCache";
 
@@ -197,20 +201,9 @@ function normalizeDirectMessagePullRequest(pullRequest: unknown): DmSerializedPu
 }
 
 function isDirectMessageReadUnavailableError(error: unknown): boolean {
-    if (error && typeof error === "object" && "code" in error) {
-        const code = String((error as { code?: unknown }).code || "");
-        if (code === "P2021" || code === "P2022") {
-            return true;
-        }
-    }
-
-    if (error instanceof Error) {
-        return /DirectMessage|DirectMessageGood|relation .* does not exist|column .* does not exist|permission denied|must be owner/i.test(
-            error.message
-        );
-    }
-
-    return false;
+    return isSchemaCompatibilityError(error) || (error instanceof Error
+        ? /DirectMessage|DirectMessageGood|relation .* does not exist/i.test(error.message)
+        : false);
 }
 
 async function hasOnHoldPullRequestBetweenUsers(userAId: string, userBId: string): Promise<boolean> {
@@ -442,6 +435,9 @@ export async function GET(request: NextRequest) {
                             pullRequest: normalizeDirectMessagePullRequest(message.pullRequest),
                         }));
                     } catch (error) {
+                        if (isTransientDatabaseError(error)) {
+                            throw error;
+                        }
                         if (!isDirectMessageReadUnavailableError(error)) {
                             throw error;
                         }
@@ -520,6 +516,9 @@ export async function GET(request: NextRequest) {
                             },
                         });
                     } catch (error) {
+                        if (isTransientDatabaseError(error)) {
+                            throw error;
+                        }
                         if (!isDirectMessageReadUnavailableError(error)) {
                             throw error;
                         }
@@ -668,6 +667,22 @@ export async function GET(request: NextRequest) {
         }
         if (error instanceof Error && error.message === "THREAD_TARGET_NOT_FOUND") {
             return NextResponse.json({ error: "Target user not found" }, { status: 404 });
+        }
+        if (isTransientDatabaseError(error)) {
+            if (mode === "thread") {
+                return NextResponse.json({
+                    mode,
+                    userId: targetUserId,
+                    user: null,
+                    canSendMessages: false,
+                    messagePermissionNote: "",
+                    messages: [],
+                });
+            }
+            if (mode === "threads") {
+                return NextResponse.json({ mode, threads: [] });
+            }
+            return NextResponse.json({ mode, messages: [] });
         }
         console.error("Failed to fetch direct messages:", error);
         return NextResponse.json({ error: "Failed to fetch direct messages" }, { status: 500 });

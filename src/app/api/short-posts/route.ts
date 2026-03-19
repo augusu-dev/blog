@@ -4,6 +4,10 @@ import { prisma } from "@/lib/db";
 import { withShortPostTable } from "@/lib/shortPosts";
 import { resolveSessionUserId } from "@/lib/sessionUser";
 import { getShortPostsFallback } from "@/lib/publicContentFallback";
+import {
+    isSchemaCompatibilityError,
+    isTransientDatabaseError,
+} from "@/lib/prismaErrors";
 import { fillMissingPublicUserIds } from "@/lib/userId";
 import { invalidateReadCachePrefix, readCacheKeys, readThroughCache } from "@/lib/readCache";
 
@@ -26,18 +30,9 @@ function isUserIdColumnMissing(error: unknown): boolean {
 }
 
 function isShortPostUnavailableError(error: unknown): boolean {
-    if (error && typeof error === "object" && "code" in error) {
-        const code = String((error as { code?: unknown }).code || "");
-        if (code === "P2021" || code === "P2022") {
-            return true;
-        }
-    }
-    if (error instanceof Error) {
-        return /ShortPost|relation .*ShortPost.* does not exist|permission denied|must be owner/i.test(
-            error.message
-        );
-    }
-    return false;
+    return isSchemaCompatibilityError(error) || (error instanceof Error
+        ? /ShortPost|relation .*ShortPost.* does not exist/i.test(error.message)
+        : false);
 }
 
 function normalizeContent(value: unknown): string {
@@ -103,6 +98,7 @@ export async function GET() {
                         },
                     });
                 } catch (error) {
+                    if (isTransientDatabaseError(error)) throw error;
                     if (!isUserIdColumnMissing(error) && !isShortPostUnavailableError(error)) throw error;
                 }
 
@@ -121,10 +117,11 @@ export async function GET() {
                                     },
                                 },
                             },
-                        });
-                    } catch (error) {
-                        if (!isShortPostUnavailableError(error)) throw error;
-                    }
+                    });
+                } catch (error) {
+                    if (isTransientDatabaseError(error)) throw error;
+                    if (!isShortPostUnavailableError(error)) throw error;
+                }
                 }
 
                 if (!posts) {
@@ -152,6 +149,9 @@ export async function GET() {
             if (isShortPostUnavailableError(error) || isShortPostUnavailableError(fallbackError)) {
                 return NextResponse.json([]);
             }
+        }
+        if (isTransientDatabaseError(error)) {
+            return NextResponse.json([]);
         }
         console.error("Failed to fetch short posts:", error);
         return NextResponse.json({ error: "Failed to fetch short posts" }, { status: 500 });

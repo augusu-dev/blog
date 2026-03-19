@@ -329,7 +329,8 @@ export async function getUserProfileByRefFallback(userRef: string): Promise<User
 
 export async function getPublicPostsFallback(limit = 300): Promise<PublicPostFallback[]> {
     try {
-        const [postColumns, userColumns] = await Promise.all([getTableColumns("Post"), getTableColumns("User")]);
+        const postColumns = await getTableColumns("Post");
+        const userColumns = await getTableColumns("User");
 
         const requiredPostColumns = ["id", "title", "content", "createdAt", "authorId"];
         if (requiredPostColumns.some((column) => !postColumns.has(column)) || !userColumns.has("id")) {
@@ -410,10 +411,8 @@ export async function getPublicPostsFallback(limit = 300): Promise<PublicPostFal
 
 export async function getShortPostsFallback(limit = 30): Promise<ShortPostFallback[]> {
     try {
-        const [shortPostColumns, userColumns] = await Promise.all([
-            getTableColumns("ShortPost"),
-            getTableColumns("User"),
-        ]);
+        const shortPostColumns = await getTableColumns("ShortPost");
+        const userColumns = await getTableColumns("User");
 
         const requiredShortPostColumns = ["id", "content", "createdAt", "authorId"];
         if (requiredShortPostColumns.some((column) => !shortPostColumns.has(column)) || !userColumns.has("id")) {

@@ -10,6 +10,7 @@ import {
 } from "@/lib/userId";
 import { tryEnsureProfileAndPostSchema } from "@/lib/schemaCompat";
 import { getTableColumns } from "@/lib/tableSchema";
+import { isSchemaCompatibilityError, isTransientDatabaseError } from "@/lib/prismaErrors";
 import { invalidateReadCachePrefix, readCacheKeys, readThroughCache } from "@/lib/readCache";
 
 type DmSetting = "OPEN" | "PR_ONLY" | "CLOSED";
@@ -241,16 +242,7 @@ function packLinks(
 }
 
 function isUserSchemaCompatibilityError(error: unknown): boolean {
-    if (error && typeof error === "object" && "code" in error) {
-        const code = String((error as { code?: unknown }).code || "");
-        if (code === "P2021" || code === "P2022") return true;
-    }
-    if (error instanceof Error) {
-        return /unknown arg|column .* does not exist|relation .* does not exist|permission denied|must be owner/i.test(
-            error.message
-        );
-    }
-    return false;
+    return isSchemaCompatibilityError(error);
 }
 
 function hasResolvedValue(value: unknown): boolean {
@@ -445,6 +437,25 @@ export async function GET() {
     } catch (error) {
         if (error instanceof Error && error.message === "USER_NOT_FOUND") {
             return NextResponse.json({ error: "User not found" }, { status: 404 });
+        }
+        if (isTransientDatabaseError(error)) {
+            return NextResponse.json({
+                id: userId,
+                userId: typeof session?.user?.userId === "string" ? session.user.userId : null,
+                name: session?.user?.name ?? null,
+                email: session?.user?.email ?? null,
+                image:
+                    typeof (session?.user as { image?: string | null } | undefined)?.image === "string"
+                        ? (session?.user as { image?: string | null }).image
+                        : null,
+                headerImage: null,
+                bio: null,
+                aboutMe: null,
+                links: [],
+                dmSetting: DEFAULT_DM_SETTING,
+                theme: DEFAULT_THEME,
+                themeCustomColor: DEFAULT_THEME_CUSTOM_COLOR,
+            });
         }
         console.error("Failed to fetch user settings:", error);
         return NextResponse.json({ error: "Failed to fetch user settings" }, { status: 500 });

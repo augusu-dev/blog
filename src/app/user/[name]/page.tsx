@@ -282,7 +282,7 @@ export default function UserPage({ requestedPostId: requestedPostIdProp = null }
 
             const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-            const fetchJsonWithRetry = async (url: string, maxAttempts = 2) => {
+            const fetchJsonWithRetry = async (url: string, maxAttempts = 1) => {
                 for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
                     try {
                         const res = await fetch(url, { cache: "no-store", credentials: "same-origin" });
@@ -301,7 +301,7 @@ export default function UserPage({ requestedPostId: requestedPostIdProp = null }
                     }
 
                     if (attempt < maxAttempts - 1) {
-                        await wait(150 * (attempt + 1));
+                        await wait(250 * (attempt + 1));
                     }
                 }
 
@@ -334,10 +334,8 @@ export default function UserPage({ requestedPostId: requestedPostIdProp = null }
                     return null;
                 }
 
-                const [settingsResult, myPostsResult] = await Promise.all([
-                    fetchJsonWithRetry("/api/user/settings", 2),
-                    fetchJsonWithRetry("/api/posts/my", 2),
-                ]);
+                const settingsResult = await fetchJsonWithRetry("/api/user/settings", 1);
+                const myPostsResult = await fetchJsonWithRetry("/api/posts/my", 1);
 
                 if (!settingsResult.ok || !settingsResult.data || typeof settingsResult.data !== "object") {
                     return null;
@@ -408,7 +406,7 @@ export default function UserPage({ requestedPostId: requestedPostIdProp = null }
                     setLoading(false);
                 }
 
-                const result = await loadPublicProfile(cachedProfile || ownProfile ? 1 : 2);
+                const result = await loadPublicProfile(1);
                 if (result.ok && result.data) {
                     applyUserProfile(result.data as UserProfile, ownProfile || cachedProfile);
                     setLoading(false);

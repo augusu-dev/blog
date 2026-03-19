@@ -158,7 +158,6 @@ export default function MessagesPage() {
         email?: string | null;
         image?: string | null;
     } | undefined;
-    const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
     const persistThreads = useCallback(
         (nextThreads: Thread[]) => {
@@ -212,7 +211,7 @@ export default function MessagesPage() {
     }, []);
 
     const fetchReadWithRetry = useCallback(
-        async (input: string, attempts = 2): Promise<Response> => {
+        async (input: string, attempts = 1): Promise<Response> => {
             let lastResponse: Response | null = null;
 
             for (let attempt = 0; attempt < attempts; attempt += 1) {
@@ -223,9 +222,7 @@ export default function MessagesPage() {
                     });
                     lastResponse = response;
 
-                    const shouldRetry =
-                        (response.status === 401 && status === "authenticated") ||
-                        response.status >= 500;
+                    const shouldRetry = response.status >= 500;
 
                     if (!shouldRetry || attempt === attempts - 1) {
                         return response;
@@ -236,56 +233,12 @@ export default function MessagesPage() {
                     }
                 }
 
-                await wait(80 * (attempt + 1));
+                await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
             }
 
             return lastResponse as Response;
         },
-        [status]
-    );
-
-    const warmThreadCache = useCallback(
-        async (threadIds: string[]) => {
-            const uniqueThreadIds = [...new Set(threadIds.filter(Boolean))].slice(0, 3);
-
-            await Promise.all(
-                uniqueThreadIds.map(async (threadId) => {
-                    if (threadMessagesCacheRef.current.has(threadId)) {
-                        return;
-                    }
-
-                    try {
-                        const res = await fetchReadWithRetry(
-                            `/api/direct-messages?mode=thread&userId=${encodeURIComponent(threadId)}`,
-                            1
-                        );
-                        const payload = await res.json().catch(() => ({}));
-                        if (!res.ok) {
-                            return;
-                        }
-
-                        const nextMessages = Array.isArray(payload.messages)
-                            ? (payload.messages as DirectMessage[])
-                            : [];
-                        threadMessagesCacheRef.current.set(threadId, nextMessages);
-                        if (currentUserId) {
-                            writeSessionCache(buildDmThreadCacheKey(currentUserId, threadId), nextMessages);
-                        }
-
-                        const payloadUser =
-                            payload.user && typeof payload.user === "object"
-                                ? (payload.user as ThreadUser)
-                                : deriveThreadUserFromMessages(nextMessages, threadId);
-                        if (payloadUser?.id) {
-                            cacheThreadUser(payloadUser);
-                        }
-                    } catch {
-                        // Ignore background warm-up failures.
-                    }
-                })
-            );
-        },
-        [cacheThreadUser, currentUserId, deriveThreadUserFromMessages, fetchReadWithRetry]
+        []
     );
 
     const syncThreadFromMessage = useCallback(
@@ -385,7 +338,6 @@ export default function MessagesPage() {
             setThreads(nextThreads);
             persistThreads(nextThreads);
             nextThreads.forEach((thread) => cacheThreadUser(thread.user));
-            void warmThreadCache(nextThreads.map((thread) => thread.id));
 
             if (presetTarget) {
                 setSelectedUserId(presetTarget);
@@ -397,7 +349,7 @@ export default function MessagesPage() {
         } finally {
             setLoadingThreads(false);
         }
-    }, [cacheThreadUser, fetchReadWithRetry, persistThreads, presetTarget, session?.user, status, threads.length, warmThreadCache]);
+    }, [cacheThreadUser, fetchReadWithRetry, persistThreads, presetTarget, session?.user, status, threads.length]);
 
     useEffect(() => {
         if (status !== "authenticated" || !session?.user) return;

@@ -5,6 +5,11 @@ import { resolveSessionUserId } from "@/lib/sessionUser";
 import { getPostsByAuthorFallback } from "@/lib/publicContentFallback";
 import { hydratePullRequestProposers } from "@/lib/pullRequestPostMeta";
 import { formatIsoDate } from "@/lib/pullRequestPublication";
+import {
+    isRecoverableReadError,
+    isSchemaCompatibilityError,
+    isTransientDatabaseError,
+} from "@/lib/prismaErrors";
 import { readCacheKeys, readThroughCache } from "@/lib/readCache";
 import { fillMissingPublicUserIds } from "@/lib/userId";
 
@@ -16,19 +21,6 @@ const PUBLIC_USER_SELECT = {
     email: true,
     image: true,
 } as const;
-
-function isSchemaMismatchError(error: unknown): boolean {
-    if (error && typeof error === "object" && "code" in error) {
-        const code = String((error as { code?: unknown }).code || "");
-        if (code === "P2021" || code === "P2022") return true;
-    }
-    if (error instanceof Error) {
-        return /unknown arg|column .* does not exist|relation .* does not exist|permission denied|must be owner/i.test(
-            error.message
-        );
-    }
-    return false;
-}
 
 function normalizeAuthorRefs(values: Array<string | null | undefined>): string[] {
     const refs = new Set<string>();
@@ -68,25 +60,71 @@ export async function GET() {
                     const posts = await prisma.post.findMany({
                         where: authorWhere,
                         orderBy: { updatedAt: "desc" },
-                        include: {
-                            publicationGrants: {
-                                where: { expiresAt: { gt: now } },
+                        select: {
+                            id: true,
+                            title: true,
+                            content: true,
+                            excerpt: true,
+                            headerImage: true,
+                            tags: true,
+                            published: true,
+                            pinned: true,
+                            createdAt: true,
+                            updatedAt: true,
+                            authorId: true,
+                            sourcePullRequestId: true,
+                            pullRequestProposerId: true,
+                        },
+                    });
+
+                    const postIds = posts.map((post) => post.id);
+                    let publicationGrants: Array<{
+                        id: string;
+                        createdAt: Date;
+                        expiresAt: Date;
+                        sourcePullRequestId: string | null;
+                        postId: string;
+                        host: {
+                            id: string;
+                            userId?: string | null;
+                            name: string | null;
+                            email: string | null;
+                            image: string | null;
+                        };
+                    }> = [];
+
+                    if (postIds.length > 0) {
+                        try {
+                            publicationGrants = await prisma.postPublicationGrant.findMany({
+                                where: {
+                                    postId: { in: postIds },
+                                    expiresAt: { gt: now },
+                                },
                                 orderBy: { expiresAt: "asc" },
                                 select: {
                                     id: true,
                                     createdAt: true,
                                     expiresAt: true,
                                     sourcePullRequestId: true,
+                                    postId: true,
                                     host: { select: PUBLIC_USER_SELECT },
                                 },
-                            },
-                        },
-                    });
+                            });
+                        } catch (error) {
+                            if (!isRecoverableReadError(error)) {
+                                throw error;
+                            }
+                        }
+                    }
 
-                    const hosts = await fillMissingPublicUserIds(
-                        posts.flatMap((post) => post.publicationGrants.map((grant) => grant.host))
-                    );
+                    const hosts = await fillMissingPublicUserIds(publicationGrants.map((grant) => grant.host));
                     const hostById = new Map(hosts.map((host) => [host.id, host]));
+                    const grantsByPostId = new Map<string, typeof publicationGrants>();
+                    for (const grant of publicationGrants) {
+                        const current = grantsByPostId.get(grant.postId) || [];
+                        current.push(grant);
+                        grantsByPostId.set(grant.postId, current);
+                    }
                     const visiblePosts = posts.filter(
                         (post) => !(post.sourcePullRequestId && post.pullRequestProposerId)
                     );
@@ -94,7 +132,7 @@ export async function GET() {
 
                     return hydratedPosts.map((post) => ({
                         ...post,
-                        publicationGrants: post.publicationGrants.map((grant) => ({
+                        publicationGrants: (grantsByPostId.get(post.id) || []).map((grant) => ({
                             ...grant,
                             createdAt: formatIsoDate(grant.createdAt),
                             expiresAt: formatIsoDate(grant.expiresAt),
@@ -102,7 +140,8 @@ export async function GET() {
                         })),
                     }));
                 } catch (error) {
-                    if (!isSchemaMismatchError(error)) throw error;
+                    if (isTransientDatabaseError(error)) throw error;
+                    if (!isSchemaCompatibilityError(error)) throw error;
                 }
 
                 return (await hydratePullRequestProposers(
@@ -140,6 +179,9 @@ export async function GET() {
             );
         } catch (fallbackError) {
             void fallbackError;
+        }
+        if (isTransientDatabaseError(error)) {
+            return NextResponse.json([]);
         }
         console.error("Failed to fetch my posts:", error);
         return NextResponse.json({ error: "Failed to fetch posts" }, { status: 500 });
