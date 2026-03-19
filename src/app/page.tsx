@@ -9,6 +9,11 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import PostComments from "@/components/PostComments";
 import UnreadDmButton from "@/components/UnreadDmButton";
 import HomeShortPosts from "@/components/HomeShortPosts";
+import PublicUserAvatarLink, {
+  type PublicUserAvatar,
+  getPublicUserHref,
+  getPublicUserLabel,
+} from "@/components/PublicUserAvatarLink";
 import { useMyPageHref } from "@/hooks/useMyPageHref";
 import { prepareRenderedPostHtml } from "@/lib/postContent";
 import { readSessionCache, writeSessionCache } from "@/lib/clientSessionCache";
@@ -21,7 +26,10 @@ interface Post {
   excerpt?: string;
   tags: string[];
   createdAt: string;
-  author?: { id: string; userId?: string | null; name: string | null; email: string | null; image?: string | null };
+  sourcePullRequestId?: string | null;
+  pullRequestProposerId?: string | null;
+  pullRequestProposer?: PublicUserAvatar | null;
+  author?: PublicUserAvatar;
 }
 
 const TAG_COLORS: Record<string, string> = {
@@ -70,7 +78,9 @@ export default function HomePage() {
     createdAt: "",
     tags: [] as string[],
     author: null as Post["author"] | null,
+    pullRequestProposer: null as Post["pullRequestProposer"] | null,
     isProduct: false,
+    isPullRequestDerived: false,
   });
   const [searchQuery, setSearchQuery] = useState("");
   const [postsError, setPostsError] = useState("");
@@ -150,7 +160,9 @@ export default function HomePage() {
       createdAt: post.createdAt || "",
       tags: post.tags || [],
       author: post.author || null,
+      pullRequestProposer: post.pullRequestProposer || null,
       isProduct: !!post.tags?.includes("product"),
+      isPullRequestDerived: !!post.sourcePullRequestId,
     });
     setOverlayPostId(post.id);
     setOverlayContent(post.content || "<p>記事の内容がありません。</p>");
@@ -333,7 +345,12 @@ export default function HomePage() {
           ) : (
             <div className="blog-list">
               {blogPosts.slice(0, 10).map((p) => (
-                <div key={p.id} className="blog-item" onClick={() => navigateToPost(p)} style={{ cursor: "pointer" }}>
+                <div
+                  key={p.id}
+                  className={`blog-item ${p.sourcePullRequestId ? "pull-request-post" : ""}`}
+                  onClick={() => navigateToPost(p)}
+                  style={{ cursor: "pointer" }}
+                >
                   <div style={{ flex: 1 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 6, flexWrap: "wrap" }}>
                       <h3 style={{ margin: 0 }}>{p.title}</h3>
@@ -348,11 +365,11 @@ export default function HomePage() {
                     <div style={{ fontSize: 12, color: "var(--azuki-light)", marginTop: 8 }}>
                       by{" "}
                       <Link
-                        href={p.author?.userId ? `/user/${encodeURIComponent(p.author.userId)}` : "#"}
+                        href={getPublicUserHref(p.author || null)}
                         style={{ color: "var(--azuki)", textDecoration: "none" }}
                         onClick={(e) => e.stopPropagation()}
                       >
-                        {p.author?.name || "Anonymous"}
+                        {getPublicUserLabel(p.author || null)}
                       </Link>
                     </div>
                   </div>
@@ -372,7 +389,12 @@ export default function HomePage() {
                 <h2 className="section-title">{t("最近のプロダクト")}</h2>
                 <div className="product-grid">
                   {productPosts.slice(0, 8).map((p) => (
-                    <div key={p.id} className="product-card" onClick={() => navigateToPost(p)} style={{ cursor: "pointer" }}>
+                    <div
+                      key={p.id}
+                      className={`product-card ${p.sourcePullRequestId ? "pull-request-post" : ""}`}
+                      onClick={() => navigateToPost(p)}
+                      style={{ cursor: "pointer" }}
+                    >
                       <div
                         className="product-thumb"
                         style={{
@@ -415,44 +437,17 @@ export default function HomePage() {
         <div className={`post-panel ${overlayMeta.isProduct ? "product-post-panel" : ""}`} onClick={(e) => e.stopPropagation()}>
           <div className="post-panel-header">
             <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-              {overlayMeta.author?.id && (
-                <Link
-                  href={overlayMeta.author.userId ? `/user/${encodeURIComponent(overlayMeta.author.userId)}` : "#"}
-                  style={{ textDecoration: "none" }}
-                  title="ページに飛ぶ"
-                >
-                  <div
-                    style={{
-                      width: 24,
-                      height: 24,
-                      borderRadius: "50%",
-                      border: "1px solid var(--border)",
-                      background: "var(--bg-soft)",
-                      color: "var(--azuki)",
-                      overflow: "hidden",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: 11,
-                      fontWeight: 600,
-                    }}
-                  >
-                    {overlayMeta.author.image ? (
-                      <img
-                        src={overlayMeta.author.image}
-                        alt={overlayMeta.author.name || "author"}
-                        style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                      />
-                    ) : (
-                      (overlayMeta.author.name || overlayMeta.author.email || "A").charAt(0).toUpperCase()
-                    )}
-                  </div>
-                </Link>
+              <PublicUserAvatarLink user={overlayMeta.author || null} />
+              {overlayMeta.pullRequestProposer && (
+                <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 11, color: "var(--azuki-light)", letterSpacing: "0.05em" }}>著者</span>
+                  <PublicUserAvatarLink user={overlayMeta.pullRequestProposer} title="著者ページに飛ぶ" />
+                </div>
               )}
               <span style={{ fontSize: 13, color: "var(--text-soft)" }}>{overlayMeta.date}</span>
               {overlayMeta.author && (
                 <span style={{ fontSize: 12, color: "var(--azuki-light)" }}>
-                  by {overlayMeta.author.name || overlayMeta.author.email || "Anonymous"}
+                  by {getPublicUserLabel(overlayMeta.author)}
                 </span>
               )}
             </div>

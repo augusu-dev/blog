@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { resolveSessionUserId } from "@/lib/sessionUser";
 import { tryEnsureProfileAndPostSchema } from "@/lib/schemaCompat";
 import { getPublicPostsFallback } from "@/lib/publicContentFallback";
+import { hydratePullRequestProposers } from "@/lib/pullRequestPostMeta";
 import { fillMissingPublicUserIds } from "@/lib/userId";
 import { invalidateReadCachePrefix, readCacheKeys, readThroughCache } from "@/lib/readCache";
 
@@ -23,9 +24,17 @@ function isSchemaMismatchError(error: unknown): boolean {
 }
 
 export async function GET() {
-    const attachPublicUserIds = async <
+    const attachPostUsers = async <
         T extends Array<{
             author?: {
+                id: string;
+                userId?: string | null;
+                name: string | null;
+                email: string | null;
+                image: string | null;
+            } | null;
+            pullRequestProposerId?: string | null;
+            pullRequestProposer?: {
                 id: string;
                 userId?: string | null;
                 name: string | null;
@@ -42,7 +51,7 @@ export async function GET() {
         const hydratedAuthors = await fillMissingPublicUserIds(authors);
         const authorById = new Map(hydratedAuthors.map((author) => [author.id, author]));
 
-        return posts.map((post) =>
+        const postsWithAuthors = posts.map((post) =>
             post.author?.id
                 ? {
                       ...post,
@@ -50,6 +59,8 @@ export async function GET() {
                   }
                 : post
         ) as T;
+
+        return (await hydratePullRequestProposers(postsWithAuthors)) as T;
     };
 
     try {
@@ -68,7 +79,7 @@ export async function GET() {
                         },
                     });
                     if (posts.length > 0) {
-                        return await attachPublicUserIds(posts);
+                        return await attachPostUsers(posts);
                     }
                 } catch (error) {
                     if (!isSchemaMismatchError(error)) throw error;
@@ -85,19 +96,20 @@ export async function GET() {
                         },
                     });
                     if (posts.length > 0) {
-                        return await attachPublicUserIds(posts);
+                        return await attachPostUsers(posts);
                     }
                 } catch (error) {
                     if (!isSchemaMismatchError(error)) throw error;
                 }
 
                 const fallbackPosts = await getPublicPostsFallback(300);
-                return await fillMissingPublicUserIds(fallbackPosts.map((post) => post.author)).then((authors) => {
+                return await fillMissingPublicUserIds(fallbackPosts.map((post) => post.author)).then(async (authors) => {
                     const authorById = new Map(authors.map((author) => [author.id, author]));
-                    return fallbackPosts.map((post) => ({
+                    const postsWithAuthors = fallbackPosts.map((post) => ({
                         ...post,
                         author: authorById.get(post.author.id) || post.author,
                     }));
+                    return hydratePullRequestProposers(postsWithAuthors);
                 });
             },
             {

@@ -383,8 +383,8 @@ export default function MessagesPage() {
 
     useEffect(() => {
         if (!session?.user) return;
-        markDmPrSeen();
-    }, [session?.user]);
+        markDmPrSeen(currentUserId);
+    }, [currentUserId, session?.user]);
 
     useEffect(() => {
         if (!selectedUserId) {
@@ -549,7 +549,7 @@ export default function MessagesPage() {
 
                 await refreshCurrentThread();
                 await loadThreads();
-                markDmPrSeen();
+                markDmPrSeen(currentUserId);
             } catch {
                 setError("プルリクエストの更新に失敗しました。");
             } finally {
@@ -557,7 +557,7 @@ export default function MessagesPage() {
                 setUpdatingPullRequestAction(null);
             }
         },
-        [loadThreads, refreshCurrentThread]
+        [currentUserId, loadThreads, refreshCurrentThread]
     );
 
     const sendMessage = async () => {
@@ -641,7 +641,7 @@ export default function MessagesPage() {
                 await refreshCurrentThread();
             }
 
-            markDmPrSeen();
+            markDmPrSeen(currentUserId);
         } catch {
             updateCurrentThreadMessages((prev) => prev.filter((message) => message.id !== optimisticId));
             setDraft((prev) => (prev ? prev : content));

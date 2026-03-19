@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { resolveSessionUserId } from "@/lib/sessionUser";
 import { getPostsByAuthorFallback } from "@/lib/publicContentFallback";
+import { hydratePullRequestProposers } from "@/lib/pullRequestPostMeta";
 import { readCacheKeys, readThroughCache } from "@/lib/readCache";
 
 const USER_POSTS_CACHE_TTL_MS = 15 * 1000;
@@ -57,12 +58,14 @@ export async function GET() {
                         where: authorWhere,
                         orderBy: { updatedAt: "desc" },
                     });
-                    return posts;
+                    return hydratePullRequestProposers(posts);
                 } catch (error) {
                     if (!isSchemaMismatchError(error)) throw error;
                 }
 
-                return getPostsByAuthorFallback(authorRefs, { publishedOnly: false, limit: 300 });
+                return hydratePullRequestProposers(
+                    await getPostsByAuthorFallback(authorRefs, { publishedOnly: false, limit: 300 })
+                );
             },
             {
                 shouldCache: (value) => Array.isArray(value) && value.length > 0,
@@ -79,7 +82,9 @@ export async function GET() {
     } catch (error) {
         try {
             return NextResponse.json(
-                await getPostsByAuthorFallback(authorRefs, { publishedOnly: false, limit: 300 })
+                await hydratePullRequestProposers(
+                    await getPostsByAuthorFallback(authorRefs, { publishedOnly: false, limit: 300 })
+                )
             );
         } catch (fallbackError) {
             void fallbackError;

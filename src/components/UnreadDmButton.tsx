@@ -22,16 +22,17 @@ export default function UnreadDmButton({
     title = "DM",
 }: UnreadDmButtonProps) {
     const { data: session, status } = useSession();
+    const currentUserId = (session?.user as { id?: string } | undefined)?.id ?? "";
     const [unreadCount, setUnreadCount] = useState(0);
     const warmedThreadsForRef = useRef("");
 
     const refreshUnread = useCallback(async () => {
-        if (status !== "authenticated") {
+        if (status !== "authenticated" || !currentUserId) {
             setUnreadCount(0);
             return;
         }
 
-        const since = getDmUnreadSince();
+        const since = getDmUnreadSince(currentUserId);
         const url = since
             ? `/api/notifications/unread?since=${encodeURIComponent(since)}`
             : "/api/notifications/unread";
@@ -45,7 +46,7 @@ export default function UnreadDmButton({
         } catch {
             // Keep the previous unread badge when polling fails.
         }
-    }, [status]);
+    }, [currentUserId, status]);
 
     useEffect(() => {
         if (typeof window === "undefined") return;
@@ -58,19 +59,21 @@ export default function UnreadDmButton({
         const initTimer = window.setTimeout(onRefresh, 0);
         const timer = window.setInterval(onRefresh, 5000); // Poll every 5 seconds for less lag
         window.addEventListener(refreshEvent, onRefresh);
+        window.addEventListener("storage", onRefresh);
         window.addEventListener("focus", onRefresh);
 
         return () => {
             window.clearTimeout(initTimer);
             window.clearInterval(timer);
             window.removeEventListener(refreshEvent, onRefresh);
+            window.removeEventListener("storage", onRefresh);
             window.removeEventListener("focus", onRefresh);
         };
     }, [refreshUnread]);
 
     useEffect(() => {
-        const currentUserId = (session?.user as { id?: string } | undefined)?.id ?? "";
         if (status !== "authenticated" || !currentUserId) {
+            warmedThreadsForRef.current = "";
             return;
         }
         if (warmedThreadsForRef.current === currentUserId) {
@@ -125,7 +128,7 @@ export default function UnreadDmButton({
         return () => {
             window.clearTimeout(timer);
         };
-    }, [session, status]);
+    }, [currentUserId, session, status]);
 
     return (
         <Link

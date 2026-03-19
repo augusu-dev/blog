@@ -261,7 +261,8 @@ export default function CollaborationSettingsPage() {
 
     useEffect(() => {
         if (session?.user) {
-            markDmPrSeen();
+            const currentUserId = (session.user as { id?: string } | undefined)?.id ?? "";
+            markDmPrSeen(currentUserId);
             void loadData();
         }
     }, [session, loadData]);

@@ -404,6 +404,8 @@ export async function PUT(request: NextRequest) {
                         tags: pullRequest.tags || [],
                         published: true,
                         authorId: userId,
+                        sourcePullRequestId: pullRequest.id,
+                        pullRequestProposerId: pullRequest.proposerId,
                     },
                 });
 

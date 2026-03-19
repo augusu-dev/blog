@@ -461,12 +461,15 @@ body {
   gap: 20px;
   cursor: pointer;
   transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
 }
 
 .blog-item:hover {
-  transform: translateY(-2px);
+  transform: translateX(4px);
   border-color: color-mix(in srgb, var(--accent) 24%, var(--border));
-  box-shadow: 0 10px 24px color-mix(in srgb, var(--accent) 10%, transparent);
+  box-shadow:
+    inset 4px 0 0 var(--accent),
+    0 10px 24px color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
 .blog-item h3 {
@@ -552,11 +555,20 @@ body {
   overflow: hidden;
   cursor: pointer;
   transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
 }
 
 .product-card:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 8px 24px rgba(155, 107, 107, 0.08);
+  transform: translateX(4px);
+  border-color: color-mix(in srgb, var(--accent) 24%, var(--border));
+  box-shadow:
+    inset 4px 0 0 var(--accent),
+    0 8px 24px rgba(155, 107, 107, 0.08);
+}
+
+.pull-request-post {
+  border-width: 2px;
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--border));
 }
 
 .product-thumb {

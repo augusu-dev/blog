@@ -9,6 +9,10 @@ import Link from "next/link";
 import { useLanguage } from "@/contexts/LanguageContext";
 import PostComments from "@/components/PostComments";
 import UnreadDmButton from "@/components/UnreadDmButton";
+import PublicUserAvatarLink, {
+    type PublicUserAvatar,
+    getPublicUserLabel,
+} from "@/components/PublicUserAvatarLink";
 import { useMyPageHref } from "@/hooks/useMyPageHref";
 import { prepareRenderedPostHtml } from "@/lib/postContent";
 import {
@@ -30,6 +34,10 @@ interface Post {
     createdAt: string;
     slug?: string;
     date?: string;
+    pinned?: boolean;
+    sourcePullRequestId?: string | null;
+    pullRequestProposerId?: string | null;
+    pullRequestProposer?: PublicUserAvatar | null;
 }
 
 interface SocialLink {
@@ -228,9 +236,11 @@ export default function UserPage({ requestedPostId: requestedPostIdProp = null }
         date: string;
         createdAt: string;
         tags: string[];
-        author: { id: string; userId?: string | null; name: string | null; email: string | null; image: string | null } | null;
+        author: PublicUserAvatar | null;
+        pullRequestProposer: PublicUserAvatar | null;
         isProduct: boolean;
-    }>({ date: "", createdAt: "", tags: [], author: null, isProduct: false });
+        isPullRequestDerived: boolean;
+    }>({ date: "", createdAt: "", tags: [], author: null, pullRequestProposer: null, isProduct: false, isPullRequestDerived: false });
     const [isPinned, setIsPinned] = useState(false);
     const [pinLoading, setPinLoading] = useState(false);
     const [activeSection, setActiveSection] = useState<SectionId>("home");
@@ -535,7 +545,9 @@ export default function UserPage({ requestedPostId: requestedPostIdProp = null }
                     image: user.image || null,
                 }
                 : null,
+            pullRequestProposer: post.pullRequestProposer || null,
             isProduct: !!post.tags?.includes("product"),
+            isPullRequestDerived: !!post.sourcePullRequestId,
         });
         setOverlayPostId(post.id);
         setOverlayOpen(true);
@@ -832,7 +844,11 @@ export default function UserPage({ requestedPostId: requestedPostIdProp = null }
                             {recommendProducts.length > 0 && (
                                 <div className="recommend-grid">
                                     {recommendProducts.map((p: any) => (
-                                        <div key={p.id} className="product-card fade-item" onClick={() => navigateToPost(p)}>
+                                        <div
+                                            key={p.id}
+                                            className={`product-card fade-item ${p.sourcePullRequestId ? "pull-request-post" : ""}`}
+                                            onClick={() => navigateToPost(p)}
+                                        >
                                             {p.headerImage ? (
                                                 <img src={p.headerImage} alt={p.title} style={{ width: "100%", height: 120, objectFit: "cover", borderRadius: 10, marginBottom: 8 }} />
                                             ) : (
@@ -861,7 +877,12 @@ export default function UserPage({ requestedPostId: requestedPostIdProp = null }
                             {recommendBlogs.length > 0 && (
                                 <div className="recommend-row">
                                     {recommendBlogs.map((p: any) => (
-                                        <div key={p.id} className="card card-sm fade-item" style={{ padding: 18 }} onClick={() => navigateToPost(p)}>
+                                        <div
+                                            key={p.id}
+                                            className={`card card-sm fade-item ${p.sourcePullRequestId ? "pull-request-post" : ""}`}
+                                            style={{ padding: 18 }}
+                                            onClick={() => navigateToPost(p)}
+                                        >
                                             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6, flexWrap: "wrap" }}>
                                                 <h4 style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.5, margin: 0 }}>{p.title}</h4>
                                                 <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
@@ -887,7 +908,12 @@ export default function UserPage({ requestedPostId: requestedPostIdProp = null }
                     ) : (
                         <div className="blog-list">
                             {blogItems.map((p, i) => (
-                                <div key={p.id} className="blog-item fade-item" style={{ transitionDelay: `${i * 60}ms` }} onClick={() => navigateToPost(p)}>
+                                <div
+                                    key={p.id}
+                                    className={`blog-item fade-item ${p.sourcePullRequestId ? "pull-request-post" : ""}`}
+                                    style={{ transitionDelay: `${i * 60}ms` }}
+                                    onClick={() => navigateToPost(p)}
+                                >
                                     <div style={{ flex: 1 }}>
                                         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 6, flexWrap: "wrap" }}>
                                             <h3 style={{ margin: 0 }}>{p.title}</h3>
@@ -925,7 +951,11 @@ export default function UserPage({ requestedPostId: requestedPostIdProp = null }
                     ) : (
                         <div className="product-grid">
                             {products.map((p) => (
-                                <div key={p.id} className="product-card fade-item" onClick={() => navigateToPost(p)}>
+                                <div
+                                    key={p.id}
+                                    className={`product-card fade-item ${p.sourcePullRequestId ? "pull-request-post" : ""}`}
+                                    onClick={() => navigateToPost(p)}
+                                >
                                     {p.headerImage ? (
                                         <img src={p.headerImage} alt={p.title} style={{ width: "100%", height: 80, objectFit: "cover", borderRadius: 10, marginBottom: 8 }} />
                                     ) : (
@@ -1085,7 +1115,18 @@ export default function UserPage({ requestedPostId: requestedPostIdProp = null }
                                     </div>
                                 </Link>
                             )}
+                            {overlayMeta.pullRequestProposer && (
+                                <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                                    <span style={{ fontSize: 11, color: "var(--azuki-light)", letterSpacing: "0.05em" }}>著者</span>
+                                    <PublicUserAvatarLink user={overlayMeta.pullRequestProposer} title="著者ページに飛ぶ" />
+                                </div>
+                            )}
                             <span style={{ fontSize: 13, color: "var(--text-soft)" }}>{overlayMeta.date}</span>
+                            {overlayMeta.author && (
+                                <span style={{ fontSize: 12, color: "var(--azuki-light)" }}>
+                                    by {getPublicUserLabel(overlayMeta.author)}
+                                </span>
+                            )}
                         </div>
                         <button className="post-close-btn" onClick={closeOverlay}>
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>

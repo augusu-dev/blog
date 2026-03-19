@@ -21,6 +21,9 @@ export type PublicPostFallback = {
     createdAt: string;
     updatedAt: string;
     authorId: string;
+    sourcePullRequestId: string | null;
+    pullRequestProposerId: string | null;
+    pullRequestProposer?: PublicAuthor | null;
     author: PublicAuthor;
 };
 
@@ -44,6 +47,9 @@ export type UserOwnedPostFallback = {
     createdAt: string;
     updatedAt: string;
     authorId: string;
+    sourcePullRequestId: string | null;
+    pullRequestProposerId: string | null;
+    pullRequestProposer?: PublicAuthor | null;
 };
 
 export type UserProfileFallback = {
@@ -176,6 +182,8 @@ function mapOwnedPostRow(row: Record<string, unknown>): UserOwnedPostFallback {
         createdAt: asString(row.createdAt),
         updatedAt: asString(row.updatedAt, asString(row.createdAt)),
         authorId: asString(row.authorId),
+        sourcePullRequestId: asNullableString(row.sourcePullRequestId),
+        pullRequestProposerId: asNullableString(row.pullRequestProposerId),
     };
 }
 
@@ -218,7 +226,9 @@ export async function getPostsByAuthorFallback(
                 ${postColumns.has("pinned") ? `p."pinned"::text` : `'false'::text`} AS "pinnedText",
                 p."createdAt"::text AS "createdAt",
                 ${postColumns.has("updatedAt") ? `COALESCE(p."updatedAt"::text, p."createdAt"::text)` : `p."createdAt"::text`} AS "updatedAt",
-                p."authorId"::text AS "authorId"
+                p."authorId"::text AS "authorId",
+                ${postColumns.has("sourcePullRequestId") ? `p."sourcePullRequestId"::text` : `NULL::text`} AS "sourcePullRequestId",
+                ${postColumns.has("pullRequestProposerId") ? `p."pullRequestProposerId"::text` : `NULL::text`} AS "pullRequestProposerId"
             FROM "Post" p
             WHERE ${whereClauses.join(" AND ")}
             ORDER BY ${postColumns.has("updatedAt") ? `COALESCE(p."updatedAt", p."createdAt")` : `p."createdAt"`} DESC
@@ -353,6 +363,8 @@ export async function getPublicPostsFallback(limit = 300): Promise<PublicPostFal
                 p."createdAt"::text AS "createdAt",
                 ${postColumns.has("updatedAt") ? `COALESCE(p."updatedAt"::text, p."createdAt"::text)` : `p."createdAt"::text`} AS "updatedAt",
                 p."authorId"::text AS "authorId",
+                ${postColumns.has("sourcePullRequestId") ? `p."sourcePullRequestId"::text` : `NULL::text`} AS "sourcePullRequestId",
+                ${postColumns.has("pullRequestProposerId") ? `p."pullRequestProposerId"::text` : `NULL::text`} AS "pullRequestProposerId",
                 ${authorIdSelect} AS "authorPk",
                 ${userColumns.has("userId") ? authorUserIdSelect : `NULL::text`} AS "authorUserId",
                 ${userColumns.has("name") ? authorNameSelect : `NULL::text`} AS "authorName",

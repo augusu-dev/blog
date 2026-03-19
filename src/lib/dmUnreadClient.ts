@@ -5,14 +5,19 @@ function isBrowser(): boolean {
     return typeof window !== "undefined";
 }
 
-export function getDmUnreadSince(): string | null {
-    if (!isBrowser()) return null;
-    return window.localStorage.getItem(LAST_SEEN_KEY);
+function buildLastSeenKey(userKey?: string | null): string {
+    const normalizedUserKey = typeof userKey === "string" ? userKey.trim() : "";
+    return normalizedUserKey ? `${LAST_SEEN_KEY}:${normalizedUserKey}` : LAST_SEEN_KEY;
 }
 
-export function markDmPrSeen(date: Date = new Date()): void {
+export function getDmUnreadSince(userKey?: string | null): string | null {
+    if (!isBrowser()) return null;
+    return window.localStorage.getItem(buildLastSeenKey(userKey));
+}
+
+export function markDmPrSeen(userKey?: string | null, date: Date = new Date()): void {
     if (!isBrowser()) return;
-    window.localStorage.setItem(LAST_SEEN_KEY, date.toISOString());
+    window.localStorage.setItem(buildLastSeenKey(userKey), date.toISOString());
     window.dispatchEvent(new Event(REFRESH_EVENT));
 }
 

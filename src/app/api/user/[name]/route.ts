@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { resolveSessionUserId } from "@/lib/sessionUser";
 import { getUserProfileByRefFallback } from "@/lib/publicContentFallback";
 import { getPostsByAuthorFallback } from "@/lib/publicContentFallback";
+import { hydratePullRequestProposers } from "@/lib/pullRequestPostMeta";
 import { resolveReadablePublicUserId } from "@/lib/userId";
 import { readCacheKeys, readThroughCache, writeReadCache } from "@/lib/readCache";
 
@@ -112,19 +113,21 @@ async function findByNameFallback(
     bio: string | null;
     aboutMe: string | null;
     links: string | null;
-    posts: Array<{
-        id: string;
-        title: string;
-        content: string;
-        excerpt: string | null;
-        headerImage: string | null;
-        tags: string[];
-        published: boolean;
-        pinned: boolean;
-        createdAt: Date;
-        updatedAt: Date;
-        authorId: string;
-    }>;
+        posts: Array<{
+            id: string;
+            title: string;
+            content: string;
+            excerpt: string | null;
+            headerImage: string | null;
+            tags: string[];
+            published: boolean;
+            pinned: boolean;
+            createdAt: Date;
+            updatedAt: Date;
+            authorId: string;
+            sourcePullRequestId?: string | null;
+            pullRequestProposerId?: string | null;
+        }>;
 } | null> {
     if (!userRef) return null;
 
@@ -233,6 +236,8 @@ async function findUserProfileByRef(userRef: string, userRefLower: string) {
             createdAt: Date;
             updatedAt: Date;
             authorId: string;
+            sourcePullRequestId?: string | null;
+            pullRequestProposerId?: string | null;
         }>
         | null = null;
 
@@ -252,6 +257,8 @@ async function findUserProfileByRef(userRef: string, userRefLower: string) {
                 createdAt: true,
                 updatedAt: true,
                 authorId: true,
+                sourcePullRequestId: true,
+                pullRequestProposerId: true,
             },
         });
         posts = rows;
@@ -272,6 +279,8 @@ async function findUserProfileByRef(userRef: string, userRefLower: string) {
                     content: true,
                     createdAt: true,
                     authorId: true,
+                    sourcePullRequestId: true,
+                    pullRequestProposerId: true,
                 },
             });
             posts = rows.map((row) => ({
@@ -286,6 +295,8 @@ async function findUserProfileByRef(userRef: string, userRefLower: string) {
                 createdAt: row.createdAt,
                 updatedAt: row.createdAt,
                 authorId: row.authorId,
+                sourcePullRequestId: row.sourcePullRequestId,
+                pullRequestProposerId: row.pullRequestProposerId,
             }));
         } catch (error) {
             if (!isUserSchemaCompatibilityError(error)) {
@@ -515,10 +526,23 @@ export async function GET(_req: Request, { params }: { params: Promise<{ name: s
                     }
                 }
 
+                const hydratedPosts = await hydratePullRequestProposers(
+                    (resolvedPosts.length >= fallbackPosts.length ? resolvedPosts : fallbackPosts) as Array<{
+                        pullRequestProposerId?: string | null;
+                        pullRequestProposer?: {
+                            id: string;
+                            userId?: string | null;
+                            name: string | null;
+                            email: string | null;
+                            image: string | null;
+                        } | null;
+                    }>
+                );
+
                 const responsePayload = {
                     ...resolvedUser,
                     userId: ensuredUserId || null,
-                    posts: resolvedPosts.length >= fallbackPosts.length ? resolvedPosts : fallbackPosts,
+                    posts: hydratedPosts,
                     links: unpacked.links,
                     dmSetting: unpacked.dmSetting,
                 };
