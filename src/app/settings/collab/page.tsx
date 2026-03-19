@@ -16,6 +16,7 @@ interface PullRequestItem {
     excerpt: string | null;
     content: string;
     tags: string[];
+    status: "PENDING" | "ACCEPTED" | "REJECTED";
     createdAt: string;
     proposer?: { id: string; name: string | null; email: string | null };
     recipient?: { id: string; name: string | null; email: string | null };
@@ -53,6 +54,16 @@ type UiText = {
     unknown: string;
     viewContent: string;
     dmPrefix: string;
+    acceptButton: string;
+    rejectButton: string;
+    accepting: string;
+    rejecting: string;
+    acceptedMessage: string;
+    rejectedMessage: string;
+    actionFailed: string;
+    statusPending: string;
+    statusAccepted: string;
+    statusRejected: string;
 };
 
 const UI_TEXT: Record<"ja" | "en" | "zh", UiText> = {
@@ -82,6 +93,16 @@ const UI_TEXT: Record<"ja" | "en" | "zh", UiText> = {
         unknown: "不明",
         viewContent: "記事本文を表示",
         dmPrefix: "DM",
+        acceptButton: "承認して公開",
+        rejectButton: "却下",
+        accepting: "承認中...",
+        rejecting: "却下中...",
+        acceptedMessage: "プルリクエストを承認し、記事として公開しました。",
+        rejectedMessage: "プルリクエストを却下しました。",
+        actionFailed: "プルリクエストの更新に失敗しました。",
+        statusPending: "保留中",
+        statusAccepted: "承認済み",
+        statusRejected: "却下済み",
     },
     en: {
         back: "Back to settings",
@@ -109,6 +130,16 @@ const UI_TEXT: Record<"ja" | "en" | "zh", UiText> = {
         unknown: "Unknown",
         viewContent: "View article content",
         dmPrefix: "DM",
+        acceptButton: "Accept and publish",
+        rejectButton: "Reject",
+        accepting: "Accepting...",
+        rejecting: "Rejecting...",
+        acceptedMessage: "The pull request was accepted and published as a post.",
+        rejectedMessage: "The pull request was rejected.",
+        actionFailed: "Failed to update the pull request.",
+        statusPending: "Pending",
+        statusAccepted: "Accepted",
+        statusRejected: "Rejected",
     },
     zh: {
         back: "返回设置",
@@ -136,6 +167,16 @@ const UI_TEXT: Record<"ja" | "en" | "zh", UiText> = {
         unknown: "未知",
         viewContent: "查看文章内容",
         dmPrefix: "DM",
+        acceptButton: "批准并发布",
+        rejectButton: "拒绝",
+        accepting: "批准中...",
+        rejecting: "拒绝中...",
+        acceptedMessage: "该 PR 已批准并作为文章发布。",
+        rejectedMessage: "该 PR 已被拒绝。",
+        actionFailed: "更新 PR 失败。",
+        statusPending: "待处理",
+        statusAccepted: "已批准",
+        statusRejected: "已拒绝",
     },
 };
 
@@ -153,6 +194,8 @@ export default function CollaborationSettingsPage() {
     const [receivedPullRequests, setReceivedPullRequests] = useState<PullRequestItem[]>([]);
     const [sentPullRequests, setSentPullRequests] = useState<PullRequestItem[]>([]);
     const [loadingData, setLoadingData] = useState(true);
+    const [actingPullRequestId, setActingPullRequestId] = useState<string | null>(null);
+    const [actingPullRequestAction, setActingPullRequestAction] = useState<"accept" | "reject" | null>(null);
 
     useEffect(() => {
         if (status === "unauthenticated") {
@@ -232,6 +275,40 @@ export default function CollaborationSettingsPage() {
         }
     };
 
+    const getStatusLabel = (status: PullRequestItem["status"]) => {
+        if (status === "ACCEPTED") return text.statusAccepted;
+        if (status === "REJECTED") return text.statusRejected;
+        return text.statusPending;
+    };
+
+    const handlePullRequestAction = async (pullRequestId: string, action: "accept" | "reject") => {
+        setActingPullRequestId(pullRequestId);
+        setActingPullRequestAction(action);
+        setMessage("");
+
+        try {
+            const res = await fetch("/api/pull-requests", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ pullRequestId, action }),
+            });
+
+            const payload = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                setMessage(payload.error || text.actionFailed);
+                return;
+            }
+
+            await loadData();
+            setMessage(action === "accept" ? text.acceptedMessage : text.rejectedMessage);
+        } catch {
+            setMessage(text.actionFailed);
+        } finally {
+            setActingPullRequestId(null);
+            setActingPullRequestAction(null);
+        }
+    };
+
     if (status === "loading") {
         return (
             <div className="login-container">
@@ -264,7 +341,7 @@ export default function CollaborationSettingsPage() {
                 </h1>
 
                 {message && (
-                    <div className={`login-message ${message.includes("失敗") || message.toLowerCase().includes("failed") ? "login-error" : ""}`} style={{ marginBottom: 18 }}>
+                    <div className={`login-message ${message.includes("失敗") || message.toLowerCase().includes("failed") || message.includes("失败") ? "login-error" : ""}`} style={{ marginBottom: 18 }}>
                         {message}
                     </div>
                 )}
@@ -314,7 +391,31 @@ export default function CollaborationSettingsPage() {
                         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                             {receivedPullRequests.map((pr) => (
                                 <article key={pr.id} style={{ border: "1px solid var(--border)", borderRadius: 12, background: "var(--card)", padding: 14 }}>
-                                    <h3 style={{ fontSize: 16, marginBottom: 6 }}>{pr.title}</h3>
+                                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 6, flexWrap: "wrap" }}>
+                                        <h3 style={{ fontSize: 16, marginBottom: 0 }}>{pr.title}</h3>
+                                        <span
+                                            style={{
+                                                fontSize: 11,
+                                                padding: "4px 8px",
+                                                borderRadius: 999,
+                                                border: "1px solid var(--border)",
+                                                color:
+                                                    pr.status === "ACCEPTED"
+                                                        ? "var(--azuki)"
+                                                        : pr.status === "REJECTED"
+                                                          ? "var(--text-soft)"
+                                                          : "var(--azuki-deep)",
+                                                background:
+                                                    pr.status === "ACCEPTED"
+                                                        ? "color-mix(in srgb, var(--azuki-pale) 60%, transparent)"
+                                                        : pr.status === "REJECTED"
+                                                          ? "color-mix(in srgb, var(--bg-soft) 82%, transparent)"
+                                                          : "color-mix(in srgb, var(--accent) 12%, transparent)",
+                                            }}
+                                        >
+                                            {getStatusLabel(pr.status)}
+                                        </span>
+                                    </div>
                                     <p style={{ fontSize: 12, color: "var(--text-soft)", marginBottom: 6 }}>
                                         {text.from} {pr.proposer?.name || pr.proposer?.email || text.unknown} ・ {new Date(pr.createdAt).toLocaleString("ja-JP")}
                                     </p>
@@ -328,6 +429,30 @@ export default function CollaborationSettingsPage() {
                                         <summary style={{ cursor: "pointer", fontSize: 12, color: "var(--azuki)" }}>{text.viewContent}</summary>
                                         <div style={{ marginTop: 8, whiteSpace: "pre-wrap", fontSize: 13, lineHeight: 1.7 }}>{pr.content}</div>
                                     </details>
+                                    {pr.status === "PENDING" && (
+                                        <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+                                            <button
+                                                type="button"
+                                                className="editor-btn editor-btn-primary"
+                                                disabled={actingPullRequestId === pr.id}
+                                                onClick={() => void handlePullRequestAction(pr.id, "accept")}
+                                            >
+                                                {actingPullRequestId === pr.id && actingPullRequestAction === "accept"
+                                                    ? text.accepting
+                                                    : text.acceptButton}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className="editor-btn editor-btn-secondary"
+                                                disabled={actingPullRequestId === pr.id}
+                                                onClick={() => void handlePullRequestAction(pr.id, "reject")}
+                                            >
+                                                {actingPullRequestId === pr.id && actingPullRequestAction === "reject"
+                                                    ? text.rejecting
+                                                    : text.rejectButton}
+                                            </button>
+                                        </div>
+                                    )}
                                 </article>
                             ))}
                         </div>
@@ -344,7 +469,31 @@ export default function CollaborationSettingsPage() {
                         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                             {sentPullRequests.map((pr) => (
                                 <article key={pr.id} style={{ border: "1px solid var(--border)", borderRadius: 12, background: "var(--card)", padding: 14 }}>
-                                    <h3 style={{ fontSize: 16, marginBottom: 6 }}>{pr.title}</h3>
+                                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 6, flexWrap: "wrap" }}>
+                                        <h3 style={{ fontSize: 16, marginBottom: 0 }}>{pr.title}</h3>
+                                        <span
+                                            style={{
+                                                fontSize: 11,
+                                                padding: "4px 8px",
+                                                borderRadius: 999,
+                                                border: "1px solid var(--border)",
+                                                color:
+                                                    pr.status === "ACCEPTED"
+                                                        ? "var(--azuki)"
+                                                        : pr.status === "REJECTED"
+                                                          ? "var(--text-soft)"
+                                                          : "var(--azuki-deep)",
+                                                background:
+                                                    pr.status === "ACCEPTED"
+                                                        ? "color-mix(in srgb, var(--azuki-pale) 60%, transparent)"
+                                                        : pr.status === "REJECTED"
+                                                          ? "color-mix(in srgb, var(--bg-soft) 82%, transparent)"
+                                                          : "color-mix(in srgb, var(--accent) 12%, transparent)",
+                                            }}
+                                        >
+                                            {getStatusLabel(pr.status)}
+                                        </span>
+                                    </div>
                                     <p style={{ fontSize: 12, color: "var(--text-soft)" }}>
                                         {text.to} {pr.recipient?.name || pr.recipient?.email || text.unknown} ・ {new Date(pr.createdAt).toLocaleString("ja-JP")}
                                     </p>

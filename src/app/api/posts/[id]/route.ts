@@ -6,11 +6,13 @@ import { invalidateReadCachePrefix, readCacheKeys } from "@/lib/readCache";
 
 // GET: 記事詳細取得
 export async function GET(
-    request: NextRequest,
+    _request: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ) {
     const { id } = await params;
     try {
+        const session = await auth();
+        const userId = await resolveSessionUserId(session as any) /* eslint-disable-line @typescript-eslint/no-explicit-any */;
         const post = await prisma.post.findUnique({
             where: { id },
             include: {
@@ -21,6 +23,10 @@ export async function GET(
         });
 
         if (!post) {
+            return NextResponse.json({ error: "Post not found" }, { status: 404 });
+        }
+
+        if (!post.published && post.authorId !== userId) {
             return NextResponse.json({ error: "Post not found" }, { status: 404 });
         }
 
@@ -44,6 +50,19 @@ export async function PUT(
 
     const { id } = await params;
     try {
+        const existingPost = await prisma.post.findUnique({
+            where: { id },
+            select: { authorId: true },
+        });
+
+        if (!existingPost) {
+            return NextResponse.json({ error: "Post not found" }, { status: 404 });
+        }
+
+        if (existingPost.authorId !== userId) {
+            return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+        }
+
         const body = await request.json();
         const { title, content, excerpt, tags, published, pinned } = body;
 
@@ -73,7 +92,7 @@ export async function PUT(
 
 // DELETE: 記事削除（認証必須）
 export async function DELETE(
-    request: NextRequest,
+    _request: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ) {
     const session = await auth();
@@ -84,6 +103,19 @@ export async function DELETE(
 
     const { id } = await params;
     try {
+        const existingPost = await prisma.post.findUnique({
+            where: { id },
+            select: { authorId: true },
+        });
+
+        if (!existingPost) {
+            return NextResponse.json({ error: "Post not found" }, { status: 404 });
+        }
+
+        if (existingPost.authorId !== userId) {
+            return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+        }
+
         await prisma.post.delete({ where: { id } });
         invalidateReadCachePrefix(readCacheKeys.publicPosts());
         invalidateReadCachePrefix("user-profile:");

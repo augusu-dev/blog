@@ -2,9 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { DirectMessageContext, PullRequestStatus } from "@prisma/client";
-import { ensureDirectMessageCapacity } from "@/lib/directMessages";
+import { ensureDirectMessageCapacity, ensureDirectMessageSchema } from "@/lib/directMessages";
+import { ensurePullRequestSchema, withPullRequestTable } from "@/lib/pullRequests";
+import { tryEnsureProfileAndPostSchema } from "@/lib/schemaCompat";
 import { ensureUserIdSchema } from "@/lib/userId";
 import { resolveSessionUserId } from "@/lib/sessionUser";
+import { invalidateReadCachePrefix, normalizeCacheKeyPart, readCacheKeys } from "@/lib/readCache";
 
 type DmSetting = "OPEN" | "PR_ONLY" | "CLOSED";
 const DEFAULT_DM_SETTING: DmSetting = "OPEN";
@@ -45,6 +48,43 @@ function unpackDmSettingFromLinks(raw: string | null | undefined): DmSetting {
     return DEFAULT_DM_SETTING;
 }
 
+function isMissingSchemaError(error: unknown): boolean {
+    if (error && typeof error === "object" && "code" in error) {
+        const code = String((error as { code?: unknown }).code || "");
+        if (code === "P2021" || code === "P2022") return true;
+    }
+
+    if (error instanceof Error) {
+        return /column .* does not exist|relation .* does not exist/i.test(error.message);
+    }
+
+    return false;
+}
+
+function invalidatePostAndMessageCaches(userIds: string[]) {
+    invalidateReadCachePrefix(readCacheKeys.publicPosts());
+    invalidateReadCachePrefix("user-profile:");
+    invalidateReadCachePrefix("user-posts:");
+    invalidateReadCachePrefix("pins-feed:");
+
+    for (const userId of [...new Set(userIds.map(normalizeCacheKeyPart).filter(Boolean))]) {
+        invalidateReadCachePrefix(`unread:${userId}:`);
+        invalidateReadCachePrefix(`direct-messages:${userId}:`);
+    }
+}
+
+const latestPullRequestMessageInclude = {
+    where: { context: DirectMessageContext.PULL_REQUEST },
+    orderBy: { createdAt: "desc" as const },
+    take: 1,
+    select: {
+        id: true,
+        content: true,
+        createdAt: true,
+        sender: { select: { id: true, name: true, email: true } },
+    },
+};
+
 export async function GET() {
     const session = await auth();
     const userId = await resolveSessionUserId(session as any) /* eslint-disable-line @typescript-eslint/no-explicit-any */;
@@ -53,48 +93,76 @@ export async function GET() {
     }
 
     try {
-        const [received, sent] = await Promise.all([
-            prisma.articlePullRequest.findMany({
-                where: { recipientId: userId },
-                orderBy: { createdAt: "desc" },
-                include: {
-                    proposer: {
-                        select: { id: true, name: true, email: true },
-                    },
-                    messages: {
-                        where: { context: DirectMessageContext.PULL_REQUEST },
+        await ensurePullRequestSchema();
+        try {
+            await ensureDirectMessageSchema();
+        } catch {
+            // If the DM schema cannot be ensured, fall back to loading pull requests without message previews.
+        }
+
+        const loadWithMessages = () =>
+            Promise.all([
+                withPullRequestTable(() =>
+                    prisma.articlePullRequest.findMany({
+                        where: { recipientId: userId },
                         orderBy: { createdAt: "desc" },
-                        take: 1,
-                        select: {
-                            id: true,
-                            content: true,
-                            createdAt: true,
-                            sender: { select: { id: true, name: true, email: true } },
+                        include: {
+                            proposer: {
+                                select: { id: true, name: true, email: true },
+                            },
+                            messages: latestPullRequestMessageInclude,
                         },
-                    },
-                },
-            }),
-            prisma.articlePullRequest.findMany({
-                where: { proposerId: userId },
-                orderBy: { createdAt: "desc" },
-                include: {
-                    recipient: {
-                        select: { id: true, name: true, email: true },
-                    },
-                    messages: {
-                        where: { context: DirectMessageContext.PULL_REQUEST },
+                    })
+                ),
+                withPullRequestTable(() =>
+                    prisma.articlePullRequest.findMany({
+                        where: { proposerId: userId },
                         orderBy: { createdAt: "desc" },
-                        take: 1,
-                        select: {
-                            id: true,
-                            content: true,
-                            createdAt: true,
-                            sender: { select: { id: true, name: true, email: true } },
+                        include: {
+                            recipient: {
+                                select: { id: true, name: true, email: true },
+                            },
+                            messages: latestPullRequestMessageInclude,
                         },
-                    },
-                },
-            }),
-        ]);
+                    })
+                ),
+            ]);
+
+        let received;
+        let sent;
+
+        try {
+            [received, sent] = await loadWithMessages();
+        } catch (error) {
+            if (!isMissingSchemaError(error)) {
+                throw error;
+            }
+
+            [received, sent] = await Promise.all([
+                withPullRequestTable(() =>
+                    prisma.articlePullRequest.findMany({
+                        where: { recipientId: userId },
+                        orderBy: { createdAt: "desc" },
+                        include: {
+                            proposer: {
+                                select: { id: true, name: true, email: true },
+                            },
+                        },
+                    })
+                ),
+                withPullRequestTable(() =>
+                    prisma.articlePullRequest.findMany({
+                        where: { proposerId: userId },
+                        orderBy: { createdAt: "desc" },
+                        include: {
+                            recipient: {
+                                select: { id: true, name: true, email: true },
+                            },
+                        },
+                    })
+                ),
+            ]);
+        }
 
         return NextResponse.json({ received, sent });
     } catch (error) {
@@ -112,6 +180,7 @@ export async function POST(request: NextRequest) {
 
     try {
         await ensureUserIdSchema();
+        await ensurePullRequestSchema();
         const body = await request.json();
         const recipientIdInput = normalizeString(body.recipientId);
         const recipientQuery = normalizeString(body.recipientQuery || body.recipientName);
@@ -175,8 +244,11 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        if (dmMessage.length > 1000) {
-            await ensureDirectMessageCapacity();
+        if (dmMessage) {
+            await ensureDirectMessageSchema();
+            if (dmMessage.length > 1000) {
+                await ensureDirectMessageCapacity();
+            }
         }
 
         const result = await prisma.$transaction(async (tx) => {
@@ -207,9 +279,165 @@ export async function POST(request: NextRequest) {
             return pullRequest;
         });
 
+        invalidatePostAndMessageCaches([userId, recipientId]);
         return NextResponse.json(result, { status: 201 });
     } catch (error) {
         console.error("Failed to create pull request:", error);
         return NextResponse.json({ error: "Failed to create pull request" }, { status: 500 });
+    }
+}
+
+export async function PUT(request: NextRequest) {
+    const session = await auth();
+    const userId = await resolveSessionUserId(session as any) /* eslint-disable-line @typescript-eslint/no-explicit-any */;
+    if (!userId) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    try {
+        await ensureUserIdSchema();
+        await ensurePullRequestSchema();
+
+        const body = await request.json();
+        const pullRequestId = normalizeString(body.id || body.pullRequestId);
+        const action = normalizeString(body.action).toLowerCase();
+
+        if (!pullRequestId) {
+            return NextResponse.json({ error: "pullRequestId is required" }, { status: 400 });
+        }
+
+        if (action !== "accept" && action !== "reject") {
+            return NextResponse.json({ error: "action must be accept or reject" }, { status: 400 });
+        }
+
+        if (action === "accept") {
+            await tryEnsureProfileAndPostSchema();
+
+            const result = await prisma.$transaction(async (tx) => {
+                const claimed = await tx.articlePullRequest.updateMany({
+                    where: {
+                        id: pullRequestId,
+                        recipientId: userId,
+                        status: PullRequestStatus.PENDING,
+                    },
+                    data: {
+                        status: PullRequestStatus.ACCEPTED,
+                    },
+                });
+
+                if (claimed.count === 0) {
+                    const existing = await tx.articlePullRequest.findUnique({
+                        where: { id: pullRequestId },
+                        select: { recipientId: true, status: true },
+                    });
+
+                    if (!existing) {
+                        return { kind: "missing" as const };
+                    }
+
+                    if (existing.recipientId !== userId) {
+                        return { kind: "forbidden" as const };
+                    }
+
+                    return { kind: "already-handled" as const, status: existing.status };
+                }
+
+                const pullRequest = await tx.articlePullRequest.findUnique({
+                    where: { id: pullRequestId },
+                    select: {
+                        id: true,
+                        title: true,
+                        excerpt: true,
+                        content: true,
+                        tags: true,
+                        proposerId: true,
+                        recipientId: true,
+                    },
+                });
+
+                if (!pullRequest) {
+                    throw new Error("Accepted pull request could not be reloaded.");
+                }
+
+                const post = await tx.post.create({
+                    data: {
+                        title: pullRequest.title,
+                        content: pullRequest.content,
+                        excerpt: pullRequest.excerpt || "",
+                        tags: pullRequest.tags || [],
+                        published: true,
+                        authorId: userId,
+                    },
+                });
+
+                return {
+                    kind: "accepted" as const,
+                    pullRequest,
+                    post: {
+                        id: post.id,
+                    },
+                };
+            });
+
+            if (result.kind === "missing") {
+                return NextResponse.json({ error: "Pull request not found" }, { status: 404 });
+            }
+
+            if (result.kind === "forbidden") {
+                return NextResponse.json({ error: "Only the recipient can accept this pull request" }, { status: 403 });
+            }
+
+            if (result.kind === "already-handled") {
+                return NextResponse.json(
+                    { error: `Pull request is already ${result.status.toLowerCase()}` },
+                    { status: 409 }
+                );
+            }
+
+            invalidatePostAndMessageCaches([result.pullRequest.proposerId, result.pullRequest.recipientId]);
+            return NextResponse.json({ success: true, status: PullRequestStatus.ACCEPTED, post: result.post });
+        }
+
+        const result = await prisma.articlePullRequest.updateMany({
+            where: {
+                id: pullRequestId,
+                recipientId: userId,
+                status: PullRequestStatus.PENDING,
+            },
+            data: {
+                status: PullRequestStatus.REJECTED,
+            },
+        });
+
+        if (result.count === 0) {
+            const existing = await prisma.articlePullRequest.findUnique({
+                where: { id: pullRequestId },
+                select: { recipientId: true, status: true, proposerId: true },
+            });
+
+            if (!existing) {
+                return NextResponse.json({ error: "Pull request not found" }, { status: 404 });
+            }
+
+            if (existing.recipientId !== userId) {
+                return NextResponse.json({ error: "Only the recipient can reject this pull request" }, { status: 403 });
+            }
+
+            return NextResponse.json(
+                { error: `Pull request is already ${existing.status.toLowerCase()}` },
+                { status: 409 }
+            );
+        }
+
+        const updated = await prisma.articlePullRequest.findUnique({
+            where: { id: pullRequestId },
+            select: { proposerId: true, recipientId: true },
+        });
+
+        invalidatePostAndMessageCaches(updated ? [updated.proposerId, updated.recipientId] : [userId]);
+        return NextResponse.json({ success: true, status: PullRequestStatus.REJECTED });
+    } catch (error) {
+        console.error("Failed to update pull request:", error);
+        return NextResponse.json({ error: "Failed to update pull request" }, { status: 500 });
     }
 }

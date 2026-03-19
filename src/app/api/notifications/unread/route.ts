@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { DirectMessageContext } from "@prisma/client";
+import { DirectMessageContext, PullRequestStatus } from "@prisma/client";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { withDirectMessageTable } from "@/lib/directMessages";
+import { withPullRequestTable } from "@/lib/pullRequests";
 import { resolveSessionUserId } from "@/lib/sessionUser";
 import { readCacheKeys, readThroughCache } from "@/lib/readCache";
 
@@ -39,12 +40,15 @@ export async function GET(request: NextRequest) {
                             },
                         })
                     ),
-                    prisma.articlePullRequest.count({
-                        where: {
-                            recipientId: userId,
-                            createdAt: { gt: since },
-                        },
-                    }),
+                    withPullRequestTable(() =>
+                        prisma.articlePullRequest.count({
+                            where: {
+                                recipientId: userId,
+                                status: PullRequestStatus.PENDING,
+                                createdAt: { gt: since },
+                            },
+                        })
+                    ),
                 ]);
 
                 return {
