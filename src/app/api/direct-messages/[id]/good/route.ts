@@ -1,3 +1,4 @@
+import { DirectMessageContext } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
@@ -55,6 +56,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
                     id: true,
                     senderId: true,
                     recipientId: true,
+                    context: true,
                 },
             })
         );
@@ -72,6 +74,13 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
 
         if (message.recipientId !== currentUserId) {
             return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+        }
+
+        if (message.context === DirectMessageContext.PULL_REQUEST) {
+            return NextResponse.json(
+                { error: "You cannot react to pull request messages." },
+                { status: 400 }
+            );
         }
 
         await withDirectMessageGoodTable(() =>

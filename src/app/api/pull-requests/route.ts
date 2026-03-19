@@ -244,11 +244,9 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        if (dmMessage) {
-            await ensureDirectMessageSchema();
-            if (dmMessage.length > 1000) {
-                await ensureDirectMessageCapacity();
-            }
+        await ensureDirectMessageSchema();
+        if (dmMessage.length > 1000) {
+            await ensureDirectMessageCapacity();
         }
 
         const result = await prisma.$transaction(async (tx) => {
@@ -264,17 +262,15 @@ export async function POST(request: NextRequest) {
                 },
             });
 
-            if (dmMessage) {
-                await tx.directMessage.create({
-                    data: {
-                        senderId: userId,
-                        recipientId,
-                        content: dmMessage,
-                        context: DirectMessageContext.PULL_REQUEST,
-                        pullRequestId: pullRequest.id,
-                    },
-                });
-            }
+            await tx.directMessage.create({
+                data: {
+                    senderId: userId,
+                    recipientId,
+                    content: dmMessage,
+                    context: DirectMessageContext.PULL_REQUEST,
+                    pullRequestId: pullRequest.id,
+                },
+            });
 
             return pullRequest;
         });

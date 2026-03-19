@@ -7,6 +7,7 @@ import {
     withDirectMessageGoodTable,
     withDirectMessageTable,
 } from "@/lib/directMessages";
+import { ensurePullRequestSchema } from "@/lib/pullRequests";
 import { resolveSessionUserId } from "@/lib/sessionUser";
 import { invalidateReadCachePrefix, readCacheKeys, readThroughCache } from "@/lib/readCache";
 
@@ -19,6 +20,15 @@ const DM_USER_SELECT = {
     name: true,
     email: true,
     image: true,
+} as const;
+const DM_PULL_REQUEST_SELECT = {
+    id: true,
+    title: true,
+    excerpt: true,
+    status: true,
+    tags: true,
+    proposerId: true,
+    recipientId: true,
 } as const;
 
 function hasDmPayloadContent(value: unknown): boolean {
@@ -64,6 +74,18 @@ function unpackDmSettingFromLinks(raw: string | null | undefined): DmSetting {
     }
 
     return DEFAULT_DM_SETTING;
+}
+
+function buildThreadPreview(message: {
+    context: DirectMessageContext;
+    content: string;
+    pullRequest?: { title: string } | null;
+}) {
+    if (message.context === DirectMessageContext.PULL_REQUEST) {
+        return message.pullRequest?.title ? `PR: ${message.pullRequest.title}` : "Article pull request";
+    }
+
+    return message.content;
 }
 
 async function getDirectMessageGoodState(messageIds: string[], currentUserId: string | null) {
@@ -185,6 +207,12 @@ export async function GET(request: NextRequest) {
     const targetUserId = normalizeString(request.nextUrl.searchParams.get("userId"));
 
     try {
+        try {
+            await ensurePullRequestSchema();
+        } catch {
+            // Continue even if the PR schema cannot be altered; existing tables may still be readable.
+        }
+
         const payload = await readThroughCache(
             readCacheKeys.directMessages(userId, mode, targetUserId),
             DIRECT_MESSAGES_CACHE_TTL_MS,
@@ -211,6 +239,7 @@ export async function GET(request: NextRequest) {
                             include: {
                                 sender: { select: DM_USER_SELECT },
                                 recipient: { select: DM_USER_SELECT },
+                                pullRequest: { select: DM_PULL_REQUEST_SELECT },
                             },
                         })
                     );
@@ -241,6 +270,7 @@ export async function GET(request: NextRequest) {
                             include: {
                                 sender: { select: DM_USER_SELECT },
                                 recipient: { select: DM_USER_SELECT },
+                                pullRequest: { select: DM_PULL_REQUEST_SELECT },
                             },
                         })
                     );
@@ -256,6 +286,16 @@ export async function GET(request: NextRequest) {
                                 createdAt: Date;
                                 senderId: string;
                                 recipientId: string;
+                                context: DirectMessageContext;
+                                pullRequest: {
+                                    id: string;
+                                    title: string;
+                                    excerpt: string | null;
+                                    status: "PENDING" | "ACCEPTED" | "REJECTED";
+                                    tags: string[];
+                                    proposerId: string;
+                                    recipientId: string;
+                                } | null;
                             };
                         }
                     >();
@@ -268,10 +308,12 @@ export async function GET(request: NextRequest) {
                             user: otherUser,
                             lastMessage: {
                                 id: message.id,
-                                content: message.content,
+                                content: buildThreadPreview(message),
                                 createdAt: message.createdAt,
                                 senderId: message.senderId,
                                 recipientId: message.recipientId,
+                                context: message.context,
+                                pullRequest: message.pullRequest,
                             },
                         });
                     }

@@ -16,6 +16,19 @@ type ThreadUser = {
     image: string | null;
 };
 
+type PullRequestStatus = "PENDING" | "ACCEPTED" | "REJECTED";
+type MessageContext = "GENERAL" | "PULL_REQUEST";
+
+type MessagePullRequest = {
+    id: string;
+    title: string;
+    excerpt: string | null;
+    status: PullRequestStatus;
+    tags: string[];
+    proposerId: string;
+    recipientId: string;
+};
+
 type Thread = {
     id: string;
     user: ThreadUser;
@@ -25,6 +38,8 @@ type Thread = {
         createdAt: string;
         senderId: string;
         recipientId: string;
+        context?: MessageContext;
+        pullRequest?: MessagePullRequest | null;
     };
 };
 
@@ -36,6 +51,9 @@ type DirectMessage = {
     recipientId: string;
     sender: ThreadUser;
     recipient: ThreadUser;
+    context?: MessageContext;
+    pullRequestId?: string | null;
+    pullRequest?: MessagePullRequest | null;
     goodCount?: number;
     likedByMe?: boolean;
     pending?: boolean;
@@ -68,6 +86,16 @@ function formatMessageTime(value: string): string {
     }
 }
 
+function getPullRequestStatusLabel(status: PullRequestStatus): string {
+    if (status === "ACCEPTED") return "承認済み";
+    if (status === "REJECTED") return "却下済み";
+    return "確認待ち";
+}
+
+function getPullRequestTypeLabel(tags: string[]): string {
+    return tags.includes("product") ? "プロダクトPR" : "記事PR";
+}
+
 export default function MessagesPage() {
     const { data: session, status } = useSession();
     const router = useRouter();
@@ -88,6 +116,8 @@ export default function MessagesPage() {
     const [selectMode, setSelectMode] = useState(false);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [bulkDeleting, setBulkDeleting] = useState(false);
+    const [updatingPullRequestId, setUpdatingPullRequestId] = useState<string | null>(null);
+    const [updatingPullRequestAction, setUpdatingPullRequestAction] = useState<"accept" | "reject" | null>(null);
     const messageListRef = useRef<HTMLDivElement | null>(null);
     const threadMessagesCacheRef = useRef<Map<string, DirectMessage[]>>(new Map());
     const threadUserCacheRef = useRef<Map<string, ThreadUser>>(new Map());
@@ -246,6 +276,8 @@ export default function MessagesPage() {
                     createdAt: nextMessage.createdAt,
                     senderId: nextMessage.senderId,
                     recipientId: nextMessage.recipientId,
+                    context: nextMessage.context,
+                    pullRequest: nextMessage.pullRequest || null,
                 },
             };
 
@@ -468,6 +500,40 @@ export default function MessagesPage() {
         }
     }, [cacheThreadUser, deriveThreadUserFromMessages, fetchReadWithRetry, replaceMessagesForThread, selectedUserId]);
 
+    const handlePullRequestAction = useCallback(
+        async (pullRequestId: string, action: "accept" | "reject") => {
+            if (!pullRequestId) return;
+
+            setUpdatingPullRequestId(pullRequestId);
+            setUpdatingPullRequestAction(action);
+            setError("");
+
+            try {
+                const res = await fetch("/api/pull-requests", {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ pullRequestId, action }),
+                    credentials: "same-origin",
+                });
+                const payload = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    setError(payload.error || "プルリクエストの更新に失敗しました。");
+                    return;
+                }
+
+                await refreshCurrentThread();
+                await loadThreads();
+                markDmPrSeen();
+            } catch {
+                setError("プルリクエストの更新に失敗しました。");
+            } finally {
+                setUpdatingPullRequestId(null);
+                setUpdatingPullRequestAction(null);
+            }
+        },
+        [loadThreads, refreshCurrentThread]
+    );
+
     const sendMessage = async () => {
         const content = draft.trim();
         if (!selectedUserId || !content) return;
@@ -503,6 +569,9 @@ export default function MessagesPage() {
             recipientId: selectedUserId,
             sender: senderUser,
             recipient: fallbackRecipient,
+            context: "GENERAL",
+            pullRequestId: null,
+            pullRequest: null,
             goodCount: 0,
             likedByMe: false,
             pending: true,
@@ -842,7 +911,7 @@ export default function MessagesPage() {
                             </div>
                         </div>
                         {/* Select mode toggle */}
-                        {selectedUserId && messages.some((m) => m.senderId === currentUserId && !m.pending) ? (
+                        {selectedUserId && messages.some((m) => m.senderId === currentUserId && !m.pending && m.context !== "PULL_REQUEST") ? (
                             <button
                                 type="button"
                                 className="editor-btn editor-btn-secondary"
@@ -882,6 +951,17 @@ export default function MessagesPage() {
                             messages.map((message) => {
                                 const mine = message.senderId === currentUserId;
                                 const isPending = !!message.pending || message.id.startsWith("temp-");
+                                const isPullRequestMessage =
+                                    message.context === "PULL_REQUEST" && !!message.pullRequestId;
+                                const pullRequest = message.pullRequest || null;
+                                const hasTextContent = message.content.trim().length > 0;
+                                const canReviewPullRequest =
+                                    !mine &&
+                                    !!pullRequest &&
+                                    pullRequest.status === "PENDING" &&
+                                    pullRequest.recipientId === currentUserId;
+                                const updatingThisPullRequest =
+                                    !!pullRequest && updatingPullRequestId === pullRequest.id;
                                 const deletingThis = deletingMessageId === message.id;
                                 const togglingThis = togglingGoodId === message.id;
                                 const goodCount = Number(message.goodCount || 0);
@@ -898,7 +978,7 @@ export default function MessagesPage() {
                                             gap: 6,
                                         }}
                                     >
-                                        {selectMode && mine && !isPending ? (
+                                        {selectMode && mine && !isPending && !isPullRequestMessage ? (
                                             <input
                                                 type="checkbox"
                                                 checked={isSelected}
@@ -907,23 +987,122 @@ export default function MessagesPage() {
                                             />
                                         ) : null}
                                         <div style={{ flex: 1, minWidth: 0 }}>
-                                            <div
-                                                style={{
-                                                    border: "1px solid var(--border)",
-                                                    background: mine
-                                                        ? isSelected ? "rgba(155,107,107,0.18)" : "rgba(155,107,107,0.08)"
-                                                        : "var(--bg-card)",
-                                                    borderRadius: 12,
-                                                    padding: "10px 12px",
-                                                    fontSize: 13,
-                                                    lineHeight: 1.65,
-                                                    whiteSpace: "pre-wrap",
-                                                    opacity: isPending ? 0.88 : 1,
-                                                    transition: "background 0.15s",
-                                                }}
-                                            >
-                                                {message.content}
-                                            </div>
+                                            {(!isPullRequestMessage || hasTextContent) && (
+                                                <div
+                                                    style={{
+                                                        border: "1px solid var(--border)",
+                                                        background: mine
+                                                            ? isSelected ? "rgba(155,107,107,0.18)" : "rgba(155,107,107,0.08)"
+                                                            : "var(--bg-card)",
+                                                        borderRadius: 12,
+                                                        padding: "10px 12px",
+                                                        fontSize: 13,
+                                                        lineHeight: 1.65,
+                                                        whiteSpace: "pre-wrap",
+                                                        opacity: isPending ? 0.88 : 1,
+                                                        transition: "background 0.15s",
+                                                    }}
+                                                >
+                                                    {message.content}
+                                                </div>
+                                            )}
+                                            {pullRequest && (
+                                                <div
+                                                    style={{
+                                                        marginTop: !isPullRequestMessage || hasTextContent ? 8 : 0,
+                                                        border: "1px solid var(--border)",
+                                                        background: mine
+                                                            ? "rgba(155,107,107,0.05)"
+                                                            : "color-mix(in srgb, var(--bg-soft) 78%, transparent)",
+                                                        borderRadius: 12,
+                                                        padding: "12px 12px 10px",
+                                                        opacity: isPending ? 0.88 : 1,
+                                                    }}
+                                                >
+                                                    <div
+                                                        style={{
+                                                            display: "flex",
+                                                            justifyContent: "space-between",
+                                                            alignItems: "center",
+                                                            gap: 8,
+                                                            marginBottom: 8,
+                                                            flexWrap: "wrap",
+                                                        }}
+                                                    >
+                                                        <span style={{ fontSize: 11, color: "var(--text-soft)" }}>
+                                                            {getPullRequestTypeLabel(pullRequest.tags)}
+                                                        </span>
+                                                        <span
+                                                            style={{
+                                                                fontSize: 11,
+                                                                padding: "3px 8px",
+                                                                borderRadius: 999,
+                                                                border: "1px solid var(--border)",
+                                                                color:
+                                                                    pullRequest.status === "ACCEPTED"
+                                                                        ? "var(--azuki)"
+                                                                        : pullRequest.status === "REJECTED"
+                                                                          ? "var(--text-soft)"
+                                                                          : "var(--azuki-deep)",
+                                                                background:
+                                                                    pullRequest.status === "ACCEPTED"
+                                                                        ? "color-mix(in srgb, var(--azuki-pale) 60%, transparent)"
+                                                                        : pullRequest.status === "REJECTED"
+                                                                          ? "color-mix(in srgb, var(--bg-soft) 82%, transparent)"
+                                                                          : "color-mix(in srgb, var(--accent) 12%, transparent)",
+                                                            }}
+                                                        >
+                                                            {getPullRequestStatusLabel(pullRequest.status)}
+                                                        </span>
+                                                    </div>
+                                                    <div
+                                                        style={{
+                                                            fontSize: 15,
+                                                            fontWeight: 600,
+                                                            color: "var(--text)",
+                                                            lineHeight: 1.5,
+                                                        }}
+                                                    >
+                                                        {pullRequest.title}
+                                                    </div>
+                                                    {pullRequest.excerpt ? (
+                                                        <div
+                                                            style={{
+                                                                fontSize: 12,
+                                                                color: "var(--text-soft)",
+                                                                lineHeight: 1.7,
+                                                                marginTop: 6,
+                                                            }}
+                                                        >
+                                                            {pullRequest.excerpt}
+                                                        </div>
+                                                    ) : null}
+                                                    {canReviewPullRequest && (
+                                                        <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+                                                            <button
+                                                                type="button"
+                                                                className="editor-btn editor-btn-primary"
+                                                                disabled={updatingThisPullRequest}
+                                                                onClick={() => void handlePullRequestAction(pullRequest.id, "accept")}
+                                                            >
+                                                                {updatingThisPullRequest && updatingPullRequestAction === "accept"
+                                                                    ? "承認中..."
+                                                                    : "承認"}
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                className="editor-btn editor-btn-secondary"
+                                                                disabled={updatingThisPullRequest}
+                                                                onClick={() => void handlePullRequestAction(pullRequest.id, "reject")}
+                                                            >
+                                                                {updatingThisPullRequest && updatingPullRequestAction === "reject"
+                                                                    ? "却下中..."
+                                                                    : "却下"}
+                                                            </button>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
                                             <div
                                                 style={{
                                                     display: "flex",
@@ -937,7 +1116,7 @@ export default function MessagesPage() {
                                                 <span style={{ fontSize: 10, color: "var(--text-soft)" }}>
                                                     {formatMessageTime(message.createdAt)}
                                                 </span>
-                                                {!mine && !isPending ? (
+                                                {!mine && !isPending && !isPullRequestMessage ? (
                                                     <button
                                                         type="button"
                                                         onClick={() => void toggleGood(message.id)}
@@ -959,7 +1138,7 @@ export default function MessagesPage() {
                                                 {mine && goodCount > 0 ? (
                                                     <span style={{ fontSize: 11, color: "var(--azuki)" }}>{`👍 ${goodCount}`}</span>
                                                 ) : null}
-                                                {mine && !isPending && !selectMode ? (
+                                                {mine && !isPending && !selectMode && !isPullRequestMessage ? (
                                                     <button
                                                         type="button"
                                                         onClick={() => void deleteMessage(message.id)}

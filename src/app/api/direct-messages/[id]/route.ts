@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { DirectMessageContext } from "@prisma/client";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { withDirectMessageTable } from "@/lib/directMessages";
@@ -24,7 +25,7 @@ export async function DELETE(
         const message = await withDirectMessageTable(() =>
             prisma.directMessage.findUnique({
                 where: { id },
-                select: { id: true, senderId: true },
+                select: { id: true, senderId: true, context: true },
             })
         );
 
@@ -34,6 +35,10 @@ export async function DELETE(
 
         if (message.senderId !== currentUserId) {
             return NextResponse.json({ error: "Only the sender can delete this message" }, { status: 403 });
+        }
+
+        if (message.context === DirectMessageContext.PULL_REQUEST) {
+            return NextResponse.json({ error: "Pull request messages cannot be deleted" }, { status: 400 });
         }
 
         await withDirectMessageTable(() =>

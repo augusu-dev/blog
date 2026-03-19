@@ -420,7 +420,7 @@ export default function CollaborationSettingsPage() {
                                         {text.from} {pr.proposer?.name || pr.proposer?.email || text.unknown} ・ {new Date(pr.createdAt).toLocaleString("ja-JP")}
                                     </p>
                                     {pr.excerpt && <p style={{ fontSize: 13, marginBottom: 8 }}>{pr.excerpt}</p>}
-                                    {pr.messages && pr.messages[0] && (
+                                    {pr.messages && pr.messages[0]?.content && (
                                         <p style={{ fontSize: 12, color: "var(--text-soft)", marginBottom: 6 }}>
                                             {text.dmPrefix}: {pr.messages[0].content}
                                         </p>
