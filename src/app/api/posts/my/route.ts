@@ -94,7 +94,10 @@ export async function GET() {
                         posts.flatMap((post) => post.publicationGrants.map((grant) => grant.host))
                     );
                     const hostById = new Map(hosts.map((host) => [host.id, host]));
-                    const hydratedPosts = await hydratePullRequestProposers(posts);
+                    const visiblePosts = posts.filter(
+                        (post) => !(post.sourcePullRequestId && post.pullRequestProposerId)
+                    );
+                    const hydratedPosts = await hydratePullRequestProposers(visiblePosts);
 
                     return hydratedPosts.map((post) => ({
                         ...post,
@@ -110,7 +113,9 @@ export async function GET() {
                 }
 
                 return (await hydratePullRequestProposers(
-                    await getPostsByAuthorFallback(authorRefs, { publishedOnly: false, limit: 300 })
+                    (await getPostsByAuthorFallback(authorRefs, { publishedOnly: false, limit: 300 })).filter(
+                        (post) => !(post.sourcePullRequestId && post.pullRequestProposerId)
+                    )
                 )).map((post) => ({
                     ...post,
                     publicationGrants: [],
@@ -132,7 +137,9 @@ export async function GET() {
         try {
             return NextResponse.json(
                 (await hydratePullRequestProposers(
-                    await getPostsByAuthorFallback(authorRefs, { publishedOnly: false, limit: 300 })
+                    (await getPostsByAuthorFallback(authorRefs, { publishedOnly: false, limit: 300 })).filter(
+                        (post) => !(post.sourcePullRequestId && post.pullRequestProposerId)
+                    )
                 )).map((post) => ({
                     ...post,
                     publicationGrants: [],

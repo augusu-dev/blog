@@ -52,7 +52,7 @@ export async function PUT(
     try {
         const existingPost = await prisma.post.findUnique({
             where: { id },
-            select: { authorId: true },
+            select: { authorId: true, sourcePullRequestId: true, pullRequestProposerId: true },
         });
 
         if (!existingPost) {
@@ -61,6 +61,10 @@ export async function PUT(
 
         if (existingPost.authorId !== userId) {
             return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+        }
+
+        if (existingPost.sourcePullRequestId && existingPost.pullRequestProposerId) {
+            return NextResponse.json({ error: "Hosted pull-request posts cannot be edited here" }, { status: 403 });
         }
 
         const body = await request.json();
@@ -105,7 +109,7 @@ export async function DELETE(
     try {
         const existingPost = await prisma.post.findUnique({
             where: { id },
-            select: { authorId: true },
+            select: { authorId: true, sourcePullRequestId: true, pullRequestProposerId: true },
         });
 
         if (!existingPost) {
@@ -114,6 +118,10 @@ export async function DELETE(
 
         if (existingPost.authorId !== userId) {
             return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+        }
+
+        if (existingPost.sourcePullRequestId && existingPost.pullRequestProposerId) {
+            return NextResponse.json({ error: "Hosted pull-request posts cannot be deleted here" }, { status: 403 });
         }
 
         await prisma.post.delete({ where: { id } });
