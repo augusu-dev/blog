@@ -107,7 +107,7 @@ export default function HomeShortPosts() {
             setLoading(true);
         }
         try {
-            const res = await fetch("/api/short-posts", { cache: "no-store" });
+            const res = await fetch("/api/short-posts");
             const payload = await res.json().catch(() => []);
             if (!res.ok) {
                 setError(LOAD_ERROR_MESSAGE);

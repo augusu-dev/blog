@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { buildPublicCacheHeaders } from "@/lib/publicCacheHeaders";
 import { withShortPostTable } from "@/lib/shortPosts";
 import { resolveSessionUserId } from "@/lib/sessionUser";
 import { getShortPostsFallback } from "@/lib/publicContentFallback";
 import {
     isSchemaCompatibilityError,
     isTransientDatabaseError,
+    retryTransientRead,
 } from "@/lib/prismaErrors";
 import { fillMissingPublicUserIds } from "@/lib/userId";
 import { invalidateReadCachePrefix, readCacheKeys, readThroughCache } from "@/lib/readCache";
@@ -82,21 +84,23 @@ export async function GET() {
                     | null = null;
 
                 try {
-                    posts = await prisma.shortPost.findMany({
-                        orderBy: { createdAt: "desc" },
-                        take: LIST_LIMIT,
-                        include: {
-                            author: {
-                                select: {
-                                    id: true,
-                                    userId: true,
-                                    name: true,
-                                    email: true,
-                                    image: true,
+                    posts = await retryTransientRead(() =>
+                        prisma.shortPost.findMany({
+                            orderBy: { createdAt: "desc" },
+                            take: LIST_LIMIT,
+                            include: {
+                                author: {
+                                    select: {
+                                        id: true,
+                                        userId: true,
+                                        name: true,
+                                        email: true,
+                                        image: true,
+                                    },
                                 },
                             },
-                        },
-                    });
+                        })
+                    );
                 } catch (error) {
                     if (isTransientDatabaseError(error)) throw error;
                     if (!isUserIdColumnMissing(error) && !isShortPostUnavailableError(error)) throw error;
@@ -104,23 +108,25 @@ export async function GET() {
 
                 if (!posts) {
                     try {
-                        posts = await prisma.shortPost.findMany({
-                            orderBy: { createdAt: "desc" },
-                            take: LIST_LIMIT,
-                            include: {
-                                author: {
-                                    select: {
-                                        id: true,
-                                        name: true,
-                                        email: true,
-                                        image: true,
+                        posts = await retryTransientRead(() =>
+                            prisma.shortPost.findMany({
+                                orderBy: { createdAt: "desc" },
+                                take: LIST_LIMIT,
+                                include: {
+                                    author: {
+                                        select: {
+                                            id: true,
+                                            name: true,
+                                            email: true,
+                                            image: true,
+                                        },
                                     },
                                 },
-                            },
-                    });
-                } catch (error) {
-                    if (isTransientDatabaseError(error)) throw error;
-                    if (!isShortPostUnavailableError(error)) throw error;
+                            })
+                        );
+                    } catch (error) {
+                        if (isTransientDatabaseError(error)) throw error;
+                        if (!isShortPostUnavailableError(error)) throw error;
                 }
                 }
 
@@ -141,17 +147,25 @@ export async function GET() {
             }
         );
 
-        return NextResponse.json(payload);
+        return NextResponse.json(payload, {
+            headers: buildPublicCacheHeaders({ sMaxAge: 20, staleWhileRevalidate: 120 }),
+        });
     } catch (error) {
         try {
-            return NextResponse.json(await attachPublicUserIds(await getShortPostsFallback(LIST_LIMIT)));
+            return NextResponse.json(await attachPublicUserIds(await getShortPostsFallback(LIST_LIMIT)), {
+                headers: buildPublicCacheHeaders({ sMaxAge: 15, staleWhileRevalidate: 60 }),
+            });
         } catch (fallbackError) {
             if (isShortPostUnavailableError(error) || isShortPostUnavailableError(fallbackError)) {
-                return NextResponse.json([]);
+                return NextResponse.json([], {
+                    headers: buildPublicCacheHeaders({ sMaxAge: 10, staleWhileRevalidate: 30 }),
+                });
             }
         }
         if (isTransientDatabaseError(error)) {
-            return NextResponse.json([]);
+            return NextResponse.json([], {
+                headers: buildPublicCacheHeaders({ sMaxAge: 10, staleWhileRevalidate: 30 }),
+            });
         }
         console.error("Failed to fetch short posts:", error);
         return NextResponse.json({ error: "Failed to fetch short posts" }, { status: 500 });

@@ -285,7 +285,12 @@ export default function UserPage({ requestedPostId: requestedPostIdProp = null }
             const fetchJsonWithRetry = async (url: string, maxAttempts = 1) => {
                 for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
                     try {
-                        const res = await fetch(url, { cache: "no-store", credentials: "same-origin" });
+                        const requiresFreshRead =
+                            url.startsWith("/api/user/settings") || url.startsWith("/api/posts/my");
+                        const res = await fetch(url, {
+                            ...(requiresFreshRead ? { cache: "no-store" as const } : {}),
+                            credentials: "same-origin",
+                        });
                         const data = await res.json().catch(() => ({}));
                         if (res.ok) {
                             return { ok: true as const, data, status: res.status };

@@ -53,3 +53,27 @@ export function isTransientDatabaseError(error: unknown): boolean {
 export function isRecoverableReadError(error: unknown): boolean {
     return isSchemaCompatibilityError(error) || isTransientDatabaseError(error);
 }
+
+export async function retryTransientRead<T>(
+    loader: () => Promise<T>,
+    options?: { attempts?: number; delayMs?: number }
+): Promise<T> {
+    const attempts = Math.max(1, options?.attempts ?? 2);
+    const delayMs = Math.max(0, options?.delayMs ?? 200);
+
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+        try {
+            return await loader();
+        } catch (error) {
+            if (!isTransientDatabaseError(error) || attempt === attempts - 1) {
+                throw error;
+            }
+
+            if (delayMs > 0) {
+                await new Promise((resolve) => setTimeout(resolve, delayMs * (attempt + 1)));
+            }
+        }
+    }
+
+    throw new Error("retryTransientRead exhausted without returning or throwing");
+}

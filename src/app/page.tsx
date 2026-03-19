@@ -99,7 +99,7 @@ export default function HomePage() {
         setPostsError("");
       }
         try {
-            const res = await fetch("/api/posts", { cache: "no-store" });
+            const res = await fetch("/api/posts");
             const data = await res.json().catch(() => []);
         if (!res.ok || !Array.isArray(data)) {
           throw new Error("Failed to fetch posts");

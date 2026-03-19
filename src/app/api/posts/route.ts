@@ -3,10 +3,15 @@ import { prisma } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { resolveSessionUserId } from "@/lib/sessionUser";
 import { tryEnsureProfileAndPostSchema } from "@/lib/schemaCompat";
+import { buildPublicCacheHeaders } from "@/lib/publicCacheHeaders";
 import { getPublicPostsFallback } from "@/lib/publicContentFallback";
 import { hydratePullRequestProposers } from "@/lib/pullRequestPostMeta";
 import { formatIsoDate } from "@/lib/pullRequestPublication";
-import { isRecoverableReadError, isTransientDatabaseError } from "@/lib/prismaErrors";
+import {
+    isRecoverableReadError,
+    isTransientDatabaseError,
+    retryTransientRead,
+} from "@/lib/prismaErrors";
 import { fillMissingPublicUserIds } from "@/lib/userId";
 import { invalidateReadCachePrefix, readCacheKeys, readThroughCache } from "@/lib/readCache";
 
@@ -94,19 +99,21 @@ export async function GET() {
                 const now = new Date();
 
                 try {
-                    const publishedPosts = await prisma.post.findMany({
-                        where: { published: true },
-                        orderBy: { createdAt: "desc" },
-                        include: {
-                            author: {
-                                select: PUBLIC_USER_SELECT,
+                    const publishedPosts = await retryTransientRead(() =>
+                        prisma.post.findMany({
+                            where: { published: true },
+                            orderBy: { createdAt: "desc" },
+                            include: {
+                                author: {
+                                    select: PUBLIC_USER_SELECT,
+                                },
                             },
-                        },
-                    });
+                        })
+                    );
 
                     let hostedPosts: Awaited<ReturnType<typeof loadHostedPublicPosts>> = [];
                     try {
-                        hostedPosts = await loadHostedPublicPosts(now);
+                        hostedPosts = await retryTransientRead(() => loadHostedPublicPosts(now));
                     } catch (error) {
                         if (!isRecoverableReadError(error)) {
                             throw error;
@@ -145,10 +152,14 @@ export async function GET() {
             }
         );
 
-        return NextResponse.json(payload);
+        return NextResponse.json(payload, {
+            headers: buildPublicCacheHeaders({ sMaxAge: 30, staleWhileRevalidate: 180 }),
+        });
     } catch (error) {
         if (isTransientDatabaseError(error)) {
-            return NextResponse.json(await getPublicPostsFallback(300));
+            return NextResponse.json(await getPublicPostsFallback(300), {
+                headers: buildPublicCacheHeaders({ sMaxAge: 15, staleWhileRevalidate: 60 }),
+            });
         }
         console.error("Failed to fetch posts:", error);
         return NextResponse.json({ error: "Failed to fetch posts" }, { status: 500 });

@@ -2,11 +2,16 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { resolveSessionUserId } from "@/lib/sessionUser";
+import { buildPublicCacheHeaders } from "@/lib/publicCacheHeaders";
 import { getUserProfileByRefFallback } from "@/lib/publicContentFallback";
 import { getPostsByAuthorFallback } from "@/lib/publicContentFallback";
 import { hydratePullRequestProposers } from "@/lib/pullRequestPostMeta";
 import { formatIsoDate } from "@/lib/pullRequestPublication";
-import { isSchemaCompatibilityError, isTransientDatabaseError } from "@/lib/prismaErrors";
+import {
+    isSchemaCompatibilityError,
+    isTransientDatabaseError,
+    retryTransientRead,
+} from "@/lib/prismaErrors";
 import { resolveReadablePublicUserId } from "@/lib/userId";
 import { readCacheKeys, readThroughCache, writeReadCache } from "@/lib/readCache";
 
@@ -467,7 +472,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ name: s
             readCacheKeys.userProfile(userRef),
             USER_PROFILE_CACHE_TTL_MS,
             async () => {
-                const prismaUser = await findUserProfileByRef(userRef, userRefLower);
+                const prismaUser = await retryTransientRead(
+                    () => findUserProfileByRef(userRef, userRefLower),
+                    { attempts: 2, delayMs: 250 }
+                );
                 let rawUser = null;
                 if (
                     shouldHydrateUserProfileFromFallback(prismaUser) ||
@@ -537,31 +545,34 @@ export async function GET(_req: Request, { params }: { params: Promise<{ name: s
                 }> = [];
 
                 try {
-                    const grants = await prisma.postPublicationGrant.findMany({
-                        where: {
-                            hostUserId: resolvedUser.id,
-                            expiresAt: { gt: new Date() },
-                        },
-                        include: {
-                            post: {
-                                select: {
-                                    id: true,
-                                    title: true,
-                                    content: true,
-                                    excerpt: true,
-                                    headerImage: true,
-                                    tags: true,
-                                    published: true,
-                                    pinned: true,
-                                    createdAt: true,
-                                    updatedAt: true,
-                                    authorId: true,
-                                    sourcePullRequestId: true,
-                                    pullRequestProposerId: true,
+                    const grants = await retryTransientRead(() =>
+                        prisma.postPublicationGrant.findMany({
+                            where: {
+                                hostUserId: resolvedUser.id,
+                                expiresAt: { gt: new Date() },
+                            },
+                            include: {
+                                post: {
+                                    select: {
+                                        id: true,
+                                        title: true,
+                                        content: true,
+                                        excerpt: true,
+                                        headerImage: true,
+                                        tags: true,
+                                        published: true,
+                                        pinned: true,
+                                        createdAt: true,
+                                        updatedAt: true,
+                                        authorId: true,
+                                        sourcePullRequestId: true,
+                                        pullRequestProposerId: true,
+                                    },
                                 },
                             },
-                        },
-                    });
+                        }),
+                        { attempts: 2, delayMs: 250 }
+                    );
 
                     hostedPosts = grants.map((grant) => ({
                         ...grant.post,
@@ -627,7 +638,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ name: s
             }
         );
 
-        return NextResponse.json(payload);
+        return NextResponse.json(payload, {
+            headers: buildPublicCacheHeaders({ sMaxAge: 30, staleWhileRevalidate: 180 }),
+        });
     } catch (error) {
         if (error instanceof Error && error.message === "USER_NOT_FOUND") {
             return NextResponse.json({ error: "User not found" }, { status: 404 });
