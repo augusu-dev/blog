@@ -102,6 +102,7 @@ enum DirectMessageSetting {
 
 enum PullRequestStatus {
   PENDING
+  ON_HOLD
   ACCEPTED
   REJECTED
 }

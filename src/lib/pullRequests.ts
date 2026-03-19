@@ -4,7 +4,16 @@ import { prisma } from "@/lib/db";
 const CREATE_PULL_REQUEST_STATUS_ENUM_SQL = `
 DO $$
 BEGIN
-  CREATE TYPE "PullRequestStatus" AS ENUM ('PENDING', 'ACCEPTED', 'REJECTED');
+  CREATE TYPE "PullRequestStatus" AS ENUM ('PENDING', 'ON_HOLD', 'ACCEPTED', 'REJECTED');
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+`;
+
+const ADD_ON_HOLD_STATUS_ENUM_SQL = `
+DO $$
+BEGIN
+  ALTER TYPE "PullRequestStatus" ADD VALUE IF NOT EXISTS 'ON_HOLD';
 EXCEPTION
   WHEN duplicate_object THEN NULL;
 END $$;
@@ -108,6 +117,7 @@ export async function ensurePullRequestSchema(): Promise<void> {
     if (!ensureSchemaPromise) {
         ensureSchemaPromise = (async () => {
             await prisma.$executeRawUnsafe(CREATE_PULL_REQUEST_STATUS_ENUM_SQL);
+            await prisma.$executeRawUnsafe(ADD_ON_HOLD_STATUS_ENUM_SQL);
             await prisma.$executeRawUnsafe(CREATE_ARTICLE_PULL_REQUEST_TABLE_SQL);
             await prisma.$executeRawUnsafe(ADD_EXCERPT_COLUMN_SQL);
             await prisma.$executeRawUnsafe(ADD_TAGS_COLUMN_SQL);

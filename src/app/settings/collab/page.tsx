@@ -16,7 +16,7 @@ interface PullRequestItem {
     excerpt: string | null;
     content: string;
     tags: string[];
-    status: "PENDING" | "ACCEPTED" | "REJECTED";
+    status: "PENDING" | "ON_HOLD" | "ACCEPTED" | "REJECTED";
     createdAt: string;
     proposer?: { id: string; name: string | null; email: string | null };
     recipient?: { id: string; name: string | null; email: string | null };
@@ -55,13 +55,17 @@ type UiText = {
     viewContent: string;
     dmPrefix: string;
     acceptButton: string;
+    holdButton: string;
     rejectButton: string;
     accepting: string;
+    holding: string;
     rejecting: string;
     acceptedMessage: string;
+    heldMessage: string;
     rejectedMessage: string;
     actionFailed: string;
     statusPending: string;
+    statusOnHold: string;
     statusAccepted: string;
     statusRejected: string;
 };
@@ -94,13 +98,17 @@ const UI_TEXT: Record<"ja" | "en" | "zh", UiText> = {
         viewContent: "記事本文を表示",
         dmPrefix: "DM",
         acceptButton: "承認して公開",
+        holdButton: "保留",
         rejectButton: "却下",
         accepting: "承認中...",
+        holding: "保留中...",
         rejecting: "却下中...",
         acceptedMessage: "プルリクエストを承認し、記事として公開しました。",
+        heldMessage: "プルリクエストを保留にしました。",
         rejectedMessage: "プルリクエストを却下しました。",
         actionFailed: "プルリクエストの更新に失敗しました。",
-        statusPending: "保留中",
+        statusPending: "確認待ち",
+        statusOnHold: "保留中",
         statusAccepted: "承認済み",
         statusRejected: "却下済み",
     },
@@ -131,13 +139,17 @@ const UI_TEXT: Record<"ja" | "en" | "zh", UiText> = {
         viewContent: "View article content",
         dmPrefix: "DM",
         acceptButton: "Accept and publish",
+        holdButton: "Hold",
         rejectButton: "Reject",
         accepting: "Accepting...",
+        holding: "Holding...",
         rejecting: "Rejecting...",
         acceptedMessage: "The pull request was accepted and published as a post.",
+        heldMessage: "The pull request was put on hold.",
         rejectedMessage: "The pull request was rejected.",
         actionFailed: "Failed to update the pull request.",
-        statusPending: "Pending",
+        statusPending: "Awaiting review",
+        statusOnHold: "On hold",
         statusAccepted: "Accepted",
         statusRejected: "Rejected",
     },
@@ -168,13 +180,17 @@ const UI_TEXT: Record<"ja" | "en" | "zh", UiText> = {
         viewContent: "查看文章内容",
         dmPrefix: "DM",
         acceptButton: "批准并发布",
+        holdButton: "保留",
         rejectButton: "拒绝",
         accepting: "批准中...",
+        holding: "保留中...",
         rejecting: "拒绝中...",
         acceptedMessage: "该 PR 已批准并作为文章发布。",
+        heldMessage: "该 PR 已被保留。",
         rejectedMessage: "该 PR 已被拒绝。",
         actionFailed: "更新 PR 失败。",
-        statusPending: "待处理",
+        statusPending: "待审核",
+        statusOnHold: "保留中",
         statusAccepted: "已批准",
         statusRejected: "已拒绝",
     },
@@ -195,7 +211,7 @@ export default function CollaborationSettingsPage() {
     const [sentPullRequests, setSentPullRequests] = useState<PullRequestItem[]>([]);
     const [loadingData, setLoadingData] = useState(true);
     const [actingPullRequestId, setActingPullRequestId] = useState<string | null>(null);
-    const [actingPullRequestAction, setActingPullRequestAction] = useState<"accept" | "reject" | null>(null);
+    const [actingPullRequestAction, setActingPullRequestAction] = useState<"accept" | "hold" | "reject" | null>(null);
 
     useEffect(() => {
         if (status === "unauthenticated") {
@@ -276,12 +292,13 @@ export default function CollaborationSettingsPage() {
     };
 
     const getStatusLabel = (status: PullRequestItem["status"]) => {
+        if (status === "ON_HOLD") return text.statusOnHold;
         if (status === "ACCEPTED") return text.statusAccepted;
         if (status === "REJECTED") return text.statusRejected;
         return text.statusPending;
     };
 
-    const handlePullRequestAction = async (pullRequestId: string, action: "accept" | "reject") => {
+    const handlePullRequestAction = async (pullRequestId: string, action: "accept" | "hold" | "reject") => {
         setActingPullRequestId(pullRequestId);
         setActingPullRequestAction(action);
         setMessage("");
@@ -300,7 +317,9 @@ export default function CollaborationSettingsPage() {
             }
 
             await loadData();
-            setMessage(action === "accept" ? text.acceptedMessage : text.rejectedMessage);
+            setMessage(
+                action === "accept" ? text.acceptedMessage : action === "hold" ? text.heldMessage : text.rejectedMessage
+            );
         } catch {
             setMessage(text.actionFailed);
         } finally {
@@ -440,6 +459,16 @@ export default function CollaborationSettingsPage() {
                                                 {actingPullRequestId === pr.id && actingPullRequestAction === "accept"
                                                     ? text.accepting
                                                     : text.acceptButton}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className="editor-btn editor-btn-secondary"
+                                                disabled={actingPullRequestId === pr.id}
+                                                onClick={() => void handlePullRequestAction(pr.id, "hold")}
+                                            >
+                                                {actingPullRequestId === pr.id && actingPullRequestAction === "hold"
+                                                    ? text.holding
+                                                    : text.holdButton}
                                             </button>
                                             <button
                                                 type="button"

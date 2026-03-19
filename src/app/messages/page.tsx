@@ -16,13 +16,14 @@ type ThreadUser = {
     image: string | null;
 };
 
-type PullRequestStatus = "PENDING" | "ACCEPTED" | "REJECTED";
+type PullRequestStatus = "PENDING" | "ON_HOLD" | "ACCEPTED" | "REJECTED";
 type MessageContext = "GENERAL" | "PULL_REQUEST";
 
 type MessagePullRequest = {
     id: string;
     title: string;
     excerpt: string | null;
+    content: string;
     status: PullRequestStatus;
     tags: string[];
     proposerId: string;
@@ -87,6 +88,7 @@ function formatMessageTime(value: string): string {
 }
 
 function getPullRequestStatusLabel(status: PullRequestStatus): string {
+    if (status === "ON_HOLD") return "保留中";
     if (status === "ACCEPTED") return "承認済み";
     if (status === "REJECTED") return "却下済み";
     return "確認待ち";
@@ -117,7 +119,9 @@ export default function MessagesPage() {
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [bulkDeleting, setBulkDeleting] = useState(false);
     const [updatingPullRequestId, setUpdatingPullRequestId] = useState<string | null>(null);
-    const [updatingPullRequestAction, setUpdatingPullRequestAction] = useState<"accept" | "reject" | null>(null);
+    const [updatingPullRequestAction, setUpdatingPullRequestAction] = useState<"accept" | "hold" | "reject" | null>(null);
+    const [canSendMessages, setCanSendMessages] = useState(false);
+    const [messagePermissionNote, setMessagePermissionNote] = useState("");
     const messageListRef = useRef<HTMLDivElement | null>(null);
     const threadMessagesCacheRef = useRef<Map<string, DirectMessage[]>>(new Map());
     const threadUserCacheRef = useRef<Map<string, ThreadUser>>(new Map());
@@ -385,6 +389,8 @@ export default function MessagesPage() {
     useEffect(() => {
         if (!selectedUserId) {
             setSelectedUser(null);
+            setCanSendMessages(false);
+            setMessagePermissionNote("");
             return;
         }
 
@@ -402,6 +408,8 @@ export default function MessagesPage() {
         if (!selectedUserId) {
             setMessages([]);
             setSelectedUser(null);
+            setCanSendMessages(false);
+            setMessagePermissionNote("");
             return;
         }
 
@@ -430,6 +438,8 @@ export default function MessagesPage() {
             setLoadingMessages(true);
         }
         setError("");
+        setCanSendMessages(false);
+        setMessagePermissionNote("");
 
         fetchReadWithRetry(
             `/api/direct-messages?mode=thread&userId=${encodeURIComponent(selectedUserId)}`,
@@ -446,6 +456,10 @@ export default function MessagesPage() {
                     ? (threadPayload.messages as DirectMessage[])
                     : [];
                 replaceMessagesForThread(selectedUserId, nextMessages);
+                setCanSendMessages(threadPayload.canSendMessages !== false);
+                setMessagePermissionNote(
+                    typeof threadPayload.messagePermissionNote === "string" ? threadPayload.messagePermissionNote : ""
+                );
 
                 const payloadUser =
                     threadPayload.user && typeof threadPayload.user === "object"
@@ -461,6 +475,8 @@ export default function MessagesPage() {
                 if (cachedMessages.length === 0) {
                     setMessages([]);
                 }
+                setCanSendMessages(false);
+                setMessagePermissionNote("");
                 setError(err instanceof Error ? err.message : "DMの読み込みに失敗しました。");
             })
             .finally(() => {
@@ -479,6 +495,12 @@ export default function MessagesPage() {
         });
     }, [messages.length, scrollMessagesToBottom, selectedUserId]);
 
+    useEffect(() => {
+        if (canSendMessages) return;
+        setSelectMode(false);
+        setSelectedIds(new Set());
+    }, [canSendMessages]);
+
     const refreshCurrentThread = useCallback(async () => {
         if (!selectedUserId) return;
         try {
@@ -487,6 +509,10 @@ export default function MessagesPage() {
             if (!res.ok) return;
             const nextMessages = Array.isArray(payload.messages) ? (payload.messages as DirectMessage[]) : [];
             replaceMessagesForThread(selectedUserId, nextMessages);
+            setCanSendMessages(payload.canSendMessages !== false);
+            setMessagePermissionNote(
+                typeof payload.messagePermissionNote === "string" ? payload.messagePermissionNote : ""
+            );
             const payloadUser =
                 payload.user && typeof payload.user === "object"
                     ? (payload.user as ThreadUser)
@@ -501,7 +527,7 @@ export default function MessagesPage() {
     }, [cacheThreadUser, deriveThreadUserFromMessages, fetchReadWithRetry, replaceMessagesForThread, selectedUserId]);
 
     const handlePullRequestAction = useCallback(
-        async (pullRequestId: string, action: "accept" | "reject") => {
+        async (pullRequestId: string, action: "accept" | "hold" | "reject") => {
             if (!pullRequestId) return;
 
             setUpdatingPullRequestId(pullRequestId);
@@ -537,6 +563,10 @@ export default function MessagesPage() {
     const sendMessage = async () => {
         const content = draft.trim();
         if (!selectedUserId || !content) return;
+        if (!canSendMessages) {
+            setError(messagePermissionNote || "現在この会話ではDMを送信できません。");
+            return;
+        }
 
         if (content.length > 10000) {
             setError("Message must be 10000 characters or fewer.");
@@ -911,7 +941,7 @@ export default function MessagesPage() {
                             </div>
                         </div>
                         {/* Select mode toggle */}
-                        {selectedUserId && messages.some((m) => m.senderId === currentUserId && !m.pending && m.context !== "PULL_REQUEST") ? (
+                        {canSendMessages && selectedUserId && messages.some((m) => m.senderId === currentUserId && !m.pending && m.context !== "PULL_REQUEST") ? (
                             <button
                                 type="button"
                                 className="editor-btn editor-btn-secondary"
@@ -958,7 +988,7 @@ export default function MessagesPage() {
                                 const canReviewPullRequest =
                                     !mine &&
                                     !!pullRequest &&
-                                    pullRequest.status === "PENDING" &&
+                                    (pullRequest.status === "PENDING" || pullRequest.status === "ON_HOLD") &&
                                     pullRequest.recipientId === currentUserId;
                                 const updatingThisPullRequest =
                                     !!pullRequest && updatingPullRequestId === pullRequest.id;
@@ -1077,6 +1107,22 @@ export default function MessagesPage() {
                                                             {pullRequest.excerpt}
                                                         </div>
                                                     ) : null}
+                                                    <details style={{ marginTop: 8 }}>
+                                                        <summary style={{ cursor: "pointer", fontSize: 12, color: "var(--azuki)" }}>
+                                                            内容を表示
+                                                        </summary>
+                                                        <div
+                                                            style={{
+                                                                marginTop: 8,
+                                                                whiteSpace: "pre-wrap",
+                                                                fontSize: 12,
+                                                                lineHeight: 1.7,
+                                                                color: "var(--text)",
+                                                            }}
+                                                        >
+                                                            {pullRequest.content}
+                                                        </div>
+                                                    </details>
                                                     {canReviewPullRequest && (
                                                         <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
                                                             <button
@@ -1089,6 +1135,18 @@ export default function MessagesPage() {
                                                                     ? "承認中..."
                                                                     : "承認"}
                                                             </button>
+                                                            {pullRequest.status === "PENDING" && (
+                                                                <button
+                                                                    type="button"
+                                                                    className="editor-btn editor-btn-secondary"
+                                                                    disabled={updatingThisPullRequest}
+                                                                    onClick={() => void handlePullRequestAction(pullRequest.id, "hold")}
+                                                                >
+                                                                    {updatingThisPullRequest && updatingPullRequestAction === "hold"
+                                                                        ? "保留中..."
+                                                                        : "保留"}
+                                                                </button>
+                                                            )}
                                                             <button
                                                                 type="button"
                                                                 className="editor-btn editor-btn-secondary"
@@ -1138,7 +1196,7 @@ export default function MessagesPage() {
                                                 {mine && goodCount > 0 ? (
                                                     <span style={{ fontSize: 11, color: "var(--azuki)" }}>{`👍 ${goodCount}`}</span>
                                                 ) : null}
-                                                {mine && !isPending && !selectMode && !isPullRequestMessage ? (
+                                                {canSendMessages && mine && !isPending && !selectMode && !isPullRequestMessage ? (
                                                     <button
                                                         type="button"
                                                         onClick={() => void deleteMessage(message.id)}
@@ -1159,6 +1217,11 @@ export default function MessagesPage() {
 
                     {/* Input area with inline send button */}
                     <div style={{ borderTop: "1px solid var(--border)", padding: "10px 12px", flexShrink: 0 }}>
+                        {!!selectedUserId && !!messagePermissionNote && (
+                            <div style={{ fontSize: 11, color: "var(--text-soft)", marginBottom: 8 }}>
+                                {messagePermissionNote}
+                            </div>
+                        )}
                         <div style={{ position: "relative" }}>
                             <textarea
                                 className="login-input"
@@ -1167,13 +1230,13 @@ export default function MessagesPage() {
                                 onChange={(event) => setDraft(event.target.value)}
                                 onKeyDown={handleDraftKeyDown}
                                 placeholder={selectedUserId ? "メッセージを入力..." : "会話相手を選択してください"}
-                                disabled={!selectedUserId}
+                                disabled={!selectedUserId || !canSendMessages}
                                 style={{ paddingRight: 64, resize: "none", fontFamily: "var(--sans)", marginBottom: 0 }}
                             />
                             <button
                                 type="button"
                                 className="editor-btn editor-btn-primary"
-                                disabled={!selectedUserId || !draft.trim()}
+                                disabled={!selectedUserId || !canSendMessages || !draft.trim()}
                                 onClick={sendMessage}
                                 style={{
                                     position: "absolute",

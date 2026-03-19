@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { DirectMessageContext } from "@prisma/client";
+import { DirectMessageContext, PullRequestStatus } from "@prisma/client";
 import {
     ensureDirectMessageCapacity,
     withDirectMessageGoodTable,
     withDirectMessageTable,
 } from "@/lib/directMessages";
-import { ensurePullRequestSchema } from "@/lib/pullRequests";
+import { ensurePullRequestSchema, withPullRequestTable } from "@/lib/pullRequests";
 import { resolveSessionUserId } from "@/lib/sessionUser";
 import { invalidateReadCachePrefix, readCacheKeys, readThroughCache } from "@/lib/readCache";
 
@@ -25,6 +25,7 @@ const DM_PULL_REQUEST_SELECT = {
     id: true,
     title: true,
     excerpt: true,
+    content: true,
     status: true,
     tags: true,
     proposerId: true,
@@ -86,6 +87,66 @@ function buildThreadPreview(message: {
     }
 
     return message.content;
+}
+
+async function hasOnHoldPullRequestBetweenUsers(userAId: string, userBId: string): Promise<boolean> {
+    const match = await withPullRequestTable(() =>
+        prisma.articlePullRequest.findFirst({
+            where: {
+                status: PullRequestStatus.ON_HOLD,
+                OR: [
+                    { proposerId: userAId, recipientId: userBId },
+                    { proposerId: userBId, recipientId: userAId },
+                ],
+            },
+            select: { id: true },
+        })
+    );
+
+    return !!match;
+}
+
+async function getGeneralMessagePermission(senderId: string, recipientId: string) {
+    const recipient = await prisma.user.findUnique({
+        where: { id: recipientId },
+        select: { id: true, links: true },
+    });
+
+    if (!recipient) {
+        return {
+            allowed: false,
+            note: "このユーザーは見つかりませんでした。",
+        };
+    }
+
+    const recipientDmSetting = unpackDmSettingFromLinks(recipient.links);
+
+    if (recipientDmSetting === "OPEN") {
+        return {
+            allowed: true,
+            note: "",
+        };
+    }
+
+    if (recipientDmSetting === "CLOSED") {
+        return {
+            allowed: false,
+            note: "このユーザーは現在DMを受け付けていません。",
+        };
+    }
+
+    const allowedByOnHoldPullRequest = await hasOnHoldPullRequestBetweenUsers(senderId, recipientId);
+    if (allowedByOnHoldPullRequest) {
+        return {
+            allowed: true,
+            note: "保留中のプルリクエストがあるため、一時的にDMが可能です。",
+        };
+    }
+
+    return {
+        allowed: false,
+        note: "このユーザーは「プルリクエスト時のみ」です。保留中のプルリクエストがある間だけDMできます。",
+    };
 }
 
 async function getDirectMessageGoodState(messageIds: string[], currentUserId: string | null) {
@@ -251,11 +312,14 @@ export async function GET(request: NextRequest) {
                             where: { id: resolvedTargetUserId },
                             select: DM_USER_SELECT,
                         }).catch(() => null));
+                    const messagePermission = await getGeneralMessagePermission(userId, resolvedTargetUserId);
 
                     return {
                         mode,
                         userId: resolvedTargetUserId,
                         user: targetUser,
+                        canSendMessages: messagePermission.allowed,
+                        messagePermissionNote: messagePermission.note,
                         messages: await appendDirectMessageGoodState(messages, userId),
                     };
                 }
@@ -291,7 +355,8 @@ export async function GET(request: NextRequest) {
                                     id: string;
                                     title: string;
                                     excerpt: string | null;
-                                    status: "PENDING" | "ACCEPTED" | "REJECTED";
+                                    content: string;
+                                    status: "PENDING" | "ON_HOLD" | "ACCEPTED" | "REJECTED";
                                     tags: string[];
                                     proposerId: string;
                                     recipientId: string;
@@ -416,10 +481,10 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: "Recipient not found" }, { status: 404 });
         }
 
-        const recipientDmSetting = unpackDmSettingFromLinks(recipient.links);
-        if (recipientDmSetting !== "OPEN") {
+        const messagePermission = await getGeneralMessagePermission(userId, recipientId);
+        if (!messagePermission.allowed) {
             return NextResponse.json(
-                { error: "This user is not accepting general direct messages." },
+                { error: messagePermission.note || "This user is not accepting general direct messages." },
                 { status: 403 }
             );
         }

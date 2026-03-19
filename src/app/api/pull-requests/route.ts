@@ -302,8 +302,49 @@ export async function PUT(request: NextRequest) {
             return NextResponse.json({ error: "pullRequestId is required" }, { status: 400 });
         }
 
-        if (action !== "accept" && action !== "reject") {
-            return NextResponse.json({ error: "action must be accept or reject" }, { status: 400 });
+        if (action !== "accept" && action !== "hold" && action !== "reject") {
+            return NextResponse.json({ error: "action must be accept, hold, or reject" }, { status: 400 });
+        }
+
+        if (action === "hold") {
+            const result = await prisma.articlePullRequest.updateMany({
+                where: {
+                    id: pullRequestId,
+                    recipientId: userId,
+                    status: PullRequestStatus.PENDING,
+                },
+                data: {
+                    status: PullRequestStatus.ON_HOLD,
+                },
+            });
+
+            if (result.count === 0) {
+                const existing = await prisma.articlePullRequest.findUnique({
+                    where: { id: pullRequestId },
+                    select: { recipientId: true, status: true, proposerId: true },
+                });
+
+                if (!existing) {
+                    return NextResponse.json({ error: "Pull request not found" }, { status: 404 });
+                }
+
+                if (existing.recipientId !== userId) {
+                    return NextResponse.json({ error: "Only the recipient can hold this pull request" }, { status: 403 });
+                }
+
+                return NextResponse.json(
+                    { error: `Pull request is already ${existing.status.toLowerCase()}` },
+                    { status: 409 }
+                );
+            }
+
+            const updated = await prisma.articlePullRequest.findUnique({
+                where: { id: pullRequestId },
+                select: { proposerId: true, recipientId: true },
+            });
+
+            invalidatePostAndMessageCaches(updated ? [updated.proposerId, updated.recipientId] : [userId]);
+            return NextResponse.json({ success: true, status: PullRequestStatus.ON_HOLD });
         }
 
         if (action === "accept") {
@@ -314,7 +355,7 @@ export async function PUT(request: NextRequest) {
                     where: {
                         id: pullRequestId,
                         recipientId: userId,
-                        status: PullRequestStatus.PENDING,
+                        status: { in: [PullRequestStatus.PENDING, PullRequestStatus.ON_HOLD] },
                     },
                     data: {
                         status: PullRequestStatus.ACCEPTED,
@@ -398,7 +439,7 @@ export async function PUT(request: NextRequest) {
             where: {
                 id: pullRequestId,
                 recipientId: userId,
-                status: PullRequestStatus.PENDING,
+                status: { in: [PullRequestStatus.PENDING, PullRequestStatus.ON_HOLD] },
             },
             data: {
                 status: PullRequestStatus.REJECTED,
