@@ -5,6 +5,8 @@ import { resolveSessionUserId } from "@/lib/sessionUser";
 import { getUserProfileByRefFallback } from "@/lib/publicContentFallback";
 import { getPostsByAuthorFallback } from "@/lib/publicContentFallback";
 import { hydratePullRequestProposers } from "@/lib/pullRequestPostMeta";
+import { ensurePullRequestSchema } from "@/lib/pullRequests";
+import { formatIsoDate } from "@/lib/pullRequestPublication";
 import { resolveReadablePublicUserId } from "@/lib/userId";
 import { readCacheKeys, readThroughCache, writeReadCache } from "@/lib/readCache";
 
@@ -526,18 +528,92 @@ export async function GET(_req: Request, { params }: { params: Promise<{ name: s
                     }
                 }
 
-                const hydratedPosts = await hydratePullRequestProposers(
-                    (resolvedPosts.length >= fallbackPosts.length ? resolvedPosts : fallbackPosts) as Array<{
-                        pullRequestProposerId?: string | null;
-                        pullRequestProposer?: {
-                            id: string;
-                            userId?: string | null;
-                            name: string | null;
-                            email: string | null;
-                            image: string | null;
-                        } | null;
-                    }>
+                let hostedPosts: Array<{
+                    id: string;
+                    title: string;
+                    content: string;
+                    excerpt: string | null;
+                    headerImage: string | null;
+                    tags: string[];
+                    published: boolean;
+                    pinned: boolean;
+                    createdAt: string;
+                    updatedAt: string;
+                    authorId: string;
+                    sourcePullRequestId?: string | null;
+                    pullRequestProposerId?: string | null;
+                    publicationGrantId?: string | null;
+                    publicationExpiresAt?: string | null;
+                }> = [];
+
+                try {
+                    await ensurePullRequestSchema();
+                    const grants = await prisma.postPublicationGrant.findMany({
+                        where: {
+                            hostUserId: resolvedUser.id,
+                            expiresAt: { gt: new Date() },
+                        },
+                        include: {
+                            post: {
+                                select: {
+                                    id: true,
+                                    title: true,
+                                    content: true,
+                                    excerpt: true,
+                                    headerImage: true,
+                                    tags: true,
+                                    published: true,
+                                    pinned: true,
+                                    createdAt: true,
+                                    updatedAt: true,
+                                    authorId: true,
+                                    sourcePullRequestId: true,
+                                    pullRequestProposerId: true,
+                                },
+                            },
+                        },
+                    });
+
+                    hostedPosts = grants.map((grant) => ({
+                        ...grant.post,
+                        published: true,
+                        pinned: false,
+                        createdAt: formatIsoDate(grant.createdAt) || grant.post.createdAt.toISOString(),
+                        updatedAt: formatIsoDate(grant.post.updatedAt) || grant.post.updatedAt.toISOString(),
+                        authorId: resolvedUser.id,
+                        sourcePullRequestId: grant.sourcePullRequestId || grant.post.sourcePullRequestId || `grant:${grant.id}`,
+                        pullRequestProposerId: grant.post.authorId,
+                        publicationGrantId: grant.id,
+                        publicationExpiresAt: formatIsoDate(grant.expiresAt),
+                    }));
+                } catch (hostedPostsError) {
+                    if (!isUserSchemaCompatibilityError(hostedPostsError)) {
+                        console.error("Failed to hydrate hosted pull-request posts:", hostedPostsError);
+                    }
+                }
+
+                const combinedPosts = [
+                    ...(resolvedPosts.length >= fallbackPosts.length ? resolvedPosts : fallbackPosts),
+                    ...hostedPosts,
+                ] as Array<{
+                    createdAt?: string | Date | null;
+                    pullRequestProposerId?: string | null;
+                    pullRequestProposer?: {
+                        id: string;
+                        userId?: string | null;
+                        name: string | null;
+                        email: string | null;
+                        image: string | null;
+                    } | null;
+                }>;
+
+                combinedPosts.sort(
+                    (a, b) =>
+                        new Date(String(b.createdAt || "")).getTime() -
+                        new Date(String(a.createdAt || "")).getTime()
                 );
+
+                const hydratedPosts = await hydratePullRequestProposers(combinedPosts);
 
                 const responsePayload = {
                     ...resolvedUser,

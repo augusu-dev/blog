@@ -17,14 +17,18 @@ type ThreadUser = {
 };
 
 type PullRequestStatus = "PENDING" | "ON_HOLD" | "ACCEPTED" | "REJECTED";
+type PullRequestKind = "SUBMISSION" | "EXTENSION";
 type MessageContext = "GENERAL" | "PULL_REQUEST";
 
 type MessagePullRequest = {
     id: string;
+    kind: PullRequestKind;
     title: string;
     excerpt: string | null;
     content: string;
     status: PullRequestStatus;
+    publicationExpiresAt: string | null;
+    postId: string | null;
     tags: string[];
     proposerId: string;
     recipientId: string;
@@ -96,6 +100,25 @@ function getPullRequestStatusLabel(status: PullRequestStatus): string {
 
 function getPullRequestTypeLabel(tags: string[]): string {
     return tags.includes("product") ? "プロダクトPR" : "記事PR";
+}
+
+function getPullRequestKindLabel(pullRequest: MessagePullRequest): string {
+    if (pullRequest.kind === "EXTENSION") return "掲載延長";
+    return getPullRequestTypeLabel(pullRequest.tags);
+}
+
+function formatPullRequestExpiry(value: string | null | undefined): string {
+    if (!value) return "";
+
+    try {
+        return new Intl.DateTimeFormat("ja-JP", {
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+        }).format(new Date(value));
+    } catch {
+        return value;
+    }
 }
 
 export default function MessagesPage() {
@@ -1060,7 +1083,7 @@ export default function MessagesPage() {
                                                         }}
                                                     >
                                                         <span style={{ fontSize: 11, color: "var(--text-soft)" }}>
-                                                            {getPullRequestTypeLabel(pullRequest.tags)}
+                                                            {getPullRequestKindLabel(pullRequest)}
                                                         </span>
                                                         <span
                                                             style={{
@@ -1105,6 +1128,11 @@ export default function MessagesPage() {
                                                             }}
                                                         >
                                                             {pullRequest.excerpt}
+                                                        </div>
+                                                    ) : null}
+                                                    {pullRequest.kind === "EXTENSION" && pullRequest.publicationExpiresAt ? (
+                                                        <div style={{ marginTop: 6, fontSize: 12, color: "var(--text-soft)" }}>
+                                                            現在の掲載期限: {formatPullRequestExpiry(pullRequest.publicationExpiresAt)}
                                                         </div>
                                                     ) : null}
                                                     <details style={{ marginTop: 8 }}>

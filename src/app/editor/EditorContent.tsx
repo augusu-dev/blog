@@ -9,6 +9,7 @@ import Link from "next/link";
 import RichEditor from "@/components/RichEditor";
 import TagInput from "@/components/TagInput";
 import UnreadDmButton from "@/components/UnreadDmButton";
+import { canRequestPullRequestExtension } from "@/lib/pullRequestPublication";
 
 const AI_TAG = "ai-generated";
 
@@ -21,6 +22,19 @@ interface Post {
     published: boolean;
     createdAt: string;
     updatedAt: string;
+    publicationGrants?: Array<{
+        id: string;
+        createdAt?: string | null;
+        expiresAt?: string | null;
+        sourcePullRequestId?: string | null;
+        host: {
+            id: string;
+            userId?: string | null;
+            name: string | null;
+            email: string | null;
+            image?: string | null;
+        };
+    }>;
 }
 
 type PostType = "blog" | "product";
@@ -384,6 +398,141 @@ export default function EditorPage() {
         }
     };
 
+    void requestArticle;
+
+    const sendPullRequestRequest = async () => {
+        if (!title.trim() || !content.trim()) {
+            setMessage("Title and content are required.");
+            return;
+        }
+
+        const recipientQuery = prompt("Enter the recipient user ID or name.");
+        if (!recipientQuery || !recipientQuery.trim()) return;
+
+        setRequesting(true);
+        setMessage("");
+
+        try {
+            let dmMessage = "";
+
+            try {
+                const recipientRes = await fetch(`/api/user/${encodeURIComponent(recipientQuery.trim())}`, {
+                    cache: "no-store",
+                    credentials: "same-origin",
+                });
+                const recipientPayload = await recipientRes.json().catch(() => ({}));
+                const dmSetting =
+                    recipientPayload &&
+                    typeof recipientPayload === "object" &&
+                    (recipientPayload.dmSetting === "OPEN" ||
+                        recipientPayload.dmSetting === "PR_ONLY" ||
+                        recipientPayload.dmSetting === "CLOSED")
+                        ? recipientPayload.dmSetting
+                        : null;
+
+                if (dmSetting !== "PR_ONLY") {
+                    dmMessage = prompt("Optional DM message")?.trim() || "";
+                }
+            } catch {
+                dmMessage = prompt("Optional DM message")?.trim() || "";
+            }
+
+            if (dmMessage.length > 10000) {
+                setMessage("DM message must be 10000 characters or fewer.");
+                return;
+            }
+
+            const res = await fetch("/api/pull-requests", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    kind: "SUBMISSION",
+                    postId: editId || undefined,
+                    recipientQuery: recipientQuery.trim(),
+                    title: title.trim(),
+                    excerpt: excerpt.trim(),
+                    content,
+                    tags: buildFinalTags(),
+                    dmMessage,
+                }),
+            });
+
+            const payload = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                setMessage(`Error: ${payload.error || "Failed to send pull request."}`);
+                return;
+            }
+
+            markCurrentStateAsSaved();
+            if (!editId && typeof payload.postId === "string") {
+                bypassLeaveGuardRef.current = true;
+                router.push(`/editor?id=${payload.postId}`);
+            }
+            await loadMyPosts();
+            setMessage("Pull request sent.");
+        } catch {
+            setMessage("Error: Failed to send pull request.");
+        } finally {
+            setRequesting(false);
+        }
+    };
+
+    const requestExtension = async (post: Post) => {
+        const eligibleGrants = (post.publicationGrants || []).filter((grant) =>
+            canRequestPullRequestExtension(grant.expiresAt || null)
+        );
+
+        if (eligibleGrants.length === 0) {
+            setMessage("延長申請は掲載期限の7日前から可能です。");
+            return;
+        }
+
+        let selectedGrant = eligibleGrants[0];
+        if (eligibleGrants.length > 1) {
+            const selectionText = eligibleGrants
+                .map((grant, index) => {
+                    const hostLabel = grant.host.name || grant.host.email || grant.host.userId || grant.host.id;
+                    const expiresAt = grant.expiresAt ? new Date(grant.expiresAt).toLocaleDateString("ja-JP") : "";
+                    return `${index + 1}: ${hostLabel} (${expiresAt})`;
+                })
+                .join("\n");
+            const selectedInput = prompt(`延長申請を送る相手を選んでください。\n${selectionText}`);
+            const selectedIndex = Number(selectedInput || "0") - 1;
+            if (!Number.isInteger(selectedIndex) || selectedIndex < 0 || selectedIndex >= eligibleGrants.length) {
+                return;
+            }
+            selectedGrant = eligibleGrants[selectedIndex];
+        }
+
+        setRequesting(true);
+        setMessage("");
+
+        try {
+            const res = await fetch("/api/pull-requests", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    kind: "EXTENSION",
+                    postId: post.id,
+                    recipientId: selectedGrant.host.id,
+                }),
+            });
+
+            const payload = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                setMessage(`Error: ${payload.error || "Failed to send the extension request."}`);
+                return;
+            }
+
+            await loadMyPosts();
+            setMessage("掲載延長の申請を送りました。");
+        } catch {
+            setMessage("Error: Failed to send the extension request.");
+        } finally {
+            setRequesting(false);
+        }
+    };
+
     // Delete post
     const deletePost = async (id: string) => {
         if (!confirm("この記事を削除しますか？")) return;
@@ -433,6 +582,9 @@ export default function EditorPage() {
 
         return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
     });
+
+    const getEligiblePublicationGrants = (post: Post) =>
+        (post.publicationGrants || []).filter((grant) => canRequestPullRequestExtension(grant.expiresAt || null));
 
     return (
         <>
@@ -534,7 +686,7 @@ export default function EditorPage() {
                     </button>
                     <button
                         className="editor-btn editor-btn-secondary"
-                        onClick={requestArticle}
+                        onClick={sendPullRequestRequest}
                         disabled={saving || requesting}
                     >
                         {requesting ? "送信中..." : "依頼する"}
@@ -589,8 +741,34 @@ export default function EditorPage() {
                                         <p style={{ fontSize: 12, color: "var(--text-soft)" }}>
                                             {new Date(post.updatedAt).toLocaleDateString("ja-JP")}
                                         </p>
+                                        {(post.publicationGrants || []).length > 0 ? (
+                                            <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 4 }}>
+                                                {(post.publicationGrants || []).map((grant) => {
+                                                    const hostLabel =
+                                                        grant.host.name || grant.host.email || grant.host.userId || grant.host.id;
+                                                    const expiresLabel = grant.expiresAt
+                                                        ? new Date(grant.expiresAt).toLocaleDateString("ja-JP")
+                                                        : "";
+                                                    return (
+                                                        <span key={grant.id} style={{ fontSize: 11, color: "var(--text-soft)" }}>
+                                                            {`掲載先: ${hostLabel}${expiresLabel ? ` / 期限: ${expiresLabel}` : ""}`}
+                                                        </span>
+                                                    );
+                                                })}
+                                            </div>
+                                        ) : null}
                                     </div>
                                     <div style={{ display: "flex", gap: 6 }}>
+                                        {getEligiblePublicationGrants(post).length > 0 ? (
+                                            <button
+                                                className="editor-btn editor-btn-secondary"
+                                                style={{ padding: "6px 12px", fontSize: 12 }}
+                                                onClick={() => requestExtension(post)}
+                                                disabled={requesting}
+                                            >
+                                                延長申請
+                                            </button>
+                                        ) : null}
                                         <button
                                             className="editor-btn editor-btn-secondary"
                                             style={{ padding: "6px 12px", fontSize: 12 }}

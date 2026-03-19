@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
 type DmSetting = "OPEN" | "PR_ONLY" | "CLOSED";
@@ -40,6 +40,12 @@ export default function UserCollaborationPanel({
 
     const canCreatePullRequest = dmSetting !== "CLOSED";
 
+    useEffect(() => {
+        if (dmSetting === "PR_ONLY" && prDmMessage) {
+            setPrDmMessage("");
+        }
+    }, [dmSetting, prDmMessage]);
+
     const dmSettingLabel = useMemo(() => {
         if (dmSetting === "PR_ONLY") {
             return "DMは記事依頼に添付するメッセージとしてのみ送信できます。";
@@ -68,12 +74,18 @@ export default function UserCollaborationPanel({
             return;
         }
 
+        if (dmSetting === "PR_ONLY" && dmMessage) {
+            setPrStatus("PR_ONLY の相手には任意メッセージを添付できません。");
+            return;
+        }
+
         setPrSubmitting(true);
         try {
             const res = await fetch("/api/pull-requests", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
+                    kind: "SUBMISSION",
                     recipientId,
                     title,
                     excerpt,
@@ -167,8 +179,14 @@ export default function UserCollaborationPanel({
                                 maxLength={DM_LIMIT}
                                 onChange={(e) => setPrDmMessage(e.target.value)}
                                 rows={3}
+                                disabled={dmSetting === "PR_ONLY"}
                                 style={{ marginBottom: 8, resize: "vertical", fontFamily: "var(--sans)" }}
                             />
+                            {dmSetting === "PR_ONLY" ? (
+                                <p style={{ marginTop: -2, marginBottom: 10, fontSize: 11, color: "var(--text-soft)" }}>
+                                    PR_ONLY 設定の相手には任意メッセージを添付できません。
+                                </p>
+                            ) : null}
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                                 <span style={{ fontSize: 11, color: "var(--text-soft)" }}>
                                     PR DM {prDmMessage.length}/{DM_LIMIT}

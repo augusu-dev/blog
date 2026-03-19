@@ -54,6 +54,7 @@ model User {
   reactions            PostReaction[]
   sentPullRequests     ArticlePullRequest[] @relation("PullRequestSender")
   receivedPullRequests ArticlePullRequest[] @relation("PullRequestRecipient")
+  hostedPostPublications PostPublicationGrant[] @relation("PostPublicationHost")
   sentMessages         DirectMessage[]      @relation("DirectMessageSender")
   receivedMessages     DirectMessage[]      @relation("DirectMessageRecipient")
   directMessageGoods   DirectMessageGood[]
@@ -85,6 +86,8 @@ model Post {
   authorId    String
   sourcePullRequestId   String?
   pullRequestProposerId String?
+  pullRequests ArticlePullRequest[]
+  publicationGrants PostPublicationGrant[]
   comments    PostComment[]
   reactions   PostReaction[]
 }
@@ -107,6 +110,11 @@ enum PullRequestStatus {
   ON_HOLD
   ACCEPTED
   REJECTED
+}
+
+enum PullRequestKind {
+  SUBMISSION
+  EXTENSION
 }
 
 enum DirectMessageContext {
@@ -148,19 +156,42 @@ model ArticlePullRequest {
   excerpt   String?  @db.Text
   content   String   @db.Text
   tags      String[]
+  kind      PullRequestKind @default(SUBMISSION)
   status    PullRequestStatus @default(PENDING)
+  publicationExpiresAt DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  post     Post?  @relation(fields: [postId], references: [id], onDelete: SetNull)
+  postId   String?
   proposer   User   @relation("PullRequestSender", fields: [proposerId], references: [id], onDelete: Cascade)
   proposerId String
   recipient  User   @relation("PullRequestRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
   recipientId String
 
   messages DirectMessage[]
+  publicationGrants PostPublicationGrant[] @relation("PublicationGrantSource")
 
   @@index([recipientId, createdAt])
   @@index([proposerId, createdAt])
+}
+
+model PostPublicationGrant {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  expiresAt DateTime
+
+  post     Post   @relation(fields: [postId], references: [id], onDelete: Cascade)
+  postId   String
+  host     User   @relation("PostPublicationHost", fields: [hostUserId], references: [id], onDelete: Cascade)
+  hostUserId String
+  sourcePullRequest   ArticlePullRequest? @relation("PublicationGrantSource", fields: [sourcePullRequestId], references: [id], onDelete: SetNull)
+  sourcePullRequestId String?
+
+  @@unique([postId, hostUserId])
+  @@index([hostUserId, expiresAt])
+  @@index([postId, expiresAt])
 }
 
 model DirectMessage {

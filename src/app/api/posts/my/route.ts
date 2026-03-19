@@ -4,9 +4,19 @@ import { prisma } from "@/lib/db";
 import { resolveSessionUserId } from "@/lib/sessionUser";
 import { getPostsByAuthorFallback } from "@/lib/publicContentFallback";
 import { hydratePullRequestProposers } from "@/lib/pullRequestPostMeta";
+import { ensurePullRequestSchema } from "@/lib/pullRequests";
+import { formatIsoDate } from "@/lib/pullRequestPublication";
 import { readCacheKeys, readThroughCache } from "@/lib/readCache";
+import { fillMissingPublicUserIds } from "@/lib/userId";
 
 const USER_POSTS_CACHE_TTL_MS = 15 * 1000;
+const PUBLIC_USER_SELECT = {
+    id: true,
+    userId: true,
+    name: true,
+    email: true,
+    image: true,
+} as const;
 
 function isSchemaMismatchError(error: unknown): boolean {
     if (error && typeof error === "object" && "code" in error) {
@@ -53,19 +63,58 @@ export async function GET() {
             readCacheKeys.userPosts(userId),
             USER_POSTS_CACHE_TTL_MS,
             async () => {
+                const now = new Date();
+
+                try {
+                    await ensurePullRequestSchema();
+                } catch {
+                    // Keep compatibility fallbacks below.
+                }
+
                 try {
                     const posts = await prisma.post.findMany({
                         where: authorWhere,
                         orderBy: { updatedAt: "desc" },
+                        include: {
+                            publicationGrants: {
+                                where: { expiresAt: { gt: now } },
+                                orderBy: { expiresAt: "asc" },
+                                select: {
+                                    id: true,
+                                    createdAt: true,
+                                    expiresAt: true,
+                                    sourcePullRequestId: true,
+                                    host: { select: PUBLIC_USER_SELECT },
+                                },
+                            },
+                        },
                     });
-                    return hydratePullRequestProposers(posts);
+
+                    const hosts = await fillMissingPublicUserIds(
+                        posts.flatMap((post) => post.publicationGrants.map((grant) => grant.host))
+                    );
+                    const hostById = new Map(hosts.map((host) => [host.id, host]));
+                    const hydratedPosts = await hydratePullRequestProposers(posts);
+
+                    return hydratedPosts.map((post) => ({
+                        ...post,
+                        publicationGrants: post.publicationGrants.map((grant) => ({
+                            ...grant,
+                            createdAt: formatIsoDate(grant.createdAt),
+                            expiresAt: formatIsoDate(grant.expiresAt),
+                            host: hostById.get(grant.host.id) || grant.host,
+                        })),
+                    }));
                 } catch (error) {
                     if (!isSchemaMismatchError(error)) throw error;
                 }
 
-                return hydratePullRequestProposers(
+                return (await hydratePullRequestProposers(
                     await getPostsByAuthorFallback(authorRefs, { publishedOnly: false, limit: 300 })
-                );
+                )).map((post) => ({
+                    ...post,
+                    publicationGrants: [],
+                }));
             },
             {
                 shouldCache: (value) => Array.isArray(value) && value.length > 0,
@@ -82,9 +131,12 @@ export async function GET() {
     } catch (error) {
         try {
             return NextResponse.json(
-                await hydratePullRequestProposers(
+                (await hydratePullRequestProposers(
                     await getPostsByAuthorFallback(authorRefs, { publishedOnly: false, limit: 300 })
-                )
+                )).map((post) => ({
+                    ...post,
+                    publicationGrants: [],
+                }))
             );
         } catch (fallbackError) {
             void fallbackError;

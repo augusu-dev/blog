@@ -344,7 +344,9 @@ export default function UserPage({ requestedPostId: requestedPostIdProp = null }
                 }
 
                 const settings = settingsResult.data as Record<string, any>;
-                const fallbackPosts = Array.isArray(myPostsResult.data) ? (myPostsResult.data as Post[]) : [];
+                const fallbackPosts = Array.isArray(myPostsResult.data)
+                    ? (myPostsResult.data as Post[]).filter((post) => post.published)
+                    : [];
 
                 return {
                     id: String(settings.id || normalizedSessionUserId || normalizedUserName),
@@ -1115,14 +1117,20 @@ export default function UserPage({ requestedPostId: requestedPostIdProp = null }
                                     </div>
                                 </Link>
                             )}
-                            {overlayMeta.pullRequestProposer && (
+                            {false && overlayMeta.pullRequestProposer && (
                                 <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
                                     <span style={{ fontSize: 11, color: "var(--azuki-light)", letterSpacing: "0.05em" }}>著者</span>
                                     <PublicUserAvatarLink user={overlayMeta.pullRequestProposer} title="著者ページに飛ぶ" />
                                 </div>
                             )}
                             <span style={{ fontSize: 13, color: "var(--text-soft)" }}>{overlayMeta.date}</span>
-                            {overlayMeta.author && (
+                            {overlayMeta.pullRequestProposer ? (
+                                <span style={{ fontSize: 12, color: "var(--azuki-light)", display: "inline-flex", alignItems: "center", gap: 6 }}>
+                                    <span>by</span>
+                                    <PublicUserAvatarLink user={overlayMeta.pullRequestProposer} title="著者ページに飛ぶ" />
+                                </span>
+                            ) : null}
+                            {!overlayMeta.pullRequestProposer && overlayMeta.author && (
                                 <span style={{ fontSize: 12, color: "var(--azuki-light)" }}>
                                     by {getPublicUserLabel(overlayMeta.author)}
                                 </span>

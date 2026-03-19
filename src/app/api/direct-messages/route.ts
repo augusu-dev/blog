@@ -23,10 +23,13 @@ const DM_USER_SELECT = {
 } as const;
 const DM_PULL_REQUEST_SELECT = {
     id: true,
+    kind: true,
     title: true,
     excerpt: true,
     content: true,
     status: true,
+    publicationExpiresAt: true,
+    postId: true,
     tags: true,
     proposerId: true,
     recipientId: true,
@@ -80,13 +83,29 @@ function unpackDmSettingFromLinks(raw: string | null | undefined): DmSetting {
 function buildThreadPreview(message: {
     context: DirectMessageContext;
     content: string;
-    pullRequest?: { title: string } | null;
+    pullRequest?: { title: string; kind?: "SUBMISSION" | "EXTENSION" | null } | null;
 }) {
     if (message.context === DirectMessageContext.PULL_REQUEST) {
-        return message.pullRequest?.title ? `PR: ${message.pullRequest.title}` : "Article pull request";
+        if (message.pullRequest?.title) {
+            return message.pullRequest.kind === "EXTENSION"
+                ? `Extension: ${message.pullRequest.title}`
+                : `PR: ${message.pullRequest.title}`;
+        }
+        return "Article pull request";
     }
 
     return message.content;
+}
+
+function serializePullRequest<T extends { publicationExpiresAt: Date | null } | null | undefined>(pullRequest: T) {
+    if (!pullRequest) {
+        return null;
+    }
+
+    return {
+        ...pullRequest,
+        publicationExpiresAt: pullRequest.publicationExpiresAt ? pullRequest.publicationExpiresAt.toISOString() : null,
+    };
 }
 
 async function hasOnHoldPullRequestBetweenUsers(userAId: string, userBId: string): Promise<boolean> {
@@ -288,7 +307,7 @@ export async function GET(request: NextRequest) {
                         throw new Error("THREAD_TARGET_NOT_FOUND");
                     }
 
-                    const messages = await withDirectMessageTable(() =>
+                    const rawMessages = await withDirectMessageTable(() =>
                         prisma.directMessage.findMany({
                             where: {
                                 OR: [
@@ -305,9 +324,14 @@ export async function GET(request: NextRequest) {
                         })
                     );
 
+                    const messages = rawMessages.map((message) => ({
+                        ...message,
+                        pullRequest: serializePullRequest(message.pullRequest),
+                    }));
+
                     const targetUser =
-                        messages.find((message) => message.senderId === resolvedTargetUserId)?.sender ||
-                        messages.find((message) => message.recipientId === resolvedTargetUserId)?.recipient ||
+                        rawMessages.find((message) => message.senderId === resolvedTargetUserId)?.sender ||
+                        rawMessages.find((message) => message.recipientId === resolvedTargetUserId)?.recipient ||
                         (await prisma.user.findUnique({
                             where: { id: resolvedTargetUserId },
                             select: DM_USER_SELECT,
@@ -325,7 +349,7 @@ export async function GET(request: NextRequest) {
                 }
 
                 if (mode === "threads") {
-                    const messages = await withDirectMessageTable(() =>
+                    const rawMessages = await withDirectMessageTable(() =>
                         prisma.directMessage.findMany({
                             where: {
                                 OR: [{ senderId: userId }, { recipientId: userId }],
@@ -353,10 +377,13 @@ export async function GET(request: NextRequest) {
                                 context: DirectMessageContext;
                                 pullRequest: {
                                     id: string;
+                                    kind: "SUBMISSION" | "EXTENSION";
                                     title: string;
                                     excerpt: string | null;
                                     content: string;
                                     status: "PENDING" | "ON_HOLD" | "ACCEPTED" | "REJECTED";
+                                    publicationExpiresAt: string | null;
+                                    postId: string | null;
                                     tags: string[];
                                     proposerId: string;
                                     recipientId: string;
@@ -365,7 +392,11 @@ export async function GET(request: NextRequest) {
                         }
                     >();
 
-                    for (const message of messages) {
+                    for (const rawMessage of rawMessages) {
+                        const message = {
+                            ...rawMessage,
+                            pullRequest: serializePullRequest(rawMessage.pullRequest),
+                        };
                         const otherUser = message.senderId === userId ? message.recipient : message.sender;
                         if (!otherUser || threadMap.has(otherUser.id)) continue;
                         threadMap.set(otherUser.id, {

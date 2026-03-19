@@ -5,10 +5,19 @@ import { resolveSessionUserId } from "@/lib/sessionUser";
 import { tryEnsureProfileAndPostSchema } from "@/lib/schemaCompat";
 import { getPublicPostsFallback } from "@/lib/publicContentFallback";
 import { hydratePullRequestProposers } from "@/lib/pullRequestPostMeta";
+import { ensurePullRequestSchema } from "@/lib/pullRequests";
+import { formatIsoDate } from "@/lib/pullRequestPublication";
 import { fillMissingPublicUserIds } from "@/lib/userId";
 import { invalidateReadCachePrefix, readCacheKeys, readThroughCache } from "@/lib/readCache";
 
 const PUBLIC_POSTS_CACHE_TTL_MS = 20 * 1000;
+const PUBLIC_USER_SELECT = {
+    id: true,
+    userId: true,
+    name: true,
+    email: true,
+    image: true,
+} as const;
 
 function isSchemaMismatchError(error: unknown): boolean {
     if (error && typeof error === "object" && "code" in error) {
@@ -23,80 +32,106 @@ function isSchemaMismatchError(error: unknown): boolean {
     return false;
 }
 
+async function attachPostUsers<
+    T extends Array<{
+        author?: {
+            id: string;
+            userId?: string | null;
+            name: string | null;
+            email: string | null;
+            image: string | null;
+        } | null;
+        pullRequestProposerId?: string | null;
+        pullRequestProposer?: {
+            id: string;
+            userId?: string | null;
+            name: string | null;
+            email: string | null;
+            image: string | null;
+        } | null;
+    }>,
+>(posts: T): Promise<T> {
+    const authors = posts
+        .map((post) => post.author)
+        .filter((author): author is NonNullable<(typeof posts)[number]["author"]> => !!author?.id);
+    const hydratedAuthors = await fillMissingPublicUserIds(authors);
+    const authorById = new Map(hydratedAuthors.map((author) => [author.id, author]));
+
+    const postsWithAuthors = posts.map((post) =>
+        post.author?.id
+            ? {
+                  ...post,
+                  author: authorById.get(post.author.id) || post.author,
+              }
+            : post
+    ) as T;
+
+    return (await hydratePullRequestProposers(postsWithAuthors)) as T;
+}
+
+async function loadHostedPublicPosts(now: Date) {
+    const grants = await prisma.postPublicationGrant.findMany({
+        where: { expiresAt: { gt: now } },
+        include: {
+            host: { select: PUBLIC_USER_SELECT },
+            post: {
+                include: {
+                    author: { select: PUBLIC_USER_SELECT },
+                },
+            },
+        },
+    });
+
+    return grants.map((grant) => ({
+        ...grant.post,
+        createdAt: grant.createdAt,
+        updatedAt: grant.post.updatedAt,
+        published: true,
+        pinned: false,
+        authorId: grant.host.id,
+        author: grant.host,
+        sourcePullRequestId: grant.sourcePullRequestId || grant.post.sourcePullRequestId || `grant:${grant.id}`,
+        pullRequestProposerId: grant.post.authorId,
+        pullRequestProposer: grant.post.author,
+        publicationGrantId: grant.id,
+        publicationExpiresAt: formatIsoDate(grant.expiresAt),
+    }));
+}
+
 export async function GET() {
-    const attachPostUsers = async <
-        T extends Array<{
-            author?: {
-                id: string;
-                userId?: string | null;
-                name: string | null;
-                email: string | null;
-                image: string | null;
-            } | null;
-            pullRequestProposerId?: string | null;
-            pullRequestProposer?: {
-                id: string;
-                userId?: string | null;
-                name: string | null;
-                email: string | null;
-                image: string | null;
-            } | null;
-        }>,
-    >(
-        posts: T
-    ): Promise<T> => {
-        const authors = posts
-            .map((post) => post.author)
-            .filter((author): author is NonNullable<(typeof posts)[number]["author"]> => !!author?.id);
-        const hydratedAuthors = await fillMissingPublicUserIds(authors);
-        const authorById = new Map(hydratedAuthors.map((author) => [author.id, author]));
-
-        const postsWithAuthors = posts.map((post) =>
-            post.author?.id
-                ? {
-                      ...post,
-                      author: authorById.get(post.author.id) || post.author,
-                  }
-                : post
-        ) as T;
-
-        return (await hydratePullRequestProposers(postsWithAuthors)) as T;
-    };
-
     try {
         const payload = await readThroughCache(
             readCacheKeys.publicPosts(),
             PUBLIC_POSTS_CACHE_TTL_MS,
             async () => {
+                const now = new Date();
+
                 try {
-                    const posts = await prisma.post.findMany({
-                        where: { published: true },
-                        orderBy: { createdAt: "desc" },
-                        include: {
-                            author: {
-                                select: { id: true, userId: true, name: true, email: true, image: true },
-                            },
-                        },
-                    });
-                    if (posts.length > 0) {
-                        return await attachPostUsers(posts);
-                    }
-                } catch (error) {
-                    if (!isSchemaMismatchError(error)) throw error;
+                    await ensurePullRequestSchema();
+                } catch {
+                    // Compatibility fallback remains below.
                 }
 
                 try {
-                    const posts = await prisma.post.findMany({
-                        where: { published: true },
-                        orderBy: { createdAt: "desc" },
-                        include: {
-                            author: {
-                                select: { id: true, name: true, email: true, image: true },
+                    const [publishedPosts, hostedPosts] = await Promise.all([
+                        prisma.post.findMany({
+                            where: { published: true },
+                            orderBy: { createdAt: "desc" },
+                            include: {
+                                author: {
+                                    select: PUBLIC_USER_SELECT,
+                                },
                             },
-                        },
-                    });
-                    if (posts.length > 0) {
-                        return await attachPostUsers(posts);
+                        }),
+                        loadHostedPublicPosts(now),
+                    ]);
+
+                    const combinedPosts = [...publishedPosts, ...hostedPosts].sort(
+                        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+                    );
+
+                    if (combinedPosts.length > 0) {
+                        return await attachPostUsers(combinedPosts);
                     }
                 } catch (error) {
                     if (!isSchemaMismatchError(error)) throw error;
