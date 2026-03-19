@@ -5,7 +5,6 @@ import { resolveSessionUserId } from "@/lib/sessionUser";
 import { tryEnsureProfileAndPostSchema } from "@/lib/schemaCompat";
 import { getPublicPostsFallback } from "@/lib/publicContentFallback";
 import { hydratePullRequestProposers } from "@/lib/pullRequestPostMeta";
-import { ensurePullRequestSchema } from "@/lib/pullRequests";
 import { formatIsoDate } from "@/lib/pullRequestPublication";
 import { fillMissingPublicUserIds } from "@/lib/userId";
 import { invalidateReadCachePrefix, readCacheKeys, readThroughCache } from "@/lib/readCache";
@@ -105,12 +104,6 @@ export async function GET() {
             PUBLIC_POSTS_CACHE_TTL_MS,
             async () => {
                 const now = new Date();
-
-                try {
-                    await ensurePullRequestSchema();
-                } catch {
-                    // Compatibility fallback remains below.
-                }
 
                 try {
                     const [publishedPosts, hostedPosts] = await Promise.all([

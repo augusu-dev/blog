@@ -7,7 +7,6 @@ import {
     withDirectMessageGoodTable,
     withDirectMessageTable,
 } from "@/lib/directMessages";
-import { ensurePullRequestSchema, withPullRequestTable } from "@/lib/pullRequests";
 import { resolveSessionUserId } from "@/lib/sessionUser";
 import { invalidateReadCachePrefix, readCacheKeys, readThroughCache } from "@/lib/readCache";
 
@@ -34,6 +33,30 @@ const DM_PULL_REQUEST_SELECT = {
     proposerId: true,
     recipientId: true,
 } as const;
+const LEGACY_DM_PULL_REQUEST_SELECT = {
+    id: true,
+    title: true,
+    excerpt: true,
+    content: true,
+    status: true,
+    tags: true,
+    proposerId: true,
+    recipientId: true,
+} as const;
+
+type DmSerializedPullRequest = {
+    id: string;
+    kind: "SUBMISSION" | "EXTENSION";
+    title: string;
+    excerpt: string | null;
+    content: string;
+    status: "PENDING" | "ON_HOLD" | "ACCEPTED" | "REJECTED";
+    publicationExpiresAt: string | null;
+    postId: string | null;
+    tags: string[];
+    proposerId: string;
+    recipientId: string;
+};
 
 function hasDmPayloadContent(value: unknown): boolean {
     if (!value || typeof value !== "object") {
@@ -108,9 +131,75 @@ function serializePullRequest<T extends { publicationExpiresAt: Date | null } | 
     };
 }
 
+function hydrateLegacyPullRequest<T extends Record<string, unknown>>(pullRequest: T | null | undefined) {
+    if (!pullRequest) {
+        return null;
+    }
+
+    return {
+        ...pullRequest,
+        kind: "SUBMISSION" as const,
+        publicationExpiresAt: null,
+        postId: null,
+    };
+}
+
+function normalizePullRequestStatus(value: unknown): DmSerializedPullRequest["status"] {
+    if (
+        value === PullRequestStatus.ON_HOLD ||
+        value === PullRequestStatus.ACCEPTED ||
+        value === PullRequestStatus.REJECTED
+    ) {
+        return value;
+    }
+
+    return PullRequestStatus.PENDING;
+}
+
+function normalizeDirectMessagePullRequest(pullRequest: unknown): DmSerializedPullRequest | null {
+    if (!pullRequest || typeof pullRequest !== "object") {
+        return null;
+    }
+
+    const candidate = pullRequest as {
+        id?: unknown;
+        kind?: unknown;
+        title?: unknown;
+        excerpt?: unknown;
+        content?: unknown;
+        status?: unknown;
+        publicationExpiresAt?: unknown;
+        postId?: unknown;
+        tags?: unknown;
+        proposerId?: unknown;
+        recipientId?: unknown;
+    };
+
+    return {
+        id: normalizeString(candidate.id),
+        kind: candidate.kind === "EXTENSION" ? "EXTENSION" : "SUBMISSION",
+        title: normalizeString(candidate.title),
+        excerpt: typeof candidate.excerpt === "string" ? candidate.excerpt : null,
+        content: typeof candidate.content === "string" ? candidate.content : "",
+        status: normalizePullRequestStatus(candidate.status),
+        publicationExpiresAt:
+            candidate.publicationExpiresAt instanceof Date
+                ? candidate.publicationExpiresAt.toISOString()
+                : typeof candidate.publicationExpiresAt === "string"
+                  ? candidate.publicationExpiresAt
+                  : null,
+        postId: typeof candidate.postId === "string" ? candidate.postId : null,
+        tags: Array.isArray(candidate.tags)
+            ? candidate.tags.filter((tag): tag is string => typeof tag === "string")
+            : [],
+        proposerId: normalizeString(candidate.proposerId),
+        recipientId: normalizeString(candidate.recipientId),
+    };
+}
+
 async function hasOnHoldPullRequestBetweenUsers(userAId: string, userBId: string): Promise<boolean> {
-    const match = await withPullRequestTable(() =>
-        prisma.articlePullRequest.findFirst({
+    try {
+        const match = await prisma.articlePullRequest.findFirst({
             where: {
                 status: PullRequestStatus.ON_HOLD,
                 OR: [
@@ -119,10 +208,12 @@ async function hasOnHoldPullRequestBetweenUsers(userAId: string, userBId: string
                 ],
             },
             select: { id: true },
-        })
-    );
+        });
 
-    return !!match;
+        return !!match;
+    } catch {
+        return false;
+    }
 }
 
 async function getGeneralMessagePermission(senderId: string, recipientId: string) {
@@ -287,12 +378,6 @@ export async function GET(request: NextRequest) {
     const targetUserId = normalizeString(request.nextUrl.searchParams.get("userId"));
 
     try {
-        try {
-            await ensurePullRequestSchema();
-        } catch {
-            // Continue even if the PR schema cannot be altered; existing tables may still be readable.
-        }
-
         const payload = await readThroughCache(
             readCacheKeys.directMessages(userId, mode, targetUserId),
             DIRECT_MESSAGES_CACHE_TTL_MS,
@@ -307,27 +392,56 @@ export async function GET(request: NextRequest) {
                         throw new Error("THREAD_TARGET_NOT_FOUND");
                     }
 
-                    const rawMessages = await withDirectMessageTable(() =>
-                        prisma.directMessage.findMany({
-                            where: {
-                                OR: [
-                                    { senderId: userId, recipientId: resolvedTargetUserId },
-                                    { senderId: resolvedTargetUserId, recipientId: userId },
-                                ],
-                            },
-                            orderBy: { createdAt: "asc" },
-                            include: {
-                                sender: { select: DM_USER_SELECT },
-                                recipient: { select: DM_USER_SELECT },
-                                pullRequest: { select: DM_PULL_REQUEST_SELECT },
-                            },
-                        })
-                    );
+                    let rawMessages;
+                    let messages;
 
-                    const messages = rawMessages.map((message) => ({
-                        ...message,
-                        pullRequest: serializePullRequest(message.pullRequest),
-                    }));
+                    try {
+                        rawMessages = await withDirectMessageTable(() =>
+                            prisma.directMessage.findMany({
+                                where: {
+                                    OR: [
+                                        { senderId: userId, recipientId: resolvedTargetUserId },
+                                        { senderId: resolvedTargetUserId, recipientId: userId },
+                                    ],
+                                },
+                                orderBy: { createdAt: "asc" },
+                                include: {
+                                    sender: { select: DM_USER_SELECT },
+                                    recipient: { select: DM_USER_SELECT },
+                                    pullRequest: { select: DM_PULL_REQUEST_SELECT },
+                                },
+                            })
+                        );
+
+                        messages = rawMessages.map((message) => ({
+                            ...message,
+                            pullRequest: normalizeDirectMessagePullRequest(message.pullRequest),
+                        }));
+                    } catch {
+                        rawMessages = await withDirectMessageTable(() =>
+                            prisma.directMessage.findMany({
+                                where: {
+                                    OR: [
+                                        { senderId: userId, recipientId: resolvedTargetUserId },
+                                        { senderId: resolvedTargetUserId, recipientId: userId },
+                                    ],
+                                },
+                                orderBy: { createdAt: "asc" },
+                                include: {
+                                    sender: { select: DM_USER_SELECT },
+                                    recipient: { select: DM_USER_SELECT },
+                                    pullRequest: { select: LEGACY_DM_PULL_REQUEST_SELECT },
+                                },
+                            })
+                        );
+
+                        messages = rawMessages.map((message) => ({
+                            ...message,
+                            pullRequest: normalizeDirectMessagePullRequest(
+                                hydrateLegacyPullRequest(message.pullRequest)
+                            ),
+                        }));
+                    }
 
                     const targetUser =
                         rawMessages.find((message) => message.senderId === resolvedTargetUserId)?.sender ||
@@ -349,19 +463,36 @@ export async function GET(request: NextRequest) {
                 }
 
                 if (mode === "threads") {
-                    const rawMessages = await withDirectMessageTable(() =>
-                        prisma.directMessage.findMany({
-                            where: {
-                                OR: [{ senderId: userId }, { recipientId: userId }],
-                            },
-                            orderBy: { createdAt: "desc" },
-                            include: {
-                                sender: { select: DM_USER_SELECT },
-                                recipient: { select: DM_USER_SELECT },
-                                pullRequest: { select: DM_PULL_REQUEST_SELECT },
-                            },
-                        })
-                    );
+                    let rawMessages;
+                    try {
+                        rawMessages = await withDirectMessageTable(() =>
+                            prisma.directMessage.findMany({
+                                where: {
+                                    OR: [{ senderId: userId }, { recipientId: userId }],
+                                },
+                                orderBy: { createdAt: "desc" },
+                                include: {
+                                    sender: { select: DM_USER_SELECT },
+                                    recipient: { select: DM_USER_SELECT },
+                                    pullRequest: { select: DM_PULL_REQUEST_SELECT },
+                                },
+                            })
+                        );
+                    } catch {
+                        rawMessages = await withDirectMessageTable(() =>
+                            prisma.directMessage.findMany({
+                                where: {
+                                    OR: [{ senderId: userId }, { recipientId: userId }],
+                                },
+                                orderBy: { createdAt: "desc" },
+                                include: {
+                                    sender: { select: DM_USER_SELECT },
+                                    recipient: { select: DM_USER_SELECT },
+                                    pullRequest: { select: LEGACY_DM_PULL_REQUEST_SELECT },
+                                },
+                            })
+                        );
+                    }
 
                     const threadMap = new Map<
                         string,
@@ -393,9 +524,16 @@ export async function GET(request: NextRequest) {
                     >();
 
                     for (const rawMessage of rawMessages) {
+                        const pullRequest = normalizeDirectMessagePullRequest(
+                            rawMessage.pullRequest && "publicationExpiresAt" in rawMessage.pullRequest
+                                ? serializePullRequest(
+                                      rawMessage.pullRequest as { publicationExpiresAt: Date | null }
+                                  )
+                                : hydrateLegacyPullRequest(rawMessage.pullRequest)
+                        );
                         const message = {
                             ...rawMessage,
-                            pullRequest: serializePullRequest(rawMessage.pullRequest),
+                            pullRequest,
                         };
                         const otherUser = message.senderId === userId ? message.recipient : message.sender;
                         if (!otherUser || threadMap.has(otherUser.id)) continue;
@@ -404,7 +542,16 @@ export async function GET(request: NextRequest) {
                             user: otherUser,
                             lastMessage: {
                                 id: message.id,
-                                content: buildThreadPreview(message),
+                                content: buildThreadPreview({
+                                    context: message.context,
+                                    content: message.content,
+                                    pullRequest: message.pullRequest
+                                        ? {
+                                              title: message.pullRequest.title,
+                                              kind: message.pullRequest.kind,
+                                          }
+                                        : null,
+                                }),
                                 createdAt: message.createdAt,
                                 senderId: message.senderId,
                                 recipientId: message.recipientId,

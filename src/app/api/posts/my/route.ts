@@ -4,7 +4,6 @@ import { prisma } from "@/lib/db";
 import { resolveSessionUserId } from "@/lib/sessionUser";
 import { getPostsByAuthorFallback } from "@/lib/publicContentFallback";
 import { hydratePullRequestProposers } from "@/lib/pullRequestPostMeta";
-import { ensurePullRequestSchema } from "@/lib/pullRequests";
 import { formatIsoDate } from "@/lib/pullRequestPublication";
 import { readCacheKeys, readThroughCache } from "@/lib/readCache";
 import { fillMissingPublicUserIds } from "@/lib/userId";
@@ -64,12 +63,6 @@ export async function GET() {
             USER_POSTS_CACHE_TTL_MS,
             async () => {
                 const now = new Date();
-
-                try {
-                    await ensurePullRequestSchema();
-                } catch {
-                    // Keep compatibility fallbacks below.
-                }
 
                 try {
                     const posts = await prisma.post.findMany({

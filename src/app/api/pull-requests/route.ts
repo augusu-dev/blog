@@ -3,7 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { DirectMessageContext, PullRequestKind, PullRequestStatus } from "@prisma/client";
 import { ensureDirectMessageCapacity, ensureDirectMessageSchema } from "@/lib/directMessages";
-import { ensurePullRequestSchema, withPullRequestTable } from "@/lib/pullRequests";
+import { ensurePullRequestSchema } from "@/lib/pullRequests";
 import { tryEnsureProfileAndPostSchema } from "@/lib/schemaCompat";
 import { ensureUserIdSchema } from "@/lib/userId";
 import { resolveSessionUserId } from "@/lib/sessionUser";
@@ -93,6 +93,32 @@ const latestPullRequestMessageInclude = {
     },
 };
 
+const legacyPullRequestSelect = {
+    id: true,
+    title: true,
+    excerpt: true,
+    content: true,
+    tags: true,
+    status: true,
+    createdAt: true,
+    updatedAt: true,
+    proposerId: true,
+    recipientId: true,
+} as const;
+
+function hydrateLegacyPullRequest<T extends Record<string, unknown>>(pullRequest: T): T & {
+    kind: PullRequestKind;
+    publicationExpiresAt: null;
+    postId: null;
+} {
+    return {
+        ...pullRequest,
+        kind: PullRequestKind.SUBMISSION,
+        publicationExpiresAt: null,
+        postId: null,
+    };
+}
+
 async function resolveRecipient(recipientLookup: string) {
     return prisma.user.findFirst({
         where: {
@@ -143,39 +169,28 @@ export async function GET() {
     }
 
     try {
-        await ensurePullRequestSchema();
-        try {
-            await ensureDirectMessageSchema();
-        } catch {
-            // If the DM schema cannot be ensured, fall back to loading pull requests without message previews.
-        }
-
         const loadWithMessages = () =>
             Promise.all([
-                withPullRequestTable(() =>
-                    prisma.articlePullRequest.findMany({
-                        where: { recipientId: userId },
-                        orderBy: { createdAt: "desc" },
-                        include: {
-                            proposer: {
-                                select: { id: true, name: true, email: true },
-                            },
-                            messages: latestPullRequestMessageInclude,
+                prisma.articlePullRequest.findMany({
+                    where: { recipientId: userId },
+                    orderBy: { createdAt: "desc" },
+                    include: {
+                        proposer: {
+                            select: { id: true, name: true, email: true },
                         },
-                    })
-                ),
-                withPullRequestTable(() =>
-                    prisma.articlePullRequest.findMany({
-                        where: { proposerId: userId },
-                        orderBy: { createdAt: "desc" },
-                        include: {
-                            recipient: {
-                                select: { id: true, name: true, email: true },
-                            },
-                            messages: latestPullRequestMessageInclude,
+                        messages: latestPullRequestMessageInclude,
+                    },
+                }),
+                prisma.articlePullRequest.findMany({
+                    where: { proposerId: userId },
+                    orderBy: { createdAt: "desc" },
+                    include: {
+                        recipient: {
+                            select: { id: true, name: true, email: true },
                         },
-                    })
-                ),
+                        messages: latestPullRequestMessageInclude,
+                    },
+                }),
             ]);
 
         let received;
@@ -185,33 +200,65 @@ export async function GET() {
             [received, sent] = await loadWithMessages();
         } catch (error) {
             if (!isMissingSchemaError(error)) {
-                throw error;
+                try {
+                    [received, sent] = await Promise.all([
+                        prisma.articlePullRequest.findMany({
+                            where: { recipientId: userId },
+                            orderBy: { createdAt: "desc" },
+                            select: {
+                                ...legacyPullRequestSelect,
+                                proposer: {
+                                    select: { id: true, name: true, email: true },
+                                },
+                            },
+                        }),
+                        prisma.articlePullRequest.findMany({
+                            where: { proposerId: userId },
+                            orderBy: { createdAt: "desc" },
+                            select: {
+                                ...legacyPullRequestSelect,
+                                recipient: {
+                                    select: { id: true, name: true, email: true },
+                                },
+                            },
+                        }),
+                    ]);
+                    return NextResponse.json({
+                        received: received.map((item) => hydrateLegacyPullRequest(item)),
+                        sent: sent.map((item) => hydrateLegacyPullRequest(item)),
+                    });
+                } catch {
+                    return NextResponse.json({ received: [], sent: [] });
+                }
             }
 
             [received, sent] = await Promise.all([
-                withPullRequestTable(() =>
-                    prisma.articlePullRequest.findMany({
-                        where: { recipientId: userId },
-                        orderBy: { createdAt: "desc" },
-                        include: {
-                            proposer: {
-                                select: { id: true, name: true, email: true },
-                            },
+                prisma.articlePullRequest.findMany({
+                    where: { recipientId: userId },
+                    orderBy: { createdAt: "desc" },
+                    select: {
+                        ...legacyPullRequestSelect,
+                        proposer: {
+                            select: { id: true, name: true, email: true },
                         },
-                    })
-                ),
-                withPullRequestTable(() =>
-                    prisma.articlePullRequest.findMany({
-                        where: { proposerId: userId },
-                        orderBy: { createdAt: "desc" },
-                        include: {
-                            recipient: {
-                                select: { id: true, name: true, email: true },
-                            },
+                    },
+                }),
+                prisma.articlePullRequest.findMany({
+                    where: { proposerId: userId },
+                    orderBy: { createdAt: "desc" },
+                    select: {
+                        ...legacyPullRequestSelect,
+                        recipient: {
+                            select: { id: true, name: true, email: true },
                         },
-                    })
-                ),
+                    },
+                }),
             ]);
+
+            return NextResponse.json({
+                received: received.map((item) => hydrateLegacyPullRequest(item)),
+                sent: sent.map((item) => hydrateLegacyPullRequest(item)),
+            });
         }
 
         return NextResponse.json({ received, sent });

@@ -5,7 +5,6 @@ import { resolveSessionUserId } from "@/lib/sessionUser";
 import { getUserProfileByRefFallback } from "@/lib/publicContentFallback";
 import { getPostsByAuthorFallback } from "@/lib/publicContentFallback";
 import { hydratePullRequestProposers } from "@/lib/pullRequestPostMeta";
-import { ensurePullRequestSchema } from "@/lib/pullRequests";
 import { formatIsoDate } from "@/lib/pullRequestPublication";
 import { resolveReadablePublicUserId } from "@/lib/userId";
 import { readCacheKeys, readThroughCache, writeReadCache } from "@/lib/readCache";
@@ -547,7 +546,6 @@ export async function GET(_req: Request, { params }: { params: Promise<{ name: s
                 }> = [];
 
                 try {
-                    await ensurePullRequestSchema();
                     const grants = await prisma.postPublicationGrant.findMany({
                         where: {
                             hostUserId: resolvedUser.id,

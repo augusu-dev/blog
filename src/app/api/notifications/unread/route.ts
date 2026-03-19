@@ -3,7 +3,6 @@ import { DirectMessageContext, PullRequestStatus } from "@prisma/client";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { withDirectMessageTable } from "@/lib/directMessages";
-import { withPullRequestTable } from "@/lib/pullRequests";
 import { resolveSessionUserId } from "@/lib/sessionUser";
 import { readCacheKeys, readThroughCache } from "@/lib/readCache";
 
@@ -40,15 +39,13 @@ export async function GET(request: NextRequest) {
                             },
                         })
                     ),
-                    withPullRequestTable(() =>
-                        prisma.articlePullRequest.count({
-                            where: {
-                                recipientId: userId,
-                                status: PullRequestStatus.PENDING,
-                                createdAt: { gt: since },
-                            },
-                        })
-                    ),
+                    prisma.articlePullRequest.count({
+                        where: {
+                            recipientId: userId,
+                            status: PullRequestStatus.PENDING,
+                            createdAt: { gt: since },
+                        },
+                    }).catch(() => 0),
                 ]);
 
                 return {
