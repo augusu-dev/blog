@@ -11,6 +11,12 @@ import PostComments from "@/components/PostComments";
 import UnreadDmButton from "@/components/UnreadDmButton";
 import { useMyPageHref } from "@/hooks/useMyPageHref";
 import { prepareRenderedPostHtml } from "@/lib/postContent";
+import {
+    buildUserPostPath,
+    buildUserProfilePath,
+    consumePostReturnPath,
+    rememberPostReturnPath,
+} from "@/lib/postNavigation";
 
 /* ─── Types ─── */
 interface Post {
@@ -180,14 +186,18 @@ function mergeProfileWithCachedPosts(nextProfile: UserProfile, cachedProfile: Us
     };
 }
 
-export default function UserPage() {
+type UserPageProps = {
+    requestedPostId?: string | null;
+};
+
+export default function UserPage({ requestedPostId: requestedPostIdProp = null }: UserPageProps = {}) {
     const { data: session } = useSession();
     const router = useRouter();
     const params = useParams();
     const searchParams = useSearchParams();
     const userName = params.name as string;
     const searchParamsString = searchParams.toString();
-    const requestedPostId = (searchParams.get("post") || "").trim();
+    const requestedPostId = (requestedPostIdProp || searchParams.get("post") || "").trim();
     const sessionUser = session?.user as {
         id?: string;
         userId?: string | null;
@@ -427,10 +437,11 @@ export default function UserPage() {
             return;
         }
 
-        const nextHref = `/user/${encodeURIComponent(canonicalUserId)}${searchParamsString ? `?${searchParamsString}` : ""
+        const postPathSuffix = requestedPostIdProp ? `/posts/${encodeURIComponent(requestedPostIdProp)}` : "";
+        const nextHref = `/user/${encodeURIComponent(canonicalUserId)}${postPathSuffix}${searchParamsString ? `?${searchParamsString}` : ""
             }`;
         router.replace(nextHref);
-    }, [router, searchParamsString, user?.userId, userName]);
+    }, [requestedPostIdProp, router, searchParamsString, user?.userId, userName]);
 
     useEffect(() => {
         async function loadPinState() {
@@ -510,7 +521,7 @@ export default function UserPage() {
     }, [posts, products, user]);
 
     /* ─── Overlay ─── */
-    const openPost = (post: Post) => {
+    const openPostOverlay = (post: Post) => {
         setOverlayMeta({
             date: fmtDate(post.date || post.createdAt),
             createdAt: post.createdAt || "",
@@ -533,10 +544,38 @@ export default function UserPage() {
         setTranslatedContent(null);
     };
 
+    const navigateToPost = (post: Post) => {
+        const authorRef =
+            (typeof user?.userId === "string" && user.userId.trim()) ||
+            (typeof user?.id === "string" && user.id.trim()) ||
+            userName;
+
+        if (!authorRef) {
+            openPostOverlay(post);
+            return;
+        }
+
+        const href = buildUserPostPath(authorRef, post.id);
+        rememberPostReturnPath(href, `${window.location.pathname}${window.location.search}`);
+        router.push(href, { scroll: false });
+    };
+
     const closeOverlay = () => {
         setOverlayOpen(false);
         setOverlayPostId(null);
         document.body.style.overflow = "";
+
+        if (!requestedPostId) {
+            return;
+        }
+
+        const authorRef =
+            (typeof user?.userId === "string" && user.userId.trim()) ||
+            (typeof user?.id === "string" && user.id.trim()) ||
+            userName;
+        const currentPostPath = buildUserPostPath(authorRef, requestedPostId);
+        const returnPath = consumePostReturnPath(currentPostPath);
+        router.push(returnPath || buildUserProfilePath(authorRef), { scroll: false });
     };
 
     const handleTranslate = async () => {
@@ -589,7 +628,7 @@ export default function UserPage() {
         if (!target) return;
 
         autoOpenedPostRef.current = requestedPostId;
-        openPost(target);
+        openPostOverlay(target);
     }, [requestedPostId, user, posts, products]);
 
     /* ─── Computed ─── */
@@ -738,8 +777,8 @@ export default function UserPage() {
                                     style={
                                         isPinned
                                             ? {
-                                                background: "rgba(146,92,92,0.14)",
-                                                borderColor: "rgba(146,92,92,0.35)",
+                                                background: "color-mix(in srgb, var(--azuki) 14%, transparent)",
+                                                borderColor: "color-mix(in srgb, var(--azuki) 35%, transparent)",
                                                 color: "var(--azuki-deep)",
                                             }
                                             : undefined
@@ -793,11 +832,18 @@ export default function UserPage() {
                             {recommendProducts.length > 0 && (
                                 <div className="recommend-grid">
                                     {recommendProducts.map((p: any) => (
-                                        <div key={p.id} className="product-card fade-item" onClick={() => openPost(p)}>
+                                        <div key={p.id} className="product-card fade-item" onClick={() => navigateToPost(p)}>
                                             {p.headerImage ? (
                                                 <img src={p.headerImage} alt={p.title} style={{ width: "100%", height: 120, objectFit: "cover", borderRadius: 10, marginBottom: 8 }} />
                                             ) : (
-                                                <div className="product-thumb" style={{ height: 120, background: "linear-gradient(135deg,#e8d5d0,#e8d5d088)" }}>
+                                                <div
+                                                    className="product-thumb"
+                                                    style={{
+                                                        height: 120,
+                                                        background:
+                                                            "linear-gradient(135deg, var(--azuki-pale), color-mix(in srgb, var(--azuki-pale) 54%, transparent))",
+                                                    }}
+                                                >
                                                     <div className="product-thumb-inner" />
                                                 </div>
                                             )}
@@ -815,7 +861,7 @@ export default function UserPage() {
                             {recommendBlogs.length > 0 && (
                                 <div className="recommend-row">
                                     {recommendBlogs.map((p: any) => (
-                                        <div key={p.id} className="card card-sm fade-item" style={{ padding: 18 }} onClick={() => openPost(p)}>
+                                        <div key={p.id} className="card card-sm fade-item" style={{ padding: 18 }} onClick={() => navigateToPost(p)}>
                                             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6, flexWrap: "wrap" }}>
                                                 <h4 style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.5, margin: 0 }}>{p.title}</h4>
                                                 <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
@@ -841,7 +887,7 @@ export default function UserPage() {
                     ) : (
                         <div className="blog-list">
                             {blogItems.map((p, i) => (
-                                <div key={p.id} className="blog-item fade-item" style={{ transitionDelay: `${i * 60}ms` }} onClick={() => openPost(p)}>
+                                <div key={p.id} className="blog-item fade-item" style={{ transitionDelay: `${i * 60}ms` }} onClick={() => navigateToPost(p)}>
                                     <div style={{ flex: 1 }}>
                                         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 6, flexWrap: "wrap" }}>
                                             <h3 style={{ margin: 0 }}>{p.title}</h3>
@@ -879,11 +925,17 @@ export default function UserPage() {
                     ) : (
                         <div className="product-grid">
                             {products.map((p) => (
-                                <div key={p.id} className="product-card fade-item" onClick={() => openPost(p)}>
+                                <div key={p.id} className="product-card fade-item" onClick={() => navigateToPost(p)}>
                                     {p.headerImage ? (
                                         <img src={p.headerImage} alt={p.title} style={{ width: "100%", height: 80, objectFit: "cover", borderRadius: 10, marginBottom: 8 }} />
                                     ) : (
-                                        <div className="product-thumb" style={{ background: "linear-gradient(135deg,#e8d5d0,#e8d5d088)" }}>
+                                        <div
+                                            className="product-thumb"
+                                            style={{
+                                                background:
+                                                    "linear-gradient(135deg, var(--azuki-pale), color-mix(in srgb, var(--azuki-pale) 54%, transparent))",
+                                            }}
+                                        >
                                             <div className="product-thumb-inner" />
                                         </div>
                                     )}
@@ -944,7 +996,13 @@ export default function UserPage() {
                                         <div key={i} style={{ display: "flex", gap: 8, alignItems: "center" }}>
                                             <a href={rawUrl} target="_blank" rel="noopener noreferrer" className="contact-link" style={{ flex: 1, marginBottom: 0 }}>
                                                 <div className="contact-link-inner">
-                                                    <div className="contact-icon" style={{ background: "rgba(155,107,107,0.08)", color: "var(--azuki)" }}>
+                                                    <div
+                                                        className="contact-icon"
+                                                        style={{
+                                                            background: "color-mix(in srgb, var(--azuki) 8%, transparent)",
+                                                            color: "var(--azuki)",
+                                                        }}
+                                                    >
                                                         {link.label.charAt(0).toUpperCase()}
                                                     </div>
                                                     <div>

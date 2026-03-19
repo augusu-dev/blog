@@ -54,16 +54,16 @@ body {
   align-items: center;
   justify-content: center;
   padding: 14px 32px;
-  background: rgba(253, 250, 248, 0.7);
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.3);
-  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.03);
+  border-bottom: 1px solid color-mix(in srgb, var(--white) 32%, var(--border));
+  box-shadow: 0 4px 30px color-mix(in srgb, var(--text) 8%, transparent);
   transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .navbar.scrolled {
-  box-shadow: 0 2px 20px rgba(155, 107, 107, 0.06);
+  box-shadow: 0 2px 20px color-mix(in srgb, var(--azuki) 14%, transparent);
 }
 
 .nav-logo {
@@ -128,11 +128,11 @@ body {
 }
 
 .nav-link:hover {
-  background: rgba(232, 213, 208, 0.4);
+  background: color-mix(in srgb, var(--azuki-pale) 46%, transparent);
 }
 
 .nav-link.active {
-  background: rgba(155, 107, 107, 0.08);
+  background: color-mix(in srgb, var(--azuki) 10%, transparent);
   color: var(--azuki-deep);
   font-weight: 600;
 }
@@ -247,7 +247,7 @@ body {
 }
 
 .nav-user-btn:hover {
-  background: rgba(232, 213, 208, 0.4);
+  background: color-mix(in srgb, var(--azuki-pale) 46%, transparent);
 }
 
 .nav-write-btn {
@@ -258,7 +258,7 @@ body {
 }
 
 .nav-write-btn:hover {
-  background: #c47568;
+  background: color-mix(in srgb, var(--accent) 82%, var(--azuki-deep));
 }
 
 /* ========================================
@@ -274,7 +274,7 @@ body {
   left: 0;
   right: 0;
   z-index: 99;
-  background: rgba(250, 245, 243, 0.8);
+  background: color-mix(in srgb, var(--bg) 84%, transparent);
   backdrop-filter: blur(8px);
 }
 
@@ -358,7 +358,9 @@ body {
   left: 0;
   right: 0;
   bottom: 0;
-  background: linear-gradient(135deg, rgba(146, 92, 92, 0.4) 0%, rgba(205, 119, 104, 0.2) 100%);
+  background: linear-gradient(135deg,
+      color-mix(in srgb, var(--azuki) 40%, transparent) 0%,
+      color-mix(in srgb, var(--accent) 24%, transparent) 100%);
   mix-blend-mode: overlay;
 }
 
@@ -394,19 +396,19 @@ body {
   -webkit-backdrop-filter: blur(16px);
   border-radius: 16px;
   border: 1px solid var(--border);
-  box-shadow: 0 4px 20px rgba(146, 92, 92, 0.04);
+  box-shadow: 0 4px 20px color-mix(in srgb, var(--azuki) 10%, transparent);
   transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
   cursor: pointer;
 }
 
 .card:hover {
   transform: translateY(-3px);
-  box-shadow: 0 8px 24px rgba(155, 107, 107, 0.1);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--azuki) 18%, transparent);
 }
 
 .card-sm:hover {
   transform: translateY(-2px);
-  box-shadow: 0 6px 18px rgba(155, 107, 107, 0.08);
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--azuki) 14%, transparent);
 }
 
 .tag {
@@ -674,7 +676,7 @@ body {
   border-radius: 16px;
   font-size: 12px;
   color: var(--azuki);
-  background: rgba(232, 213, 208, 0.35);
+  background: color-mix(in srgb, var(--azuki-pale) 48%, transparent);
   border: 1px solid var(--azuki-pale);
   letter-spacing: 0.02em;
 }
@@ -877,7 +879,7 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 16px 28px;
-  background: rgba(250, 245, 243, 0.95);
+  background: color-mix(in srgb, var(--bg) 94%, transparent);
   backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--border);
 }
@@ -974,7 +976,7 @@ body {
   content: "";
   flex: 1;
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(146, 92, 92, 0.18), transparent);
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--azuki) 18%, transparent), transparent);
 }
 
 .md-content .product-update-marker span {
@@ -1012,8 +1014,8 @@ body {
 }
 
 .md-content pre {
-  background: #2d2424;
-  color: #e8d5d0;
+  background: color-mix(in srgb, var(--azuki-deep) 76%, #101010);
+  color: color-mix(in srgb, var(--white) 86%, var(--azuki-pale));
   border-radius: 12px;
   padding: 20px 24px;
   margin-bottom: 20px;
@@ -1524,11 +1526,11 @@ body {
     display: flex;
     justify-content: center;
     padding: 7px 12px;
-    background: rgba(253, 250, 248, 0.72);
+    background: color-mix(in srgb, var(--bg) 72%, transparent);
     backdrop-filter: blur(20px) saturate(180%);
     -webkit-backdrop-filter: blur(20px) saturate(180%);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.3);
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
+    border-bottom: 1px solid color-mix(in srgb, var(--white) 32%, var(--border));
+    box-shadow: 0 4px 20px color-mix(in srgb, var(--text) 8%, transparent);
   }
 
   .profile-mobile-tabs-track {
@@ -1724,7 +1726,7 @@ body {
 }
 
 .rich-tool-btn:hover {
-  background: rgba(155, 107, 107, 0.1);
+  background: color-mix(in srgb, var(--azuki) 12%, transparent);
   color: var(--azuki-deep);
 }
 
@@ -1737,7 +1739,7 @@ body {
 }
 
 .rich-tool-btn:active {
-  background: rgba(155, 107, 107, 0.2);
+  background: color-mix(in srgb, var(--azuki) 18%, transparent);
 }
 
 .rich-editor-content {
@@ -1757,7 +1759,7 @@ body {
 }
 
 .rich-editor-content:focus {
-  box-shadow: inset 0 0 0 2px rgba(155, 107, 107, 0.1);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--azuki) 12%, transparent);
 }
 
 /* ========================================
@@ -1794,7 +1796,7 @@ body {
   font-size: 12px;
   font-weight: 500;
   color: var(--azuki);
-  background: rgba(232, 213, 208, 0.35);
+  background: color-mix(in srgb, var(--azuki-pale) 48%, transparent);
   border: 1px solid var(--azuki-pale);
   white-space: nowrap;
   animation: chipIn 0.2s ease;
@@ -1923,7 +1925,7 @@ body {
 .settings-back-btn:hover {
   background: var(--bg-soft);
   color: var(--azuki-deep);
-  border-color: rgba(146, 92, 92, 0.22);
+  border-color: color-mix(in srgb, var(--azuki) 22%, transparent);
 }
 
 .restore-modal-backdrop {
@@ -2035,7 +2037,7 @@ body {
   gap: 10px;
   padding: 14px 12px;
   border-bottom: 1px solid var(--border);
-  background: rgba(253, 250, 248, 0.92);
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
   backdrop-filter: blur(12px);
 }
 
@@ -2195,11 +2197,11 @@ body {
     display: flex;
     justify-content: center;
     padding: 7px 12px;
-    background: rgba(253, 250, 248, 0.72);
+    background: color-mix(in srgb, var(--bg) 72%, transparent);
     backdrop-filter: blur(20px) saturate(180%);
     -webkit-backdrop-filter: blur(20px) saturate(180%);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.3);
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
+    border-bottom: 1px solid color-mix(in srgb, var(--white) 32%, var(--border));
+    box-shadow: 0 4px 20px color-mix(in srgb, var(--text) 8%, transparent);
   }
 
   .profile-mobile-tabs-track {
@@ -2277,8 +2279,8 @@ body {
 
 .reaction-btn.active {
   color: var(--azuki-deep);
-  border-color: rgba(146, 92, 92, 0.35);
-  background: rgba(146, 92, 92, 0.1);
+  border-color: color-mix(in srgb, var(--azuki) 35%, transparent);
+  background: color-mix(in srgb, var(--azuki) 10%, transparent);
 }
 
 .reaction-btn.burst {

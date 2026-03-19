@@ -12,6 +12,7 @@ import HomeShortPosts from "@/components/HomeShortPosts";
 import { useMyPageHref } from "@/hooks/useMyPageHref";
 import { prepareRenderedPostHtml } from "@/lib/postContent";
 import { readSessionCache, writeSessionCache } from "@/lib/clientSessionCache";
+import { buildUserPostPath, rememberPostReturnPath } from "@/lib/postNavigation";
 
 interface Post {
   id: string;
@@ -143,7 +144,7 @@ export default function HomePage() {
     router.prefetch("/editor");
   }, [myPageHref, router, session]);
 
-  const openPost = (post: Post) => {
+  const openPostOverlay = (post: Post) => {
     setOverlayMeta({
       date: fmtDate(post.createdAt),
       createdAt: post.createdAt || "",
@@ -156,6 +157,18 @@ export default function HomePage() {
     setTranslatedContent(null);
     setOverlayOpen(true);
     document.body.style.overflow = "hidden";
+  };
+
+    const navigateToPost = (post: Post) => {
+    const authorRef = post.author?.userId || post.author?.id;
+    if (!authorRef) {
+      openPostOverlay(post);
+      return;
+    }
+
+    const href = buildUserPostPath(authorRef, post.id);
+    rememberPostReturnPath(href, `${window.location.pathname}${window.location.search}`);
+    router.push(href, { scroll: false });
   };
 
   const closeOverlay = () => {
@@ -320,7 +333,7 @@ export default function HomePage() {
           ) : (
             <div className="blog-list">
               {blogPosts.slice(0, 10).map((p) => (
-                <div key={p.id} className="blog-item" onClick={() => openPost(p)} style={{ cursor: "pointer" }}>
+                <div key={p.id} className="blog-item" onClick={() => navigateToPost(p)} style={{ cursor: "pointer" }}>
                   <div style={{ flex: 1 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 6, flexWrap: "wrap" }}>
                       <h3 style={{ margin: 0 }}>{p.title}</h3>
@@ -359,8 +372,14 @@ export default function HomePage() {
                 <h2 className="section-title">{t("最近のプロダクト")}</h2>
                 <div className="product-grid">
                   {productPosts.slice(0, 8).map((p) => (
-                    <div key={p.id} className="product-card" onClick={() => openPost(p)} style={{ cursor: "pointer" }}>
-                      <div className="product-thumb" style={{ background: "linear-gradient(135deg,#e8d5d0,#e8d5d088)" }}>
+                    <div key={p.id} className="product-card" onClick={() => navigateToPost(p)} style={{ cursor: "pointer" }}>
+                      <div
+                        className="product-thumb"
+                        style={{
+                          background:
+                            "linear-gradient(135deg, var(--azuki-pale), color-mix(in srgb, var(--azuki-pale) 54%, transparent))",
+                        }}
+                      >
                         <div className="product-thumb-inner" />
                       </div>
                       <div className="product-info">
