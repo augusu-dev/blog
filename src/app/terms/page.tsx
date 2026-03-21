@@ -1,6 +1,11 @@
+"use client";
+
 import Link from "next/link";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 export default function TermsPage() {
+    const { localizePath } = useLanguage();
+
     return (
         <div className="editor-container" style={{ maxWidth: 760 }}>
             <div
@@ -98,7 +103,7 @@ export default function TermsPage() {
                     </p>
                 </section>
 
-                <Link href="/" className="login-back" style={{ marginTop: 0 }}>
+                <Link href={localizePath("/")} className="login-back" style={{ marginTop: 0 }}>
                     ← ブログに戻る
                 </Link>
             </div>

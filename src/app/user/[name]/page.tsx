@@ -224,7 +224,7 @@ export default function UserPage({ requestedPostId: requestedPostIdProp = null }
     const sessionImage = typeof sessionUser?.image === "string" ? sessionUser.image : null;
     const myPageHref = useMyPageHref();
 
-    const { language, t } = useLanguage();
+    const { language, t, localizePath } = useLanguage();
     const [user, setUser] = useState<UserProfile | null>(null);
     const [posts, setPosts] = useState<Post[]>([]);
     const [products, setProducts] = useState<Post[]>([]);
@@ -259,11 +259,11 @@ export default function UserPage({ requestedPostId: requestedPostIdProp = null }
     useEffect(() => {
         if (!session) return;
         router.prefetch(myPageHref);
-        router.prefetch("/pins");
-        router.prefetch("/messages");
-        router.prefetch("/settings");
-        router.prefetch("/editor");
-    }, [myPageHref, router, session]);
+        router.prefetch(localizePath("/pins"));
+        router.prefetch(localizePath("/messages"));
+        router.prefetch(localizePath("/settings"));
+        router.prefetch(localizePath("/editor"));
+    }, [localizePath, myPageHref, router, session]);
 
     /* ─── Fetch user data ─── */
     useEffect(() => {

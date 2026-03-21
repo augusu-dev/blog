@@ -1,0 +1,44 @@
+{
+  "common": {
+    "loading": "読み込み中...",
+    "backToHome": "ホームへ戻る"
+  },
+  "switcher": {
+    "label": "言語",
+    "localeNames": {
+      "ja": "日本語",
+      "en": "英語",
+      "zh": "中国語"
+    }
+  },
+  "nav": {
+    "home": "Home",
+    "blog": "Blog",
+    "product": "Product",
+    "about": "About me",
+    "login": "ログイン",
+    "write": "記事を書く",
+    "myPage": "マイページ",
+    "settings": "設定",
+    "messages": "メール"
+  },
+  "home": {
+    "description": "思考と創造を共有するプラットフォーム。",
+    "searchPlaceholder": "ユーザーを検索...",
+    "searchButton": "検索",
+    "recentPosts": "最近の記事",
+    "recentProducts": "最近のプロダクト",
+    "noPosts": "まだ記事がありません。ログインして最初の記事を書きましょう。",
+    "noProducts": "まだプロダクトがありません。",
+    "viewMore": "もっと見る",
+    "translationFailed": "翻訳に失敗しました",
+    "translationError": "翻訳エラーが発生しました"
+  },
+  "verify": {
+    "title": "メールを確認",
+    "success": "ログインリンクを送信しました",
+    "instructions": "メールボックスを確認して、ログインリンクをクリックしてください。",
+    "noMail": "メールが届かない場合は、迷惑メールフォルダもご確認ください。",
+    "backToLogin": "ログインページに戻る"
+  }
+}

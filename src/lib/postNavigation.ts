@@ -1,3 +1,5 @@
+import { buildLocalizedPath, type Locale } from "@/lib/i18n";
+
 const POST_RETURN_STORAGE_PREFIX = "post-return-path:";
 const SCROLL_RESTORE_STORAGE_PREFIX = "scroll-restore:";
 
@@ -14,12 +16,13 @@ function normalizeAppPath(path: string): string {
     return path.startsWith("/") ? path : `/${path}`;
 }
 
-export function buildUserProfilePath(userRef: string): string {
-    return `/user/${encodeURIComponent(userRef)}`;
+export function buildUserProfilePath(userRef: string, locale?: Locale): string {
+    const path = `/user/${encodeURIComponent(userRef)}`;
+    return locale ? buildLocalizedPath(path, locale) : path;
 }
 
-export function buildUserPostPath(userRef: string, postId: string): string {
-    return `${buildUserProfilePath(userRef)}/posts/${encodeURIComponent(postId)}`;
+export function buildUserPostPath(userRef: string, postId: string, locale?: Locale): string {
+    return `${buildUserProfilePath(userRef, locale)}/posts/${encodeURIComponent(postId)}`;
 }
 
 export function rememberPostReturnPath(postPath: string, returnPath: string): void {

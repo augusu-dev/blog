@@ -68,7 +68,7 @@ export default function HomePage() {
   const { data: session } = useSession();
   const router = useRouter();
   const pathname = usePathname();
-  const { t, language } = useLanguage();
+  const { t, language, localizePath } = useLanguage();
   const myPageHref = useMyPageHref();
   const [posts, setPosts] = useState<Post[]>([]);
   const [loadingPosts, setLoadingPosts] = useState(true);
@@ -158,11 +158,11 @@ export default function HomePage() {
   useEffect(() => {
     if (!session) return;
     router.prefetch(myPageHref);
-    router.prefetch("/pins");
-    router.prefetch("/messages");
-    router.prefetch("/settings");
-    router.prefetch("/editor");
-  }, [myPageHref, router, session]);
+    router.prefetch(localizePath("/pins"));
+    router.prefetch(localizePath("/messages"));
+    router.prefetch(localizePath("/settings"));
+    router.prefetch(localizePath("/editor"));
+  }, [localizePath, myPageHref, router, session]);
 
   const openPostOverlay = (post: Post) => {
     setOverlayMeta({
@@ -188,7 +188,7 @@ export default function HomePage() {
       return;
     }
 
-    const href = buildUserPostPath(authorRef, post.id);
+    const href = buildUserPostPath(authorRef, post.id, language);
     rememberPostReturnPath(href, `${window.location.pathname}${window.location.search}`);
     router.push(href, { scroll: false });
   };
@@ -221,7 +221,7 @@ export default function HomePage() {
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (searchQuery.trim()) {
-      router.push(`/user/${encodeURIComponent(searchQuery.trim())}`);
+      router.push(localizePath(`/user/${encodeURIComponent(searchQuery.trim())}`));
     }
   };
 
@@ -242,10 +242,10 @@ export default function HomePage() {
         const langName = translateTarget === 'en' ? 'English' : translateTarget === 'zh' ? '中文' : '日本語';
         setTranslatedContent(`<div style="padding:10px; background:var(--bg-soft); margin-bottom:16px; border-radius:6px; font-size:12px; color:var(--text-soft)">[Translated to ${langName}]</div>` + data.translatedText);
       } else {
-        alert(t("翻訳に失敗しました"));
+        alert(t("home.translationFailed", "Translation failed"));
       }
     } catch (e) {
-      alert(t("翻訳エラーが発生しました"));
+      alert(t("home.translationError", "A translation error occurred"));
       console.error(e);
     }
     setIsTranslating(false);
@@ -284,7 +284,7 @@ export default function HomePage() {
               <UnreadDmButton className="nav-auth-btn nav-user-btn" />
             </>
           ) : (
-            <Link href="/login" className="nav-auth-btn nav-login-btn">{t("ログイン")}</Link>
+            <Link href={localizePath("/login")} className="nav-auth-btn nav-login-btn">{t("ログイン")}</Link>
           )
           }
         </div >

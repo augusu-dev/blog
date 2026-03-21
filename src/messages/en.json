@@ -1,0 +1,55 @@
+{
+  "common": {
+    "loading": "Loading...",
+    "backToHome": "Back to home"
+  },
+  "switcher": {
+    "label": "Language",
+    "localeNames": {
+      "ja": "Japanese",
+      "en": "English",
+      "zh": "Chinese"
+    }
+  },
+  "nav": {
+    "home": "Home",
+    "blog": "Blog",
+    "product": "Product",
+    "about": "About me",
+    "login": "Login",
+    "write": "Write",
+    "myPage": "My Page",
+    "settings": "Settings",
+    "messages": "Messages"
+  },
+  "home": {
+    "description": "A platform for sharing ideas and creations.",
+    "searchPlaceholder": "Search users...",
+    "searchButton": "Search",
+    "recentPosts": "Recent Posts",
+    "recentProducts": "Recent Products",
+    "noPosts": "No posts yet. Log in to write your first post.",
+    "noProducts": "No products yet.",
+    "viewMore": "View more",
+    "translationFailed": "Translation failed",
+    "translationError": "A translation error occurred"
+  },
+  "legacy": {
+    "Next Blog": "Next Blog",
+    "ログイン": "Login",
+    "思考と創造を共有するプラットフォーム。": "A platform for sharing ideas and creations.",
+    "ユーザーを検索...": "Search users...",
+    "検索": "Search",
+    "最近の記事": "Recent Posts",
+    "読み込み中...": "Loading...",
+    "まだ記事がありません。ログインして最初の記事を書きましょう。": "No posts yet. Log in to write your first post.",
+    "最近のプロダクト": "Recent Products"
+  },
+  "verify": {
+    "title": "Check your email",
+    "success": "We sent you a login link",
+    "instructions": "Open your inbox and click the login link.",
+    "noMail": "If you do not see the email, please check your spam folder as well.",
+    "backToLogin": "Back to login"
+  }
+}

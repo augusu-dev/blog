@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { resolveClientPublicUserId } from "@/lib/clientPublicUserId";
 
 function buildMyPageHref(rawPublicUserId?: string | null) {
@@ -14,10 +15,11 @@ function buildMyPageHref(rawPublicUserId?: string | null) {
 
 export function useMyPageHref(): string {
     const { data: session, status } = useSession();
+    const { localizePath } = useLanguage();
     const sessionUser = session?.user as { id?: string | null; userId?: string | null } | undefined;
     const fallbackHref = useMemo(
-        () => buildMyPageHref(resolveClientPublicUserId(sessionUser?.id, sessionUser?.userId)),
-        [sessionUser?.id, sessionUser?.userId]
+        () => localizePath(buildMyPageHref(resolveClientPublicUserId(sessionUser?.id, sessionUser?.userId))),
+        [localizePath, sessionUser?.id, sessionUser?.userId]
     );
     const [href, setHref] = useState(fallbackHref);
 
@@ -29,7 +31,7 @@ export function useMyPageHref(): string {
         if (status !== "authenticated" || typeof window === "undefined") return;
 
         const syncHref = () => {
-            setHref(buildMyPageHref(resolveClientPublicUserId(sessionUser?.id, sessionUser?.userId)));
+            setHref(localizePath(buildMyPageHref(resolveClientPublicUserId(sessionUser?.id, sessionUser?.userId))));
         };
 
         syncHref();
@@ -38,7 +40,7 @@ export function useMyPageHref(): string {
         return () => {
             window.removeEventListener("storage", syncHref);
         };
-    }, [sessionUser?.id, sessionUser?.userId, status]);
+    }, [localizePath, sessionUser?.id, sessionUser?.userId, status]);
 
     return href;
 }

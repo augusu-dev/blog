@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { readSessionCache, writeSessionCache } from "@/lib/clientSessionCache";
 
 type ShortPostAuthor = {
@@ -48,8 +49,8 @@ function getAuthorLabel(author: ShortPostAuthor): string {
     return author.name || author.email || "Anonymous";
 }
 
-function getAuthorHref(author: ShortPostAuthor): string {
-    return author.userId ? `/user/${encodeURIComponent(author.userId)}` : "#";
+function getAuthorHref(author: ShortPostAuthor, localizePath: (path: string) => string): string {
+    return author.userId ? localizePath(`/user/${encodeURIComponent(author.userId)}`) : "#";
 }
 
 function renderTextWithLinks(content: string) {
@@ -87,6 +88,7 @@ function renderTextWithLinks(content: string) {
 export default function HomeShortPosts() {
     const { data: session } = useSession();
     const router = useRouter();
+    const { localizePath } = useLanguage();
 
     const [posts, setPosts] = useState<ShortPostItem[]>([]);
     const [loading, setLoading] = useState(false);
@@ -139,7 +141,7 @@ export default function HomeShortPosts() {
 
     const openComposerModal = () => {
         if (!session?.user) {
-            router.push("/login");
+            router.push(localizePath("/login"));
             return;
         }
         setError("");
@@ -186,7 +188,7 @@ export default function HomeShortPosts() {
                         最近のポスト
                     </h2>
                     <Link
-                        href="/posts/shorts"
+                        href={localizePath("/posts/shorts")}
                         className="editor-btn editor-btn-secondary"
                         style={{ textDecoration: "none", padding: "6px 12px", fontSize: 12 }}
                     >
@@ -225,7 +227,7 @@ export default function HomeShortPosts() {
                                     alignItems: "flex-start",
                                 }}
                             >
-                                <Link href={getAuthorHref(post.author)} style={{ textDecoration: "none" }}>
+                                <Link href={getAuthorHref(post.author, localizePath)} style={{ textDecoration: "none" }}>
                                     <div
                                         title="プロフィールへ"
                                         style={{

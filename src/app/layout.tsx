@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import "./globals.css";
 import Providers from "@/components/Providers";
+import { DEFAULT_LOCALE, normalizeLocale } from "@/lib/i18n";
 
 const themeBootstrapScript = `
 (() => {
@@ -110,36 +112,40 @@ const themeBootstrapScript = `
 `;
 
 export const metadata: Metadata = {
-  title: "Next Blog",
-  description: "学び、作り、考える。日々の記録を紡ぐモダンなブログプラットフォーム。",
-  openGraph: {
     title: "Next Blog",
-    description: "学び、作り、考える。日々の記録を紡ぐモダンなブログプラットフォーム。",
-    url: "https://blog.augusu.dev",
-    siteName: "Next Blog",
-    locale: "ja_JP",
-    type: "website",
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "Next Blog",
-    description: "学び、作り、考える。日々の記録を紡ぐモダンなブログプラットフォーム。",
-  },
+    description: "Next Blog",
+    metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "https://nextblog-au.vercel.app"),
+    openGraph: {
+        title: "Next Blog",
+        description: "Next Blog",
+        url: "https://blog.augusu.dev",
+        siteName: "Next Blog",
+        locale: "ja_JP",
+        type: "website",
+    },
+    twitter: {
+        card: "summary_large_image",
+        title: "Next Blog",
+        description: "Next Blog",
+    },
 };
 
-export default function RootLayout({
-  children,
+export default async function RootLayout({
+    children,
 }: Readonly<{
-  children: React.ReactNode;
+    children: React.ReactNode;
 }>) {
-  return (
-    <html lang="ja">
-      <head>
-        <script dangerouslySetInnerHTML={{ __html: themeBootstrapScript }} />
-      </head>
-      <body>
-        <Providers>{children}</Providers>
-      </body>
-    </html>
-  );
+    const headerStore = await headers();
+    const locale = normalizeLocale(headerStore.get("x-app-locale") || DEFAULT_LOCALE);
+
+    return (
+        <html lang={locale}>
+            <head>
+                <script dangerouslySetInnerHTML={{ __html: themeBootstrapScript }} />
+            </head>
+            <body>
+                <Providers initialLocale={locale}>{children}</Providers>
+            </body>
+        </html>
+    );
 }

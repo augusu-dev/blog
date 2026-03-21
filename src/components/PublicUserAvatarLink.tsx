@@ -2,6 +2,7 @@
 
 import { CSSProperties, MouseEvent } from "react";
 import Link from "next/link";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 export type PublicUserAvatar = {
     id: string;
@@ -23,21 +24,27 @@ export function getPublicUserLabel(user?: PublicUserAvatar | null): string {
     return user?.name || user?.email || "Anonymous";
 }
 
-export function getPublicUserHref(user?: Pick<PublicUserAvatar, "id" | "userId"> | null): string {
+export function getPublicUserHref(
+    user?: Pick<PublicUserAvatar, "id" | "userId"> | null,
+    localizePath?: (path: string) => string
+): string {
     if (!user?.id) {
         return "#";
     }
 
-    return `/user/${encodeURIComponent(user.userId || user.id)}`;
+    const path = `/user/${encodeURIComponent(user.userId || user.id)}`;
+    return localizePath ? localizePath(path) : path;
 }
 
 export default function PublicUserAvatarLink({
     user,
     size = 24,
-    title = "ページに飛ぶ",
+    title = "繝壹・繧ｸ縺ｫ鬟帙・",
     style,
     stopPropagation = false,
 }: PublicUserAvatarLinkProps) {
+    const { localizePath } = useLanguage();
+
     if (!user?.id) {
         return null;
     }
@@ -47,7 +54,7 @@ export default function PublicUserAvatarLink({
 
     return (
         <Link
-            href={getPublicUserHref(user)}
+            href={getPublicUserHref(user, localizePath)}
             style={{ textDecoration: "none", display: "inline-flex" }}
             title={title}
             onClick={handleClick}
