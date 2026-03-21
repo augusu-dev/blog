@@ -14,9 +14,7 @@ import {
 } from "@/lib/prismaErrors";
 import { resolveReadablePublicUserId } from "@/lib/userId";
 import { readCacheKeys, readThroughCache, writeReadCache } from "@/lib/readCache";
-
-type DmSetting = "OPEN" | "PR_ONLY" | "CLOSED";
-const DEFAULT_DM_SETTING: DmSetting = "OPEN";
+import { DEFAULT_DM_SETTING, parseUserPreferences, type DmSetting } from "@/lib/userPreferences";
 const USER_PROFILE_CACHE_TTL_MS = 20 * 1000;
 
 const USER_PUBLIC_SELECT_WITH_USER_ID = {
@@ -57,40 +55,12 @@ const USER_PUBLIC_SELECT_MINIMAL = {
     image: true,
 } as const;
 
-function parseDmSetting(value: unknown): DmSetting | undefined {
-    if (value === "OPEN" || value === "PR_ONLY" || value === "CLOSED") {
-        return value;
-    }
-    return undefined;
-}
-
 function unpackLinks(raw: string | null | undefined): { links: unknown[]; dmSetting: DmSetting } {
-    if (!raw) {
-        return { links: [], dmSetting: DEFAULT_DM_SETTING };
-    }
-
-    try {
-        const parsed = JSON.parse(raw);
-
-        if (Array.isArray(parsed)) {
-            return { links: parsed, dmSetting: DEFAULT_DM_SETTING };
-        }
-
-        if (parsed && typeof parsed === "object") {
-            const candidate = parsed as { items?: unknown; links?: unknown; dmSetting?: unknown };
-            const links = Array.isArray(candidate.items)
-                ? candidate.items
-                : Array.isArray(candidate.links)
-                    ? candidate.links
-                    : [];
-            const dmSetting = parseDmSetting(candidate.dmSetting) || DEFAULT_DM_SETTING;
-            return { links, dmSetting };
-        }
-    } catch {
-        return { links: [], dmSetting: DEFAULT_DM_SETTING };
-    }
-
-    return { links: [], dmSetting: DEFAULT_DM_SETTING };
+    const preferences = parseUserPreferences(raw);
+    return {
+        links: preferences.links,
+        dmSetting: preferences.dmSetting,
+    };
 }
 
 function isUserSchemaCompatibilityError(error: unknown): boolean {

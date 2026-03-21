@@ -12,13 +12,15 @@ import { tryEnsureProfileAndPostSchema } from "@/lib/schemaCompat";
 import { getTableColumns } from "@/lib/tableSchema";
 import { isSchemaCompatibilityError, isTransientDatabaseError } from "@/lib/prismaErrors";
 import { invalidateReadCachePrefix, readCacheKeys, readThroughCache } from "@/lib/readCache";
-
-type DmSetting = "OPEN" | "PR_ONLY" | "CLOSED";
-type ThemeName = "default" | "lightblue" | "sand" | "apricot" | "white" | "black" | "custom";
-
-const DEFAULT_DM_SETTING: DmSetting = "OPEN";
-const DEFAULT_THEME: ThemeName = "default";
-const DEFAULT_THEME_CUSTOM_COLOR = "#925c5c";
+import {
+    DEFAULT_DM_SETTING,
+    DEFAULT_THEME,
+    DEFAULT_THEME_CUSTOM_COLOR,
+    parseUserPreferences,
+    serializeUserPreferences,
+    type DmSetting,
+    type ThemeName,
+} from "@/lib/userPreferences";
 const USER_SETTINGS_CACHE_TTL_MS = 15 * 1000;
 
 const USER_SETTINGS_SELECT_WITH_USER_ID = {
@@ -157,87 +159,19 @@ async function fetchUserSettingsRecordRaw(userId: string) {
     }
 }
 
-function unpackLinks(raw: string | null | undefined): {
-    links: unknown[];
-    dmSetting: DmSetting;
-    theme: ThemeName;
-    themeCustomColor: string;
-} {
-    if (!raw) {
-        return {
-            links: [],
-            dmSetting: DEFAULT_DM_SETTING,
-            theme: DEFAULT_THEME,
-            themeCustomColor: DEFAULT_THEME_CUSTOM_COLOR,
-        };
-    }
-
-    try {
-        const parsed = JSON.parse(raw);
-
-        if (Array.isArray(parsed)) {
-            return {
-                links: parsed,
-                dmSetting: DEFAULT_DM_SETTING,
-                theme: DEFAULT_THEME,
-                themeCustomColor: DEFAULT_THEME_CUSTOM_COLOR,
-            };
-        }
-
-        if (parsed && typeof parsed === "object") {
-            const candidate = parsed as {
-                items?: unknown;
-                links?: unknown;
-                dmSetting?: unknown;
-                theme?: unknown;
-                themeCustomColor?: unknown;
-            };
-            const links = Array.isArray(candidate.items)
-                ? candidate.items
-                : Array.isArray(candidate.links)
-                  ? candidate.links
-                  : [];
-            const dmSetting = parseDmSetting(candidate.dmSetting) || DEFAULT_DM_SETTING;
-            const theme = parseThemeName(candidate.theme) || DEFAULT_THEME;
-            const themeCustomColor =
-                parseThemeColor(candidate.themeCustomColor) || DEFAULT_THEME_CUSTOM_COLOR;
-            return { links, dmSetting, theme, themeCustomColor };
-        }
-    } catch {
-        return {
-            links: [],
-            dmSetting: DEFAULT_DM_SETTING,
-            theme: DEFAULT_THEME,
-            themeCustomColor: DEFAULT_THEME_CUSTOM_COLOR,
-        };
-    }
-
-    return {
-        links: [],
-        dmSetting: DEFAULT_DM_SETTING,
-        theme: DEFAULT_THEME,
-        themeCustomColor: DEFAULT_THEME_CUSTOM_COLOR,
-    };
-}
-
 function packLinks(
     links: unknown[],
     dmSetting: DmSetting,
     theme: ThemeName,
-    themeCustomColor: string
+    themeCustomColor: string,
+    dmLastSeenAt?: string | null
 ): string {
-    if (
-        dmSetting === DEFAULT_DM_SETTING &&
-        theme === DEFAULT_THEME &&
-        themeCustomColor === DEFAULT_THEME_CUSTOM_COLOR
-    ) {
-        return JSON.stringify(links);
-    }
-    return JSON.stringify({
-        items: links,
+    return serializeUserPreferences({
+        links,
         dmSetting,
         theme,
         themeCustomColor,
+        dmLastSeenAt: dmLastSeenAt || null,
     });
 }
 
@@ -407,7 +341,7 @@ export async function GET() {
                     throw new Error("USER_NOT_FOUND");
                 }
 
-                const unpacked = unpackLinks(("links" in user ? user.links : null) as string | null | undefined);
+                const unpacked = parseUserPreferences(("links" in user ? user.links : null) as string | null | undefined);
                 const publicUserId = resolveReadablePublicUserId(user);
 
                 return {
@@ -544,7 +478,7 @@ export async function PUT(request: NextRequest) {
             }
         }
 
-        const currentUnpacked = unpackLinks(
+        const currentUnpacked = parseUserPreferences(
             ("links" in current ? current.links : null) as string | null | undefined
         );
         const nextLinks = Array.isArray(links) ? links : currentUnpacked.links;
@@ -553,7 +487,13 @@ export async function PUT(request: NextRequest) {
         const nextThemeCustomColor = parsedThemeCustomColor || currentUnpacked.themeCustomColor;
 
         const updateData: Prisma.UserUpdateInput = {
-            links: packLinks(nextLinks, nextDmSetting, nextTheme, nextThemeCustomColor),
+            links: packLinks(
+                nextLinks,
+                nextDmSetting,
+                nextTheme,
+                nextThemeCustomColor,
+                currentUnpacked.dmLastSeenAt
+            ),
         };
 
         if (name !== undefined) updateData.name = normalizeNullableString(name);
@@ -598,7 +538,7 @@ export async function PUT(request: NextRequest) {
         if (!responseUser) {
             return NextResponse.json({ error: "User not found" }, { status: 404 });
         }
-        const unpacked = unpackLinks(
+        const unpacked = parseUserPreferences(
             ("links" in responseUser ? responseUser.links : null) as string | null | undefined
         );
         const publicUserId = resolveReadablePublicUserId(responseUser);

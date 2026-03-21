@@ -17,8 +17,28 @@ export function getDmUnreadSince(userKey?: string | null): string | null {
 
 export function markDmPrSeen(userKey?: string | null, date: Date = new Date()): void {
     if (!isBrowser()) return;
-    window.localStorage.setItem(buildLastSeenKey(userKey), date.toISOString());
+
+    const nextSeenAt = date.toISOString();
+    const storageKey = buildLastSeenKey(userKey);
+    const currentSeenAt = window.localStorage.getItem(storageKey);
+
+    if (currentSeenAt && currentSeenAt >= nextSeenAt) {
+        window.dispatchEvent(new Event(REFRESH_EVENT));
+        return;
+    }
+
+    window.localStorage.setItem(storageKey, nextSeenAt);
+
     window.dispatchEvent(new Event(REFRESH_EVENT));
+
+    void fetch("/api/notifications/unread", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ seenAt: nextSeenAt }),
+    }).finally(() => {
+        window.dispatchEvent(new Event(REFRESH_EVENT));
+    });
 }
 
 export function getDmUnreadRefreshEventName(): string {

@@ -4,7 +4,7 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, usePathname, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useLanguage } from "@/contexts/LanguageContext";
 import PostComments from "@/components/PostComments";
@@ -18,7 +18,9 @@ import { prepareRenderedPostHtml } from "@/lib/postContent";
 import {
     buildUserPostPath,
     buildUserProfilePath,
+    consumeQueuedScrollRestore,
     consumePostReturnPath,
+    queueScrollRestore,
     rememberPostReturnPath,
 } from "@/lib/postNavigation";
 
@@ -201,10 +203,12 @@ type UserPageProps = {
 export default function UserPage({ requestedPostId: requestedPostIdProp = null }: UserPageProps = {}) {
     const { data: session } = useSession();
     const router = useRouter();
+    const pathname = usePathname();
     const params = useParams();
     const searchParams = useSearchParams();
     const userName = params.name as string;
     const searchParamsString = searchParams.toString();
+    const currentPath = `${pathname}${searchParamsString ? `?${searchParamsString}` : ""}`;
     const requestedPostId = (requestedPostIdProp || searchParams.get("post") || "").trim();
     const sessionUser = session?.user as {
         id?: string;
@@ -591,8 +595,12 @@ export default function UserPage({ requestedPostId: requestedPostIdProp = null }
             (typeof user?.id === "string" && user.id.trim()) ||
             userName;
         const currentPostPath = buildUserPostPath(authorRef, requestedPostId);
-        const returnPath = consumePostReturnPath(currentPostPath);
-        router.push(returnPath || buildUserProfilePath(authorRef), { scroll: false });
+        const returnState = consumePostReturnPath(currentPostPath);
+        const returnPath = returnState?.path || buildUserProfilePath(authorRef);
+        if (returnState) {
+            queueScrollRestore(returnPath, returnState.scrollY);
+        }
+        router.push(returnPath, { scroll: false });
     };
 
     const handleTranslate = async () => {
@@ -648,14 +656,25 @@ export default function UserPage({ requestedPostId: requestedPostIdProp = null }
         openPostOverlay(target);
     }, [requestedPostId, user, posts, products]);
 
+    useEffect(() => {
+        if (loading || requestedPostId) return;
+
+        const queuedScrollY = consumeQueuedScrollRestore(currentPath);
+        if (queuedScrollY === null) return;
+
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                window.scrollTo({ top: queuedScrollY, behavior: "auto" });
+            });
+        });
+    }, [currentPath, loading, requestedPostId]);
+
     /* ─── Computed ─── */
     const blogTotalPages = Math.ceil(posts.length / BLOG_PER_PAGE);
     const blogItems = posts.slice(blogPage * BLOG_PER_PAGE, (blogPage + 1) * BLOG_PER_PAGE);
     // おすすめの抽出
-    const recommendProducts = products.slice(0, 2);
-
-    const pinnedBlogs = posts.filter((p: any) => p.pinned);
-    const recommendBlogs = pinnedBlogs.slice(0, 3);
+    const recommendProducts = products.filter((p: any) => p.pinned);
+    const recommendBlogs = posts.filter((p: any) => p.pinned);
 
     const scrollTo = (id: string) => {
         const el = document.getElementById(id);

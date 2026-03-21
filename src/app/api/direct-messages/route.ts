@@ -12,9 +12,7 @@ import {
 } from "@/lib/prismaErrors";
 import { resolveSessionUserId } from "@/lib/sessionUser";
 import { invalidateReadCachePrefix, readCacheKeys, readThroughCache } from "@/lib/readCache";
-
-type DmSetting = "OPEN" | "PR_ONLY" | "CLOSED";
-const DEFAULT_DM_SETTING: DmSetting = "OPEN";
+import { parseUserPreferences, type DmSetting } from "@/lib/userPreferences";
 const DIRECT_MESSAGES_CACHE_TTL_MS = 5 * 1000;
 const DM_USER_SELECT = {
     id: true,
@@ -83,27 +81,8 @@ function normalizeString(value: unknown): string {
     return typeof value === "string" ? value.trim() : "";
 }
 
-function parseDmSetting(value: unknown): DmSetting | undefined {
-    if (value === "OPEN" || value === "PR_ONLY" || value === "CLOSED") {
-        return value;
-    }
-    return undefined;
-}
-
 function unpackDmSettingFromLinks(raw: string | null | undefined): DmSetting {
-    if (!raw) return DEFAULT_DM_SETTING;
-
-    try {
-        const parsed = JSON.parse(raw);
-        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-            const candidate = parsed as { dmSetting?: unknown };
-            return parseDmSetting(candidate.dmSetting) || DEFAULT_DM_SETTING;
-        }
-    } catch {
-        return DEFAULT_DM_SETTING;
-    }
-
-    return DEFAULT_DM_SETTING;
+    return parseUserPreferences(raw).dmSetting;
 }
 
 function buildThreadPreview(message: {

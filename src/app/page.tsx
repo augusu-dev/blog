@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useLanguage } from "@/contexts/LanguageContext";
 import PostComments from "@/components/PostComments";
@@ -17,7 +17,11 @@ import PublicUserAvatarLink, {
 import { useMyPageHref } from "@/hooks/useMyPageHref";
 import { prepareRenderedPostHtml } from "@/lib/postContent";
 import { readSessionCache, writeSessionCache } from "@/lib/clientSessionCache";
-import { buildUserPostPath, rememberPostReturnPath } from "@/lib/postNavigation";
+import {
+  buildUserPostPath,
+  consumeQueuedScrollRestore,
+  rememberPostReturnPath,
+} from "@/lib/postNavigation";
 
 interface Post {
   id: string;
@@ -63,6 +67,7 @@ function fmtDate(d: string) {
 export default function HomePage() {
   const { data: session } = useSession();
   const router = useRouter();
+  const pathname = usePathname();
   const { t, language } = useLanguage();
   const myPageHref = useMyPageHref();
   const [posts, setPosts] = useState<Post[]>([]);
@@ -136,6 +141,19 @@ export default function HomePage() {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (loadingPosts) return;
+
+    const queuedScrollY = consumeQueuedScrollRestore(pathname);
+    if (queuedScrollY === null) return;
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: queuedScrollY, behavior: "auto" });
+      });
+    });
+  }, [loadingPosts, pathname]);
 
   useEffect(() => {
     if (!session) return;
